@@ -371,6 +371,15 @@ export const useTournamentStore = create<TournamentStore>((set, get) => ({
   assignRefereeToMatch: (matchId, refereeId, judgeIds) => {
     const match = get().matches.find(m => m.id === matchId);
     if (!match) return;
+    if (judgeIds.includes(refereeId)) {
+      toast.error('Central referee cannot also be selected as a corner judge');
+      return;
+    }
+    const unavailable = get().referees.filter(r => [refereeId, ...judgeIds].includes(r.id) && r.status !== 'Available' && r.currentMatchId !== matchId);
+    if (unavailable.length > 0) {
+      toast.error(`${unavailable[0].name} is not available for assignment`);
+      return;
+    }
     const ref = get().referees.find(r => r.id === refereeId);
     const assignment = `Mat ${match.matNumber} — Match #${match.matchNumber}`;
 

@@ -15,7 +15,10 @@ import { t } from "@/lib/i18n";
 const assignmentSchema = z.object({
   matchId: z.string().min(1, "Please select a match"),
   centralRefereeId: z.string().min(1, "Central referee is required"),
-  cornerJudgeIds: z.array(z.string()).length(3, "Exactly 3 judges must be selected"),
+  cornerJudgeIds: z.array(z.string()).min(1, "Select the required judges"),
+}).refine(data => !data.cornerJudgeIds.includes(data.centralRefereeId), {
+  path: ["cornerJudgeIds"],
+  message: "Central referee cannot also be a corner judge",
 });
 
 type AssignmentFormValues = z.infer<typeof assignmentSchema>;
@@ -35,9 +38,11 @@ export default function RefereesPage() {
     chief: referees.filter(r => r.role === "Chief Referee").length,
   };
 
-  const upcomingMatches = useMemo(() => matches.filter(m => m.status === "scheduled").sort(
-    (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
-  ), [matches]);
+  const requiredJudgeCount = settings.defaultJudgesCount;
+  const assignableMatches = useMemo(() => matches
+    .filter(m => (m.status === "scheduled" || m.status === "in-progress") && !m.assignedRefereeId)
+    .sort((a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime())
+  , [matches]);
 
   const {
     control,
@@ -52,22 +57,31 @@ export default function RefereesPage() {
   });
 
   const selectedMatchId = watch("matchId");
-  const selectedMatch = upcomingMatches.find(m => m.id === selectedMatchId);
-  const selectedJudges = watch("cornerJudgeIds");
+  const selectedCentralRefereeId = watch("centralRefereeId");
+  const selectedMatch = assignableMatches.find(m => m.id === selectedMatchId);
+  const selectedJudges = watch("cornerJudgeIds") ?? [];
 
   const onSubmit = (data: AssignmentFormValues) => {
+    if (data.cornerJudgeIds.length !== requiredJudgeCount) {
+      toast.error(`Select exactly ${requiredJudgeCount} corner judges`);
+      return;
+    }
+    if (data.cornerJudgeIds.includes(data.centralRefereeId)) {
+      toast.error("Central referee cannot also be a corner judge");
+      return;
+    }
     assignRefereeToMatch(data.matchId, data.centralRefereeId, data.cornerJudgeIds);
-    reset();
+    reset({ matchId: "", centralRefereeId: "", cornerJudgeIds: [] });
   };
 
   const toggleJudge = (id: string) => {
     if (selectedJudges.includes(id)) {
       setValue("cornerJudgeIds", selectedJudges.filter(jId => jId !== id), { shouldValidate: true });
     } else {
-      if (selectedJudges.length < 3) {
+      if (selectedJudges.length < requiredJudgeCount) {
         setValue("cornerJudgeIds", [...selectedJudges, id], { shouldValidate: true });
       } else {
-        toast.error("You can only select 3 judges");
+        toast.error(`You can only select ${requiredJudgeCount} judges`);
       }
     }
   };
@@ -191,7 +205,7 @@ export default function RefereesPage() {
                   render={({ field }) => (
                     <select {...field} className={`w-full bg-[var(--bg-elevated)] border rounded-md px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors ${errors.matchId ? 'border-[var(--ikf-red)]' : 'border-[var(--border-default)]'}`}>
                       <option value="">{t('choose_upcoming_match', settings.language)}</option>
-                      {upcomingMatches.map(m => <option key={m.id} value={m.id}>{t('match_number', settings.language).replace('#', '')} #{m.matchNumber} — {m.category}</option>)}
+                      {assignableMatches.map(m => <option key={m.id} value={m.id}>{t('match_number', settings.language).replace('#', '')} #{m.matchNumber} — {m.category} · {m.status}</option>)}
                     </select>
                   )}
                 />
@@ -206,7 +220,7 @@ export default function RefereesPage() {
                   render={({ field }) => (
                     <select {...field} className={`w-full bg-[var(--bg-elevated)] border rounded-md px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors ${errors.centralRefereeId ? 'border-[var(--ikf-red)]' : 'border-[var(--border-default)]'}`}>
                       <option value="">{t('choose_central_referee', settings.language)}</option>
-                      {referees.filter(r => r.role === "Central Referee" && r.status === "Available").map(r => (
+                      {referees.filter(r => r.role === "Central Referee" && (r.status === "Available" || r.id === selectedCentralRefereeId)).map(r => (
                         <option key={r.id} value={r.id}>{r.name} ({r.country})</option>
                       ))}
                     </select>
@@ -219,7 +233,7 @@ export default function RefereesPage() {
                 <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{t('corner_judges', settings.language)}</label>
                   <span className={`text-xs font-bold ${selectedJudges.length === 3 ? 'text-[var(--status-win)]' : 'text-[var(--ikf-red)]'}`}>
-                    {t('judges_selected', settings.language).replace('{count}', String(selectedJudges.length))}
+                    {selectedJudges.length}/{requiredJudgeCount} selected
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -252,8 +266,8 @@ export default function RefereesPage() {
                 </div>
               </div>
 
-              <IKFButton type="submit" variant="primary" size="lg" className="w-full tracking-widest" disabled={upcomingMatches.length === 0}>
-                {upcomingMatches.length === 0 ? t('no_matches_to_assign', settings.language) : t('confirm_assignment', settings.language)}
+              <IKFButton type="submit" variant="primary" size="lg" className="w-full tracking-widest" disabled={assignableMatches.length === 0}>
+                {assignableMatches.length === 0 ? t('no_matches_to_assign', settings.language) : t('confirm_assignment', settings.language)}
               </IKFButton>
             </form>
           </IKFCard>
@@ -262,7 +276,7 @@ export default function RefereesPage() {
             <h3 className="text-sm font-bold text-[var(--text-muted)] tracking-widest uppercase mb-4 pl-2">{t('current_assignments', settings.language)}</h3>
             <div className="relative pl-4 space-y-6 before:content-[''] before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[2px] before:bg-[var(--border-default)]">
               {todayMatchesWithAssignments.length === 0 ? (
-                <div className="text-sm text-[var(--text-muted)]">{t('no_assignments_yet', settings.language)}</div>
+                <div className="text-sm text-[var(--text-muted)]">{t('no_assignments_yet', settings.language)} Assign referees to scheduled or in-progress matches above.</div>
               ) : todayMatchesWithAssignments.map((m, idx) => {
                 const centralRef = referees.find(r => r.id === m.assignedRefereeId);
                 const cornerRefs = m.assignedJudgeIds?.map(id => referees.find(r => r.id === id)?.name).filter(Boolean) || [];
