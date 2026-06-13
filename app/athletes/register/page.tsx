@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { differenceInYears } from "date-fns";
 import toast from "react-hot-toast";
-import { UploadCloud } from "lucide-react";
+import { AlertTriangle, UploadCloud } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, AgeGroup } from "@/types/tournament";
@@ -81,6 +81,15 @@ export default function RegisterAthletePage() {
   const onSubmit = async (data: FormValues) => {
     await new Promise(r => setTimeout(r, 600));
     const selectedClub = clubs.find(c => c.id === data.clubId);
+    const duplicateNationalId = athletes.find(a => a.id !== editingAthlete?.id && a.nationalId.trim().toLowerCase() === data.nationalId.trim().toLowerCase());
+    if (duplicateNationalId) {
+      toast.error(`National ID/Passport already belongs to ${duplicateNationalId.fullName}`);
+      return;
+    }
+    if (!selectedClub) {
+      toast.error("Select a valid club before registering the athlete.");
+      return;
+    }
 
     if (editingAthlete) {
       updateAthlete(editingAthlete.id, {
@@ -114,6 +123,16 @@ export default function RegisterAthletePage() {
         title={editingAthlete ? "EDIT ATHLETE" : "REGISTER ATHLETE"}
         subtitle={editingAthlete ? `Editing: ${editingAthlete.fullName}` : "Add a new competitor to the tournament registry"}
       />
+
+      {clubs.length === 0 && (
+        <div className="rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5 flex items-center gap-4">
+          <AlertTriangle className="text-[var(--ikf-gold)]" size={24} />
+          <div>
+            <p className="font-bold text-white">No clubs are registered yet.</p>
+            <p className="text-sm text-[var(--text-secondary)]">Register a club before adding athletes so every athlete links to a valid delegation.</p>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         {/* LICENSE BADGE */}
@@ -202,7 +221,7 @@ export default function RegisterAthletePage() {
         {/* SUBMIT */}
         <div className="flex gap-4 justify-end">
           <IKFButton variant="ghost" type="button" onClick={() => router.push("/athletes")}>Cancel</IKFButton>
-          <IKFButton variant="primary" type="submit" loading={isSubmitting} size="lg">
+          <IKFButton variant="primary" type="submit" loading={isSubmitting} disabled={clubs.length === 0} size="lg">
             {editingAthlete ? "Save Changes" : "Register Athlete"}
           </IKFButton>
         </div>

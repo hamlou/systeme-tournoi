@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -30,7 +30,10 @@ const COUNTRIES = ["Tunisia 🇹🇳", "Algeria 🇩🇿", "France 🇫🇷", "M
 
 export default function RegisterClubPage() {
   const router = useRouter();
-  const { addClub } = useTournamentStore();
+  const params = useSearchParams();
+  const editId = params?.get("edit");
+  const { clubs, addClub, updateClub } = useTournamentStore();
+  const editingClub = editId ? clubs.find(c => c.id === editId) : null;
 
   const {
     register,
@@ -38,12 +41,46 @@ export default function RegisterClubPage() {
     formState: { errors, isSubmitting },
   } = useForm<ClubFormValues>({
     resolver: zodResolver(clubSchema),
+    defaultValues: editingClub ? {
+      name: editingClub.name,
+      country: editingClub.country,
+      presidentName: editingClub.presidentName,
+      email: editingClub.email,
+      phone: editingClub.phone,
+      affiliationNumber: editingClub.affiliationNumber,
+      expectedAthletes: editingClub.expectedAthletes,
+      notes: editingClub.notes ?? "",
+      logoUrl: editingClub.logoUrl ?? "",
+    } : undefined,
   });
 
   const onSubmit = async (data: ClubFormValues) => {
     // Simulate network delay
     await new Promise(r => setTimeout(r, 800));
     
+    const duplicateClub = clubs.find(c => c.id !== editingClub?.id && (c.name.trim().toLowerCase() === data.name.trim().toLowerCase() || c.affiliationNumber.trim().toLowerCase() === data.affiliationNumber.trim().toLowerCase()));
+    if (duplicateClub) {
+      toast.error("A club with this name or affiliation number already exists.");
+      return;
+    }
+
+    if (editingClub) {
+      updateClub(editingClub.id, {
+        name: data.name,
+        country: data.country,
+        presidentName: data.presidentName,
+        email: data.email,
+        phone: data.phone,
+        affiliationNumber: data.affiliationNumber,
+        expectedAthletes: data.expectedAthletes,
+        notes: data.notes,
+        logoUrl: data.logoUrl,
+      });
+      toast.success(`${data.name} updated successfully`);
+      router.push("/clubs");
+      return;
+    }
+
     const newClub: Club = {
       id: uuidv4(),
       name: data.name,
@@ -75,8 +112,8 @@ export default function RegisterClubPage() {
     <div className="p-8 max-w-[800px] mx-auto space-y-8 animate-fade-in pb-20">
       <PageHeader 
         category="REGISTRATION"
-        title="NEW CLUB"
-        subtitle="Register a club or national delegation"
+        title={editingClub ? "EDIT CLUB" : "NEW CLUB"}
+        subtitle={editingClub ? `Editing: ${editingClub.name}` : "Register a club or national delegation"}
       />
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
@@ -137,12 +174,13 @@ export default function RegisterClubPage() {
 
             <div>
               <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">Club Logo Upload</label>
-              <div className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-10 flex flex-col items-center justify-center text-center hover:border-[var(--ikf-gold)] transition-colors cursor-pointer group">
+              <input type="url" {...register("logoUrl")} placeholder="https://example.com/logo.png" className="mb-3 w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)] transition-colors" />
+              <div className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-10 flex flex-col items-center justify-center text-center group">
                 <div className="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.05)] flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-[rgba(212,160,23,0.1)] transition-all">
                   <UploadCloud size={24} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)]" />
                 </div>
-                <p className="text-sm font-medium text-[var(--text-secondary)]">Drop club logo here or click to upload</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1.5">Vector (SVG) or High-Res PNG (Max 5MB)</p>
+                <p className="text-sm font-medium text-[var(--text-secondary)]">Paste a hosted logo URL above</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1.5">Upload storage is not configured, so this field stores an external image URL.</p>
               </div>
             </div>
 
@@ -167,7 +205,7 @@ export default function RegisterClubPage() {
             className="text-lg tracking-widest shadow-[var(--shadow-gold-glow)]"
             loading={isSubmitting}
           >
-            {isSubmitting ? "REGISTERING CLUB..." : "REGISTER CLUB"}
+            {isSubmitting ? (editingClub ? "SAVING CLUB..." : "REGISTERING CLUB...") : (editingClub ? "SAVE CLUB" : "REGISTER CLUB")}
           </IKFButton>
         </div>
       </form>

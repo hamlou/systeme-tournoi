@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Building2, User } from "lucide-react";
+import { Search, Building2, Edit2, User } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
 import { t } from "@/lib/i18n";
@@ -89,6 +89,12 @@ export default function ClubsPage() {
                   <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('pending', settings.language)}</div>
                   <div className="font-mono text-xl text-[var(--status-draw)]">{athletes.filter(a => a.clubId === club.id && a.weighInStatus === 'Pending').length}</div>
                 </div>
+              </div>
+
+              <div className="flex gap-2 mb-4">
+                <IKFButton variant="ghost" size="sm" leftIcon={<Edit2 size={14} />} onClick={(event) => { event.stopPropagation(); router.push(`/clubs/register?edit=${club.id}`); }}>
+                  Edit Club
+                </IKFButton>
               </div>
 
               {/* Bottom Avatars */}

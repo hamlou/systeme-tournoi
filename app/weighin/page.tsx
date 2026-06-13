@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Search, ScanLine, User, X, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+import { Search, User, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
@@ -17,7 +17,6 @@ export default function WeighInPage() {
   const { athletes, weighinRecords: logs, addWeighinRecord: addLog, updateAthleteWeighinStatus, settings } = useTournamentStore();
   
   const [searchTerm, setSearchTerm] = useState("");
-  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [currentAthlete, setCurrentAthlete] = useState<Athlete | null>(null);
   const [weightValue, setWeightValue] = useState("");
   const [unit, setUnit] = useState<"kg" | "lbs">("kg");
@@ -195,17 +194,6 @@ export default function WeighInPage() {
   const reassignedLogs = logs.filter(l => l.status === "Reassigned").length;
   const sortedLogs = useMemo(() => [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [logs]);
 
-  const handleSimulatedScan = () => {
-    const nextPending = athletes.find(a => a.weighInStatus !== "Confirmed") ?? athletes[0];
-    if (!nextPending) {
-      toast.error("No athletes available to scan.");
-      return;
-    }
-    handleSelectAthlete(nextPending);
-    setIsScannerOpen(false);
-    toast.success(`QR scan matched ${nextPending.fullName}`);
-  };
-
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
       <PageHeader 
@@ -244,13 +232,6 @@ export default function WeighInPage() {
             </div>
           )}
         </div>
-        <button 
-          onClick={() => setIsScannerOpen(true)}
-          className="h-[56px] px-8 bg-[var(--bg-elevated)] border-2 border-[var(--border-default)] hover:border-[var(--ikf-gold)] rounded-xl flex items-center gap-3 text-[var(--text-primary)] font-semibold uppercase tracking-wider transition-all hover:bg-[rgba(212,160,23,0.05)] group shadow-card flex-shrink-0"
-        >
-          <ScanLine size={20} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)] transition-colors" />
-          {t('scan_qr', settings.language)}
-        </button>
       </div>
 
       <div className="flex flex-col xl:flex-row gap-8">
@@ -418,34 +399,6 @@ export default function WeighInPage() {
           </IKFCard>
         </div>
       </div>
-
-      {/* QR Scanner Modal (Simulated) */}
-      {isScannerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-2xl overflow-hidden max-w-sm w-full mx-4 shadow-2xl">
-            <div className="p-4 border-b border-[var(--border-default)] flex justify-between items-center">
-              <h3 className="font-bold text-white uppercase tracking-wider">{t('scan_qr_code', settings.language)}</h3>
-              <button onClick={() => setIsScannerOpen(false)} className="text-[var(--text-muted)] hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-8 relative bg-[#050505]">
-              {/* Fake camera viewport */}
-              <div className="aspect-square border-2 border-dashed border-[var(--text-muted)] rounded-xl relative overflow-hidden flex items-center justify-center">
-                <User size={48} className="text-[var(--text-muted)] opacity-20" />
-                {/* Scanning line animation */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-[var(--status-win)] shadow-[0_0_15px_var(--status-win)] animate-scan" />
-              </div>
-              <p className="text-center text-sm text-[var(--text-muted)] mt-6">
-                {t('scan_qr_desc', settings.language)}
-              </p>
-              <IKFButton variant="gold" size="md" className="w-full mt-6" onClick={handleSimulatedScan}>
-                Simulate Successful Scan
-              </IKFButton>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
