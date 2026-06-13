@@ -1,0 +1,126 @@
+"use client";
+
+import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { Search, Building2, User } from "lucide-react";
+import { useTournamentStore } from "@/store/tournamentStore";
+import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
+import { t } from "@/lib/i18n";
+
+export default function ClubsPage() {
+  const router = useRouter();
+  const { clubs, athletes, settings } = useTournamentStore();
+  const [search, setSearch] = useState("");
+
+  const filteredClubs = useMemo(() => {
+    return clubs.filter(c => 
+      c.name.toLowerCase().includes(search.toLowerCase()) || 
+      c.country.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [clubs, search]);
+
+  return (
+    <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in">
+      <PageHeader 
+        category={t('management', settings.language)}
+        title={t('club_registry', settings.language)}
+        subtitle={t('registered_clubs_desc', settings.language)}
+        actions={
+          <div className="flex gap-3">
+            <IKFButton variant="primary" leftIcon={<Building2 size={16} />} onClick={() => router.push('/clubs/register')}>{t('register_club', settings.language)}</IKFButton>
+          </div>
+        }
+      />
+
+      {/* TOP ACTION BAR */}
+      <div className="flex items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-default)] shadow-card">
+        <div className="w-full max-w-md relative">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+          <input 
+            type="text" 
+            placeholder={t('search_clubs', settings.language)} 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md pl-10 pr-4 py-2.5 text-sm text-[var(--text-primary)] focus:border-[var(--ikf-red)] focus:ring-1 focus:ring-[var(--ikf-red)] outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      {/* CLUB GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredClubs.length > 0 ? (
+          filteredClubs.map(club => (
+            <IKFCard 
+              key={club.id} 
+              glowColor="gold"
+              interactive
+              className="relative flex flex-col group overflow-visible"
+            >
+              {/* Top right status badge */}
+              <div className="absolute top-4 right-4 z-10">
+                <IKFBadge 
+                  variant={club.status === "Active" ? "win" : club.status === "Incomplete" ? "pending" : "cancelled"} 
+                  label={club.status === "Active" ? t('active', settings.language) : club.status === "Incomplete" ? t('pending', settings.language) : club.status} 
+                  size="sm" 
+                />
+              </div>
+
+              {/* Top section */}
+              <div className="mb-6">
+                <h3 className="font-display text-4xl text-[var(--text-primary)] group-hover:text-[var(--ikf-gold)] transition-colors pr-24 leading-none mb-2 truncate">
+                  {club.name}
+                </h3>
+                <p className="text-sm font-semibold text-[var(--text-secondary)] tracking-wide uppercase">
+                  {club.country}
+                </p>
+              </div>
+
+              {/* Middle stats */}
+              <div className="flex items-center gap-4 mb-6">
+                <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
+                  <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('athletes', settings.language)}</div>
+                    <div className="text-3xl font-display text-white">{athletes.filter(a => a.clubId === club.id).length}</div>
+                </div>
+                <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
+                  <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('confirmed', settings.language)}</div>
+                  <div className="font-mono text-xl text-[var(--status-win)]">{athletes.filter(a => a.clubId === club.id && a.weighInStatus === 'Confirmed').length}</div>
+                </div>
+                <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
+                  <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('pending', settings.language)}</div>
+                  <div className="font-mono text-xl text-[var(--status-draw)]">{athletes.filter(a => a.clubId === club.id && a.weighInStatus === 'Pending').length}</div>
+                </div>
+              </div>
+
+              {/* Bottom Avatars */}
+              <div className="mt-auto pt-4 border-t border-[var(--border-default)] flex items-center gap-3">
+                <span className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase flex-shrink-0">{t('roster', settings.language)}</span>
+                <div className="flex items-center -space-x-2">
+                  {Array.from({ length: Math.min(5, athletes.filter(a => a.clubId === club.id).length) }).map((_, i) => (
+                    <div key={i} className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[var(--bg-elevated)] flex items-center justify-center overflow-hidden z-10 hover:z-20 hover:scale-110 transition-transform">
+                      <User size={14} className="text-[var(--text-muted)]" />
+                    </div>
+                  ))}
+                  {athletes.filter(a => a.clubId === club.id).length > 5 && (
+                    <div className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[rgba(212,160,23,0.1)] flex items-center justify-center z-0 ml-1">
+                      <span className="text-[10px] font-bold text-[var(--ikf-gold)]">+{athletes.filter(a => a.clubId === club.id).length - 5}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </IKFCard>
+          ))
+        ) : (
+          <div className="col-span-full">
+            <IKFEmptyState 
+              icon={<Building2 size={48} />}
+              title={t('no_clubs_registered', settings.language)}
+              subtitle={t('no_clubs_desc', settings.language)}
+              actionLabel={t('register_first_club', settings.language)}
+              onAction={() => router.push('/clubs/register')}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

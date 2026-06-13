@@ -1,0 +1,9 @@
+/* 
+ * This file is kept for Next.js App Router compatibility.
+ * The actual design system is in styles/globals.css (imported via app/layout.tsx)
+ * 
+ * Tailwind directives are here since Next.js requires them in the root CSS import.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
