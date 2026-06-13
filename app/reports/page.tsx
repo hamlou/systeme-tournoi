@@ -40,13 +40,18 @@ const TYPE_ICONS: Record<ReportType, React.ReactNode> = {
 
 // ── REPORT PREVIEW DOCUMENT ─────────────────────────────────────────────────
 function MatchReportDocument({ report }: { report: Report }) {
-  const { matches, judgeScores, roundEvents, settings } = useTournamentStore();
-  const match = matches.find(m => m.id === report.matchId);
+  const { matches, athletes, reports: storeReports, settings } = useTournamentStore();
+  const storeReport = storeReports.find(r => r.id === report.id || r.matchId === report.matchId);
+  const match = storeReport?.matchData ?? matches.find(m => m.id === report.matchId);
 
-  if (!match) return <div>No Match Data</div>;
+  if (!match) return <div className="bg-white text-black p-10">No match data available for this report.</div>;
 
-  const matchScores = judgeScores.filter(s => s.matchId === match.id);
-  const matchEvents = roundEvents.filter(e => e.timestamp.includes("T")); // Simplified, assuming all events are for this match in this view if filtered. Currently roundEvents is global, we should filter by time or match if we recorded matchId in events. We didn't add matchId to roundEvent, but for demo we can show the last few events.
+  const matchScores = storeReport?.judgeScores ?? match.result?.roundScores ?? [];
+  const matchEvents = storeReport?.events ?? [];
+  const redAthlete = athletes.find(a => a.id === match.redCornerId);
+  const blueAthlete = athletes.find(a => a.id === match.blueCornerId);
+  const generatedAt = report.generatedAt instanceof Date ? report.generatedAt : new Date(report.generatedAt);
+  const validatedAt = match.result?.validatedAt ? new Date(match.result.validatedAt) : null;
   
   return (
     <div className="bg-white text-black p-10 min-h-[1100px] font-sans text-[13px] leading-relaxed" style={{ fontFamily: "Arial, sans-serif" }}>
@@ -59,7 +64,7 @@ function MatchReportDocument({ report }: { report: Report }) {
         </div>
         <div className="text-right">
           <div className="text-sm font-black uppercase tracking-wider text-red-700 border border-red-700 px-3 py-1 rounded">{t('official_match_report', settings.language)}</div>
-          <div className="text-xs text-gray-500 mt-1">{t('document', settings.language)} #{report.id.toUpperCase()} · {format(report.generatedAt, "dd/MM/yyyy HH:mm")}</div>
+          <div className="text-xs text-gray-500 mt-1">{t('document', settings.language)} #{report.id.toUpperCase()} · {format(generatedAt, "dd/MM/yyyy HH:mm")}</div>
         </div>
       </div>
 
@@ -67,15 +72,15 @@ function MatchReportDocument({ report }: { report: Report }) {
       <div className="bg-gray-50 p-4 rounded border border-gray-200 mb-6 grid grid-cols-2 gap-4">
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('tournament', settings.language)}</div>
-          <div className="font-bold">{t('world_championship', settings.language)}</div>
+          <div className="font-bold">{settings.tournamentName}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('venue', settings.language)}</div>
-          <div className="font-bold">Tunis Arena, Tunis, Tunisia</div>
+          <div className="font-bold">{settings.venue}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('date', settings.language)}</div>
-          <div className="font-bold">{format(new Date(), "MMMM d, yyyy")}</div>
+          <div className="font-bold">{format(new Date(settings.startDate), "MMMM d, yyyy")}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('match_details', settings.language)}</div>
@@ -87,7 +92,7 @@ function MatchReportDocument({ report }: { report: Report }) {
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('end_time_duration', settings.language)}</div>
-          <div className="font-bold">{new Date().toLocaleTimeString()}</div>
+          <div className="font-bold">{validatedAt ? validatedAt.toLocaleTimeString() : "Pending"}</div>
         </div>
       </div>
 
@@ -105,7 +110,7 @@ function MatchReportDocument({ report }: { report: Report }) {
           <tbody>
             {[
               [t('full_name', settings.language), match.redCornerName || "TBD", match.blueCornerName || "TBD"],
-              [t('club', settings.language), "—", "—"],
+              [t('club', settings.language), redAthlete?.clubName ?? "—", blueAthlete?.clubName ?? "—"],
               [t('age_group', settings.language), match.ageGroup, match.ageGroup],
               [t('weight_category', settings.language), match.weightCategory, match.weightCategory],
             ].map(([field, red, blue], i) => (
@@ -131,7 +136,7 @@ function MatchReportDocument({ report }: { report: Report }) {
             </tr>
           </thead>
           <tbody>
-            {[1, 2, 3].map((r, i) => {
+            {Array.from({ length: match.totalRounds }, (_, idx) => idx + 1).map((r, i) => {
               const scores = matchScores.filter(s => s.round === r && s.submitted);
               const rAgg = scores.reduce((a, b) => a + b.redScore, 0);
               const bAgg = scores.reduce((a, b) => a + b.blueScore, 0);
@@ -144,8 +149,8 @@ function MatchReportDocument({ report }: { report: Report }) {
             )})}
             <tr className="bg-gray-900 text-white font-black">
               <td className="px-3 py-2 border border-gray-700 uppercase tracking-wider text-sm">{t('total', settings.language)}</td>
-              <td className="px-3 py-2 border border-gray-700 text-center text-red-400">{match.result?.redTotalScore}</td>
-              <td className="px-3 py-2 border border-gray-700 text-center text-blue-400">{match.result?.blueTotalScore}</td>
+              <td className="px-3 py-2 border border-gray-700 text-center text-red-400">{match.result?.redTotalScore ?? "—"}</td>
+              <td className="px-3 py-2 border border-gray-700 text-center text-blue-400">{match.result?.blueTotalScore ?? "—"}</td>
             </tr>
           </tbody>
         </table>
@@ -170,6 +175,31 @@ function MatchReportDocument({ report }: { report: Report }) {
         </div>
       )}
 
+      {/* EVENT LOG */}
+      <div className="mb-6">
+        <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Event Log</div>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-gray-800 text-white">
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Time</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Type</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {matchEvents.length === 0 ? (
+              <tr><td colSpan={3} className="px-3 py-3 border border-gray-200 text-gray-500">No round events recorded for this report.</td></tr>
+            ) : matchEvents.slice(0, 12).map((event, i) => (
+              <tr key={event.id ?? i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-2 border border-gray-200 font-mono text-xs">{format(new Date(event.timestamp), "HH:mm:ss")}</td>
+                <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-[11px]">{event.type}</td>
+                <td className="px-3 py-2 border border-gray-200">{event.details}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* SIGNATURES */}
       <div className="mt-8 pt-6 border-t border-gray-300">
         <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-5">{t('official_signatures', settings.language)}</div>
@@ -191,21 +221,25 @@ function MatchReportDocument({ report }: { report: Report }) {
 
 // ── PAGE COMPONENT ─────────────────────────────────────────────────────────
 export default function ReportsPage() {
-  const { matches, settings } = useTournamentStore();
+  const { matches, reports: storeReports, settings, updateReportStatus } = useTournamentStore();
   
   const generatedReports = useMemo<Report[]>(() => {
-    return matches.filter(m => m.status === "completed").map(m => ({
-      id: `mrep-${m.id}`,
-      type: "Match Report",
-      title: `${t('match_number', settings.language).replace('#', '')} #${m.matchNumber} — ${m.redCornerName} ${t('vs', settings.language)} ${m.blueCornerName}`,
-      generatedAt: new Date(),
-      status: "Official",
-      matchId: m.id,
-      matchNumber: m.matchNumber,
-      category: m.category,
-      mat: `Mat ${m.matNumber}`
-    }));
-  }, [matches]);
+    const reportByMatch = new Map(storeReports.map(report => [report.matchId, report]));
+    return matches.filter(m => m.status === "completed").map(m => {
+      const stored = reportByMatch.get(m.id);
+      return {
+        id: stored?.id ?? `mrep-${m.id}`,
+        type: stored?.type ?? "Match Report",
+        title: stored?.title ?? `${t('match_number', settings.language).replace('#', '')} #${m.matchNumber} — ${m.redCornerName} ${t('vs', settings.language)} ${m.blueCornerName}`,
+        generatedAt: new Date(stored?.generatedAt ?? m.result?.validatedAt ?? m.scheduledTime),
+        status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? "Official"),
+        matchId: m.id,
+        matchNumber: m.matchNumber,
+        category: m.category,
+        mat: `Mat ${m.matNumber}`
+      };
+    });
+  }, [matches, storeReports, settings.language]);
 
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [reports, setReports] = useState<Report[]>(generatedReports);
@@ -214,17 +248,32 @@ export default function ReportsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // Sync state if new matches complete
+  // Sync state if reports/matches change without resetting exported status held locally.
   useEffect(() => {
-    if (generatedReports.length > reports.length) {
-      setReports(generatedReports);
-    }
-  }, [generatedReports, reports.length]);
+    setReports(prev => {
+      const previousById = new Map(prev.map(report => [report.id, report]));
+      return generatedReports.map(report => ({ ...report, status: previousById.get(report.id)?.status ?? report.status }));
+    });
+  }, [generatedReports]);
 
-  const filteredReports = reports.filter(r => typeFilter === "all" || r.type === typeFilter);
+  const filteredReports = reports.filter(r => {
+    const typeMatches = typeFilter === "all" || r.type === typeFilter;
+    const now = new Date();
+    const generated = r.generatedAt instanceof Date ? r.generatedAt : new Date(r.generatedAt);
+    const dateMatches = dateFilter === "today"
+      ? generated.toDateString() === now.toDateString()
+      : dateFilter === "week"
+        ? now.getTime() - generated.getTime() <= 7 * 24 * 60 * 60 * 1000
+        : true;
+    return typeMatches && dateMatches;
+  });
 
   const handleExportPDF = async () => {
-    if (!previewRef.current || !selectedReport) return;
+    if (!selectedReport) {
+      toast.error("Select a report before exporting.");
+      return;
+    }
+    if (!previewRef.current) return;
     setIsExporting(true);
     try {
       const canvas = await html2canvas(previewRef.current, {
@@ -256,6 +305,8 @@ export default function ReportsPage() {
       const filename = `IKF-Report-${selectedReport.id.toUpperCase()}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
       pdf.save(filename);
       setReports(prev => prev.map(r => r.id === selectedReport.id ? { ...r, status: "Exported" } : r));
+      updateReportStatus(selectedReport.id, "Exported");
+      setSelectedReport(prev => prev ? { ...prev, status: "Exported" } : prev);
       toast.success(`PDF exported: ${filename}`);
     } catch (err) {
       toast.error("PDF export failed. Please try again.");
@@ -275,7 +326,7 @@ export default function ReportsPage() {
         subtitle={t('auto_generated_reports', settings.language)}
         actions={
           <div className="flex gap-3">
-            <IKFButton variant="secondary" leftIcon={<Download size={16} />} loading={isExporting} onClick={handleExportPDF}>
+            <IKFButton variant="secondary" leftIcon={<Download size={16} />} loading={isExporting} disabled={!selectedReport} onClick={handleExportPDF}>
               {t('export_pdf', settings.language)}
             </IKFButton>
           </div>
@@ -295,6 +346,18 @@ export default function ReportsPage() {
               className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors ${dateFilter === d ? "bg-[var(--ikf-red)] text-white" : "text-[var(--text-muted)] hover:text-white"}`}
             >
               {d === "today" ? t('today', settings.language) : d === "week" ? t('this_week', settings.language) : t('custom', settings.language)}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-1 bg-[var(--bg-elevated)] rounded-lg p-1">
+          {["all", "Match Report", "Judge Scorecard", "Tournament Summary"].map(type => (
+            <button
+              key={type}
+              onClick={() => setTypeFilter(type)}
+              className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors ${typeFilter === type ? "bg-[var(--ikf-gold)] text-black" : "text-[var(--text-muted)] hover:text-white"}`}
+            >
+              {type === "all" ? "All" : type.replace(" Report", "")}
             </button>
           ))}
         </div>
