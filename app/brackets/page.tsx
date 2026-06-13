@@ -130,8 +130,8 @@ export default function BracketsPage() {
         subtitle={t('draw_brackets_desc', settings.language)}
         actions={
           <div className="flex gap-3">
-            <IKFButton variant="secondary" leftIcon={<Printer size={16} />} onClick={() => window.print()}>{t('print_bracket', settings.language)}</IKFButton>
-            <IKFButton variant="primary" leftIcon={<Settings2 size={16} />} onClick={handleGenerate}>{t('generate_draw', settings.language)}</IKFButton>
+            <IKFButton variant="secondary" leftIcon={<Printer size={16} />} disabled={!bracket} onClick={() => window.print()}>{t('print_bracket', settings.language)}</IKFButton>
+            <IKFButton variant="primary" leftIcon={<Settings2 size={16} />} disabled={!selectedCategory || Boolean(bracket)} onClick={handleGenerate}>{bracket ? 'Draw Exists' : t('generate_draw', settings.language)}</IKFButton>
           </div>
         }
       />
@@ -144,6 +144,7 @@ export default function BracketsPage() {
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)] min-w-[200px]"
           >
+            {uniqueCategories.length === 0 && <option value="">No confirmed categories</option>}
             {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
 

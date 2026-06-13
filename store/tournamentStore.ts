@@ -291,33 +291,58 @@ export const useTournamentStore = create<TournamentStore>((set, get) => ({
     const ageGroup = shuffled[0]?.ageGroup ?? 'Senior A';
     const roundDuration = settings.roundDurations[ageGroup] ?? 180;
     const totalRounds = ageGroup.startsWith('U') ? 2 : 3;
+    const bracketSize = Math.pow(2, Math.ceil(Math.log2(Math.max(2, shuffled.length))));
+    const slots = [...shuffled, ...Array.from({ length: bracketSize - shuffled.length }, () => null)];
+    const roundNames = bracketSize <= 2 ? ['Final'] : bracketSize <= 4 ? ['Semifinal', 'Final'] : bracketSize <= 8 ? ['Quarterfinal', 'Semifinal', 'Final'] : ['Round of 16', 'Quarterfinal', 'Semifinal', 'Final'];
 
     const newMatches: Match[] = [];
-    for (let i = 0; i < Math.floor(shuffled.length / 2); i++) {
-      const red = shuffled[i * 2];
-      const blue = shuffled[i * 2 + 1];
+    const firstRoundCount = bracketSize / 2;
+    let matchNumber = get().matches.length + 1;
+    const now = Date.now();
+
+    for (let i = 0; i < firstRoundCount; i++) {
+      const red = slots[i * 2];
+      const blue = slots[i * 2 + 1];
       newMatches.push({
-        id: uuidv4(), matchNumber: i + 1, bracketId,
-        category: categoryId, ageGroup, weightCategory: red.weightCategory,
-        round: shuffled.length <= 4 ? 'Semifinal' : 'Quarterfinal',
-        redCornerId: red.id, blueCornerId: blue.id,
-        redCornerName: red.fullName, blueCornerName: blue.fullName,
+        id: uuidv4(), matchNumber: matchNumber++, bracketId,
+        category: categoryId, ageGroup, weightCategory: (red ?? blue)?.weightCategory ?? categoryId.split(' ')[0],
+        round: roundNames[0],
+        redCornerId: red?.id ?? '', blueCornerId: blue?.id ?? '',
+        redCornerName: red?.fullName ?? 'BYE', blueCornerName: blue?.fullName ?? 'BYE',
         matNumber: (i % 3) + 1,
-        scheduledTime: new Date(Date.now() + i * 30 * 60000).toISOString(),
-        status: 'scheduled', roundDurationSeconds: roundDuration, totalRounds,
+        scheduledTime: new Date(now + i * 30 * 60000).toISOString(),
+        status: red && blue ? 'scheduled' : 'completed', roundDurationSeconds: roundDuration, totalRounds,
+        ...(red && !blue ? { result: { winnerId: red.id, winnerName: red.fullName, winnerCorner: 'RED', method: 'withdrawal', redTotalScore: 0, blueTotalScore: 0, roundScores: [], validatedAt: new Date(now).toISOString() } } : {}),
+        ...(!red && blue ? { result: { winnerId: blue.id, winnerName: blue.fullName, winnerCorner: 'BLUE', method: 'withdrawal', redTotalScore: 0, blueTotalScore: 0, roundScores: [], validatedAt: new Date(now).toISOString() } } : {}),
       });
     }
 
-    const newBracket: Bracket = {
-      id: bracketId, categoryId, format,
-      matchIds: newMatches.map(m => m.id),
-    };
+    let previousRoundMatchIds = newMatches.map(m => m.id);
+    for (let roundIndex = 1; roundIndex < roundNames.length; roundIndex++) {
+      const roundMatchCount = previousRoundMatchIds.length / 2;
+      const currentRoundIds: string[] = [];
+      for (let i = 0; i < roundMatchCount; i++) {
+        const left = newMatches.find(m => m.id === previousRoundMatchIds[i * 2]);
+        const right = newMatches.find(m => m.id === previousRoundMatchIds[i * 2 + 1]);
+        const id = uuidv4();
+        currentRoundIds.push(id);
+        newMatches.push({
+          id, matchNumber: matchNumber++, bracketId,
+          category: categoryId, ageGroup, weightCategory: categoryId.split(' ')[0],
+          round: roundNames[roundIndex],
+          redCornerId: left?.result?.winnerId ?? '', blueCornerId: right?.result?.winnerId ?? '',
+          redCornerName: left?.result?.winnerName ?? 'TBD', blueCornerName: right?.result?.winnerName ?? 'TBD',
+          matNumber: (i % 3) + 1,
+          scheduledTime: new Date(now + (newMatches.length + i) * 30 * 60000).toISOString(),
+          status: 'scheduled', roundDurationSeconds: roundDuration, totalRounds,
+        });
+      }
+      previousRoundMatchIds = currentRoundIds;
+    }
 
-    set(s => ({
-      matches: [...s.matches, ...newMatches],
-      brackets: [...s.brackets, newBracket],
-    }));
+    const newBracket: Bracket = { id: bracketId, categoryId, format, matchIds: newMatches.map(m => m.id) };
 
+    set(s => ({ matches: [...s.matches, ...newMatches], brackets: [...s.brackets, newBracket] }));
     toast.success(`Bracket generated for ${categoryId} — ${shuffled.length} athletes, ${newMatches.length} matches`);
   },
 
