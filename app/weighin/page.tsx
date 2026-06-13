@@ -24,6 +24,7 @@ export default function WeighInPage() {
   const [resultStatus, setResultStatus] = useState<"Confirmed" | "Borderline" | "Overweight" | null>(null);
   const [resultMessage, setResultMessage] = useState("");
   const [suggestedCategory, setSuggestedCategory] = useState("");
+  const [lastRecordedWeight, setLastRecordedWeight] = useState<number | null>(null);
 
   const searchResults = useMemo(() => {
     if (searchTerm.length < 2) return [];
@@ -38,9 +39,11 @@ export default function WeighInPage() {
     setCurrentAthlete(athlete);
     setSearchTerm("");
     setWeightValue("");
+    setLastRecordedWeight(null);
     setResultStatus(null);
     setResultMessage("");
     setSuggestedCategory("");
+    setLastRecordedWeight(null);
   };
 
   const getLimitFromCategory = (cat: string) => {
@@ -64,7 +67,10 @@ export default function WeighInPage() {
     if (!currentAthlete || !weightValue) return;
     
     let kgValue = parseFloat(weightValue);
-    if (isNaN(kgValue)) return;
+    if (isNaN(kgValue) || kgValue <= 0) {
+      toast.error("Enter a valid positive weight.");
+      return;
+    }
 
     if (unit === "lbs") {
       kgValue = kgValue * 0.453592;
@@ -80,7 +86,18 @@ export default function WeighInPage() {
     let message = "";
     let nextCat = "";
     
-    const displayWeight = kgValue.toFixed(1);
+    const roundedWeight = Number(kgValue.toFixed(1));
+    const displayWeight = roundedWeight.toFixed(1);
+
+    const existingRecentLog = logs.find(log =>
+      log.athleteId === currentAthlete.id &&
+      log.recordedWeight === roundedWeight &&
+      log.registeredCategory === currentAthlete.weightCategory
+    );
+    if (existingRecentLog) {
+      toast.error("This exact weigh-in is already recorded for the athlete.");
+      return;
+    }
 
     if (limitData.sign === "-") {
       if (kgValue > limitData.limit) {
@@ -98,7 +115,8 @@ export default function WeighInPage() {
       // +90kg logic
       if (kgValue < limitData.limit) {
         status = "Overweight"; 
-        message = `${displayWeight} kg — Below minimum category limit. Athlete cannot compete at +${limitData.limit}kg.`;
+        message = `${displayWeight} kg — Below minimum for +${limitData.limit}kg. Reassign to the correct lower category before competing.`;
+        nextCat = "-90kg";
       } else {
         status = "Confirmed";
         message = `${displayWeight} kg — Meets category minimum (+${limitData.limit}kg). Athlete cleared.`;
@@ -115,7 +133,7 @@ export default function WeighInPage() {
         id: uuidv4(),
         athleteId: currentAthlete.id,
         athleteName: currentAthlete.fullName,
-        recordedWeight: parseFloat(displayWeight),
+        recordedWeight: roundedWeight,
         registeredCategory: currentAthlete.weightCategory,
         assignedCategory: nextCat || currentAthlete.weightCategory,
         status: status === "Borderline" ? "Confirmed" : status,
@@ -123,12 +141,15 @@ export default function WeighInPage() {
       };
       addLog(logRecord);
       updateAthleteWeighinStatus(currentAthlete.id, "Confirmed");
+      setCurrentAthlete({ ...currentAthlete, weighInStatus: "Confirmed" });
+      setLastRecordedWeight(roundedWeight);
+      toast.success(`${currentAthlete.fullName} cleared at ${displayWeight} kg`);
     } else if (status === "Overweight") {
       const logRecord: WeighinRecord = {
         id: uuidv4(),
         athleteId: currentAthlete.id,
         athleteName: currentAthlete.fullName,
-        recordedWeight: parseFloat(displayWeight),
+        recordedWeight: roundedWeight,
         registeredCategory: currentAthlete.weightCategory,
         assignedCategory: currentAthlete.weightCategory,
         status: "Overweight",
@@ -136,6 +157,9 @@ export default function WeighInPage() {
       };
       addLog(logRecord);
       updateAthleteWeighinStatus(currentAthlete.id, "Overweight");
+      setCurrentAthlete({ ...currentAthlete, weighInStatus: "Overweight" });
+      setLastRecordedWeight(roundedWeight);
+      toast.error(`${currentAthlete.fullName} is not cleared for ${currentAthlete.weightCategory}`);
     }
   };
 
@@ -150,7 +174,7 @@ export default function WeighInPage() {
         id: uuidv4(),
         athleteId: currentAthlete.id,
         athleteName: currentAthlete.fullName,
-        recordedWeight: 0,
+        recordedWeight: lastRecordedWeight ?? 0,
         registeredCategory: currentAthlete.weightCategory,
         assignedCategory: suggestedCategory,
         status: "Reassigned",
@@ -169,6 +193,18 @@ export default function WeighInPage() {
   const confirmedLogs = logs.filter(l => l.status === "Confirmed").length;
   const overweightLogs = logs.filter(l => l.status === "Overweight").length;
   const reassignedLogs = logs.filter(l => l.status === "Reassigned").length;
+  const sortedLogs = useMemo(() => [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()), [logs]);
+
+  const handleSimulatedScan = () => {
+    const nextPending = athletes.find(a => a.weighInStatus !== "Confirmed") ?? athletes[0];
+    if (!nextPending) {
+      toast.error("No athletes available to scan.");
+      return;
+    }
+    handleSelectAthlete(nextPending);
+    setIsScannerOpen(false);
+    toast.success(`QR scan matched ${nextPending.fullName}`);
+  };
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
@@ -282,7 +318,7 @@ export default function WeighInPage() {
                       size="xl" 
                       className="w-full text-lg tracking-widest"
                       onClick={handleConfirmWeight}
-                      disabled={!weightValue}
+                      disabled={!weightValue || lastRecordedWeight === Number(parseFloat(weightValue || "0").toFixed(1))}
                     >
                       {t('confirm_weight', settings.language)}
                     </IKFButton>
@@ -353,7 +389,7 @@ export default function WeighInPage() {
             </div>
             
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
-              {logs.map(log => (
+              {sortedLogs.map(log => (
                 <div key={log.id} className="bg-[var(--bg-elevated)] hover:bg-[var(--bg-primary)] transition-colors p-4 rounded-lg border border-[var(--border-default)] flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-[var(--bg-card)] flex items-center justify-center font-mono text-xs font-bold text-white border border-[var(--border-default)] flex-shrink-0">
                     {log.recordedWeight}
@@ -373,7 +409,7 @@ export default function WeighInPage() {
                   />
                 </div>
               ))}
-              {logs.length === 0 && (
+              {sortedLogs.length === 0 && (
                 <div className="p-8 text-center text-[var(--text-muted)]">
                   {t('no_weighin_records', settings.language)}
                 </div>
@@ -403,6 +439,9 @@ export default function WeighInPage() {
               <p className="text-center text-sm text-[var(--text-muted)] mt-6">
                 {t('scan_qr_desc', settings.language)}
               </p>
+              <IKFButton variant="gold" size="md" className="w-full mt-6" onClick={handleSimulatedScan}>
+                Simulate Successful Scan
+              </IKFButton>
             </div>
           </div>
         </div>
