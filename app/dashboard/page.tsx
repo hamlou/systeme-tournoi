@@ -1,6 +1,7 @@
 /* eslint-disable */
 "use client";
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Trophy, MapPin, Calendar, AlertTriangle, Activity, Clock } from "lucide-react";
 import { IKFCard, IKFBadge, StatCard, SectionDivider } from "@/components/ui";
@@ -33,7 +34,8 @@ function LiveTimer({ initialSeconds = 180 }: { initialSeconds?: number }) {
 }
 
 export default function DashboardPage() {
-  const { athletes, clubs, matches, settings } = useTournamentStore();
+  const router = useRouter();
+  const { athletes, clubs, matches, settings, activeMatch, roundTimer } = useTournamentStore();
 
   const liveMatches = matches.filter(m => m.status === "in-progress");
   const scheduledMatches = matches.filter(m => m.status === "scheduled").sort(
@@ -47,6 +49,9 @@ export default function DashboardPage() {
 
   // Show up to 3 live matches (use scheduled if none live)
   const displayMatches = liveMatches.length > 0 ? liveMatches.slice(0, 3) : scheduledMatches.slice(0, 3);
+  const titleParts = settings.tournamentName.trim().split(/\s+/);
+  const titleMain = titleParts.length > 1 ? titleParts.slice(0, -1).join(" ") : settings.tournamentName;
+  const titleAccent = titleParts.length > 1 ? titleParts.at(-1) : "";
 
   return (
     <motion.div variants={containerVariants} initial="hidden" animate="show"
@@ -59,20 +64,19 @@ export default function DashboardPage() {
           <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-8 p-10 relative z-10">
             <div className="flex-1">
               <h1 className="font-display text-5xl md:text-6xl lg:text-7xl text-[var(--text-primary)] leading-[0.9] tracking-wide mb-4">
-                {settings.tournamentName.split(" ").slice(0, -1).join(" ")} <br />
-                <span className="text-[var(--ikf-red)]">{settings.tournamentName.split(" ").slice(-1)}</span>
+                {titleMain} {titleAccent && <><br /><span className="text-[var(--ikf-red)]">{titleAccent}</span></>}
               </h1>
               <div className="flex items-center gap-6 text-[var(--text-secondary)] font-body text-sm font-medium">
                 <span className="flex items-center gap-2"><MapPin size={18} className="text-[var(--ikf-red)]" />{settings.venue}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)]" />
-                <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{settings.startDate}</span>
+                <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{format(new Date(settings.startDate), "dd MMM yyyy")}</span>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full xl:w-auto flex-shrink-0">
-              <StatCard label={t('athletes', settings.language)} value={athletes.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none" />
-              <StatCard label={t('clubs', settings.language)} value={clubs.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none" />
-              <StatCard label={t('matches', settings.language)} value={matches.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none" />
-              <StatCard label={t('live_mats', settings.language)} value={liveMatches.length.toString()} accentColor="red" badge={liveMatches.length > 0 ? <IKFBadge variant="live" label={t('live', settings.language)} size="sm" /> : undefined} className="bg-[var(--bg-elevated)] border-[var(--border-active)] shadow-none" />
+              <button onClick={() => router.push('/athletes')}><StatCard label={t('athletes', settings.language)} value={athletes.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
+              <button onClick={() => router.push('/clubs')}><StatCard label={t('clubs', settings.language)} value={clubs.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
+              <button onClick={() => router.push('/brackets')}><StatCard label={t('matches', settings.language)} value={matches.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
+              <button onClick={() => router.push(liveMatches.length > 0 ? '/tv' : '/rounds')}><StatCard label={t('live_mats', settings.language)} value={liveMatches.length.toString()} accentColor="red" badge={liveMatches.length > 0 ? <IKFBadge variant="live" label={t('live', settings.language)} size="sm" /> : undefined} className="bg-[var(--bg-elevated)] border-[var(--border-active)] shadow-none" /></button>
             </div>
           </div>
         </IKFCard>
@@ -94,7 +98,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {displayMatches.map(match => (
-              <IKFCard key={match.id} glowColor="red" className="relative pb-0 pt-0 px-0 overflow-hidden flex flex-col justify-between h-[280px]">
+              <IKFCard key={match.id} glowColor="red" interactive onClick={() => router.push(match.status === "in-progress" ? "/tv" : "/rounds")} className="relative pb-0 pt-0 px-0 overflow-hidden flex flex-col justify-between h-[280px]">
                 <div className="px-8 pt-6 pb-4 flex-1 flex flex-col">
                   <div className="text-center mb-4">
                     <span className="inline-block px-4 py-1.5 bg-[rgba(212,160,23,0.1)] border border-[rgba(212,160,23,0.3)] rounded-full text-[11px] font-bold tracking-widest text-[var(--ikf-gold)]">
@@ -117,7 +121,7 @@ export default function DashboardPage() {
                       {match.round} · {match.category}
                     </span>
                     {match.status === "in-progress" ? (
-                      <LiveTimer initialSeconds={match.roundDurationSeconds} />
+                      <LiveTimer initialSeconds={activeMatch?.id === match.id ? roundTimer : match.roundDurationSeconds} />
                     ) : (
                       <span className="font-mono text-lg text-[var(--text-muted)] tracking-widest">
                         {format(new Date(match.scheduledTime), "HH:mm")}
@@ -143,7 +147,7 @@ export default function DashboardPage() {
             {scheduledMatches.length === 0 ? (
               <div className="h-32 flex items-center justify-center text-[var(--text-muted)] text-sm">{t('no_scheduled_matches', settings.language)}</div>
             ) : scheduledMatches.slice(0, 8).map((m, i) => (
-              <div key={m.id} className={`flex items-center gap-4 p-3.5 rounded-lg transition-colors border border-transparent hover:border-[var(--border-default)] hover:bg-[var(--bg-elevated)] group ${i % 2 === 0 ? 'bg-[rgba(255,255,255,0.01)]' : ''}`}>
+              <div key={m.id} onClick={() => router.push('/rounds')} className={`flex items-center gap-4 p-3.5 rounded-lg transition-colors border border-transparent hover:border-[var(--border-default)] hover:bg-[var(--bg-elevated)] group cursor-pointer ${i % 2 === 0 ? 'bg-[rgba(255,255,255,0.01)]' : ''}`}>
                 <div className="text-sm font-mono text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors w-14">
                   {format(new Date(m.scheduledTime), "HH:mm")}
                 </div>
@@ -170,7 +174,7 @@ export default function DashboardPage() {
             {completedMatches.length === 0 ? (
               <div className="h-32 flex items-center justify-center text-[var(--text-muted)] text-sm">{t('no_results_yet', settings.language)}</div>
             ) : completedMatches.slice(0, 8).map((m, i) => (
-              <div key={m.id} className={`flex items-center gap-4 p-3.5 rounded-lg transition-colors border border-transparent hover:border-[var(--border-default)] hover:bg-[var(--bg-elevated)] group ${i % 2 === 0 ? 'bg-[rgba(255,255,255,0.01)]' : ''}`}>
+              <div key={m.id} onClick={() => router.push('/reports')} className={`flex items-center gap-4 p-3.5 rounded-lg transition-colors border border-transparent hover:border-[var(--border-default)] hover:bg-[var(--bg-elevated)] group cursor-pointer ${i % 2 === 0 ? 'bg-[rgba(255,255,255,0.01)]' : ''}`}>
                 <div className="flex-1 min-w-0 flex items-center gap-2.5">
                   <Trophy size={16} className="text-[var(--ikf-gold)] flex-shrink-0" />
                   <span className="font-bold text-[var(--text-primary)] text-sm truncate">{m.result?.winnerName ?? "—"}</span>
@@ -194,12 +198,12 @@ export default function DashboardPage() {
       {/* ── QUICK STATS ── */}
       <motion.div variants={itemVariants}>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 pt-2">
-          <StatCard label={t('total_matches', settings.language)} value={matches.length.toString()} accentColor="blue" className="!p-5" />
-          <StatCard label={t('completed', settings.language)} value={completedMatches.length.toString()} accentColor="green" className="!p-5" />
-          <StatCard label={t('ko_tko', settings.language)} value={kos.toString()} accentColor="red" className="!p-5" />
-          <StatCard label={t('disqualifications', settings.language)} value={disqs.toString()} accentColor="red" className="!p-5" />
-          <StatCard label={t('pending_weigh_in', settings.language)} value={athletes.filter(a => a.weighInStatus === "Pending").length.toString()}
-            accentColor="gold" icon={<AlertTriangle size={16} />} className="!p-5 border-[rgba(212,160,23,0.3)] shadow-[0_0_20px_rgba(212,160,23,0.15)] bg-[rgba(212,160,23,0.03)]" />
+          <button onClick={() => router.push('/brackets')}><StatCard label={t('total_matches', settings.language)} value={matches.length.toString()} accentColor="blue" className="!p-5" /></button>
+          <button onClick={() => router.push('/reports')}><StatCard label={t('completed', settings.language)} value={completedMatches.length.toString()} accentColor="green" className="!p-5" /></button>
+          <button onClick={() => router.push('/statistics')}><StatCard label={t('ko_tko', settings.language)} value={kos.toString()} accentColor="red" className="!p-5" /></button>
+          <button onClick={() => router.push('/statistics')}><StatCard label={t('disqualifications', settings.language)} value={disqs.toString()} accentColor="red" className="!p-5" /></button>
+          <button onClick={() => router.push('/weighin')}><StatCard label={t('pending_weigh_in', settings.language)} value={athletes.filter(a => a.weighInStatus === "Pending").length.toString()}
+            accentColor="gold" icon={<AlertTriangle size={16} />} className="!p-5 border-[rgba(212,160,23,0.3)] shadow-[0_0_20px_rgba(212,160,23,0.15)] bg-[rgba(212,160,23,0.03)]" /></button>
         </div>
       </motion.div>
     </motion.div>

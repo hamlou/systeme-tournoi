@@ -12,6 +12,13 @@ export default function SettingsPage() {
   const { settings, updateSettings } = useTournamentStore();
   const [loading, setLoading] = useState(false);
   const [localSettings, setLocalSettings] = useState(settings);
+  const [uiTheme, setUiTheme] = useState("dark");
+  const [tvResolution, setTvResolution] = useState("1080p");
+  const [scoringSystem, setScoringSystem] = useState("10-point");
+  const [seniorRest, setSeniorRest] = useState(60);
+  const [kidsRest, setKidsRest] = useState(60);
+
+  useEffect(() => setLocalSettings(settings), [settings]);
 
   // Apply RTL effect if global language changes (after save)
   useEffect(() => {
@@ -23,9 +30,18 @@ export default function SettingsPage() {
   }, [settings.language]);
 
   const handleSave = () => {
+    if (!localSettings.tournamentName.trim() || !localSettings.venue.trim()) {
+      toast.error("Tournament name and venue are required.");
+      return;
+    }
+    const invalidDuration = Object.values(localSettings.roundDurations).some(value => !Number.isFinite(value) || value < 30);
+    if (invalidDuration || seniorRest < 15 || kidsRest < 15) {
+      toast.error("Durations must be valid positive values. Minimum round: 30s, rest: 15s.");
+      return;
+    }
     setLoading(true);
-    // Update global store
     updateSettings(localSettings);
+    localStorage.setItem("ikf_ui_preferences", JSON.stringify({ uiTheme, tvResolution, scoringSystem, seniorRest, kidsRest }));
     
     setTimeout(() => {
       setLoading(false);
@@ -38,9 +54,10 @@ export default function SettingsPage() {
   };
 
   const handleDurationChange = (group: keyof typeof settings.roundDurations, value: string) => {
+    const duration = Math.max(30, Number(value) || 30);
     setLocalSettings(prev => ({
       ...prev,
-      roundDurations: { ...prev.roundDurations, [group]: Number(value) }
+      roundDurations: { ...prev.roundDurations, [group]: duration }
     }));
   };
 
@@ -101,7 +118,8 @@ export default function SettingsPage() {
             />
             <IKFSelect
               label={t('ui_theme', settings.language)}
-              defaultValue="dark"
+              value={uiTheme}
+              onChange={(e) => setUiTheme(e.target.value)}
               options={[
                 { value: "dark", label: "IKF Dark Mode (Recommended)" },
                 { value: "light", label: "Light Mode" },
@@ -110,7 +128,8 @@ export default function SettingsPage() {
             />
             <IKFSelect
               label={t('tv_display_resolution_lock', settings.language)}
-              defaultValue="1080p"
+              value={tvResolution}
+              onChange={(e) => setTvResolution(e.target.value)}
               options={[
                 { value: "1080p", label: "1920x1080 (16:9) Strict" },
                 { value: "auto", label: "Responsive (Auto-scale)" },
@@ -141,7 +160,8 @@ export default function SettingsPage() {
                 />
                 <IKFSelect
                   label={t('scoring_system', settings.language)}
-                  defaultValue="10-point"
+                  value={scoringSystem}
+                  onChange={(e) => setScoringSystem(e.target.value)}
                   options={[
                     { value: "10-point", label: "10-Point Must System" },
                     { value: "cumulative", label: "Cumulative Strike Count" },
@@ -163,7 +183,8 @@ export default function SettingsPage() {
                 <IKFInput 
                   label={t('rest_period_seconds', settings.language)} 
                   type="number" 
-                  defaultValue={60} 
+                  value={seniorRest}
+                  onChange={(e) => setSeniorRest(Math.max(15, Number(e.target.value) || 15))}
                 />
               </div>
 
@@ -181,7 +202,8 @@ export default function SettingsPage() {
                 <IKFInput 
                   label={t('rest_period_seconds', settings.language)} 
                   type="number" 
-                  defaultValue={60} 
+                  value={kidsRest}
+                  onChange={(e) => setKidsRest(Math.max(15, Number(e.target.value) || 15))}
                 />
               </div>
 
