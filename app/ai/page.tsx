@@ -129,18 +129,20 @@ export default function AIPage() {
   const { matches, athletes, clubs, referees, judgeScores, roundEvents, reports } = useTournamentStore();
   const [selectedMatchId, setSelectedMatchId] = useState(matches[0]?.id ?? "");
   const [puterReady, setPuterReady] = useState(false);
+  const [puterLoadError, setPuterLoadError] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState("");
   const [error, setError] = useState("");
 
   const selectedMatch = matches.find((match) => match.id === selectedMatchId) ?? matches[0];
+  const selectedReport = reports.find((report) => report.matchId === selectedMatch?.id);
   const selectedJudgeScores = useMemo(
-    () => judgeScores.filter((score) => score.matchId === selectedMatch?.id),
-    [judgeScores, selectedMatch?.id]
+    () => selectedReport?.judgeScores ?? judgeScores.filter((score) => score.matchId === selectedMatch?.id),
+    [judgeScores, selectedMatch?.id, selectedReport]
   );
   const selectedEvents = useMemo(
-    () => roundEvents.filter((event) => !selectedMatch || event.details?.toLowerCase().includes(`match #${selectedMatch.matchNumber}`) || selectedMatch.status === "completed"),
-    [roundEvents, selectedMatch]
+    () => selectedReport?.events ?? roundEvents.filter((event) => selectedMatch && event.details?.toLowerCase().includes(`match #${selectedMatch.matchNumber}`)),
+    [roundEvents, selectedMatch, selectedReport]
   );
 
   const tournamentStats = useMemo(() => {
@@ -197,14 +199,30 @@ export default function AIPage() {
   };
 
   useEffect(() => {
-    if (selectedMatch && !analysis) {
+    const interval = window.setInterval(() => {
+      setPuterReady(Boolean((window as any).puter?.ai?.chat));
+    }, 500);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (selectedMatch) {
       setAnalysis(localFallbackAnalysis(selectedMatch, selectedJudgeScores, selectedEvents));
     }
-  }, [selectedMatchId]);
+  }, [selectedMatchId, selectedJudgeScores, selectedEvents, selectedMatch]);
 
   return (
     <div className="relative min-h-screen">
-      <Script src="https://js.puter.com/v2/" strategy="afterInteractive" onLoad={() => setPuterReady(true)} />
+      <Script
+        src="https://js.puter.com/v2/"
+        strategy="afterInteractive"
+        onLoad={() => setPuterReady(Boolean((window as any).puter?.ai?.chat))}
+        onError={() => {
+          setPuterLoadError(true);
+          setError("Puter SDK failed to load. Local fallback analysis remains available.");
+        }}
+      />
       <NeuralBackground />
 
       <div className="relative z-10 p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
@@ -230,7 +248,7 @@ export default function AIPage() {
             {matches.map((match) => <option key={match.id} value={match.id}>Match #{match.matchNumber} — {match.redCornerName} vs {match.blueCornerName}</option>)}
           </select>
           <div className="lg:ml-auto flex flex-wrap items-center gap-3">
-            <IKFBadge variant={puterReady ? "win" : "pending"} label={puterReady ? "PUTER READY" : "LOADING AI SDK"} size="sm" />
+            <IKFBadge variant={puterReady ? "win" : "pending"} label={puterReady ? "PUTER READY" : puterLoadError ? "LOCAL FALLBACK" : "LOADING AI SDK"} size="sm" />
             <IKFBadge variant="live" label={`${selectedMatch?.status?.toUpperCase() ?? "NO MATCH"}`} size="sm" />
           </div>
         </div>
@@ -278,7 +296,7 @@ export default function AIPage() {
               {error && <div className="mb-4 rounded-xl border border-[rgba(212,160,23,0.3)] bg-[rgba(212,160,23,0.08)] p-3 text-xs text-[var(--ikf-gold)] font-semibold">{error}</div>}
               <div className="flex items-center gap-3 mb-5">
                 {puterReady ? <CheckCircle2 size={18} className="text-[var(--status-win)]" /> : <Brain size={18} className="text-[var(--ikf-gold)]" />}
-                <span className="text-xs font-black uppercase tracking-[0.24em] text-[var(--text-muted)]">{puterReady ? "Connected" : "Waiting for Puter SDK"}</span>
+                <span className="text-xs font-black uppercase tracking-[0.24em] text-[var(--text-muted)]">{puterReady ? "Connected" : puterLoadError ? "Fallback mode" : "Waiting for Puter SDK"}</span>
               </div>
               <pre className="whitespace-pre-wrap font-body text-sm leading-7 text-[var(--text-secondary)]">{analysis || "Choose a match and generate analysis."}</pre>
             </IKFCard>
