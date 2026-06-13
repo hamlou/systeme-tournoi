@@ -412,3 +412,31 @@ body::before {
     border-color: rgba(255,255,255,0.12);
   }
 }
+
+/* ─── Print styles for Draw & Brackets ─────────────────────────────────────── */
+@media print {
+  /* Hide app chrome and anything explicitly marked no-print. */
+  aside,
+  header,
+  .no-print {
+    display: none !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Let the main content flow and print across pages. */
+  #main-scroll-container,
+  main {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .bracket-print-area {
+    break-inside: avoid;
+  }
+}
