@@ -24,7 +24,11 @@ function HexBackground() {
 
 // ── Particle system for winner animation ─────────────────────────────────────
 function Particles({ color }: { color: string }) {
-  const particles = Array.from({ length: 40 });
+  const particles = useMemo(() => Array.from({ length: 40 }, (_, i) => ({
+    left: `${((i * 37) % 100)}%`,
+    duration: `${1.5 + ((i * 13) % 30) / 10}s`,
+    delay: `${((i * 7) % 20) / 10}s`,
+  })), []);
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
       {particles.map((_, i) => (
@@ -33,10 +37,10 @@ function Particles({ color }: { color: string }) {
           className="absolute w-2 h-2 rounded-full opacity-80"
           style={{
             backgroundColor: color,
-            left: `${Math.random() * 100}%`,
+            left: particle.left,
             top: "-10px",
             boxShadow: `0 0 6px ${color}`,
-            animation: `particle-fall ${1.5 + Math.random() * 3}s ease-in ${Math.random() * 2}s forwards`,
+            animation: `particle-fall ${particle.duration} ease-in ${particle.delay} forwards`,
           }}
         />
       ))}
@@ -51,10 +55,11 @@ interface CornerCardProps {
   club: string;
   country: string;
   score: number;
+  label: string;
   warnings?: number;
 }
 
-function CornerCard({ side, name, club, country, score, warnings = 0 }: CornerCardProps) {
+function CornerCard({ side, name, club, country, score, label, warnings = 0 }: CornerCardProps) {
   const isRed = side === "RED";
   return (
     <div
@@ -85,7 +90,7 @@ function CornerCard({ side, name, club, country, score, warnings = 0 }: CornerCa
             border: `1px solid ${isRed ? "rgba(200,16,46,0.4)" : "rgba(0,102,204,0.4)"}`,
           }}
         >
-          {isRed ? "🔴" : "🔵"} {side === 'RED' ? t('red_corner', settings?.language || 'en').toUpperCase() : t('blue_corner', settings?.language || 'en').toUpperCase()}
+          {isRed ? "🔴" : "🔵"} {label.toUpperCase()}
         </div>
 
         {/* Fighter Name */}
@@ -98,7 +103,7 @@ function CornerCard({ side, name, club, country, score, warnings = 0 }: CornerCa
 
         {/* Club + Country */}
         <p className="text-2xl font-semibold text-[rgba(255,255,255,0.5)] mb-8">
-          {club} · {country}
+          {[club, country].filter(Boolean).join(" · ") || "Awaiting athlete profile"}
         </p>
 
         {/* Score */}
@@ -135,14 +140,32 @@ function CornerCard({ side, name, club, country, score, warnings = 0 }: CornerCa
 // ── Main TV Display ──────────────────────────────────────────────────────────
 export default function TVDisplay() {
   const { 
-    activeMatch, currentRound, roundTimer, timerMode, roundEvents, settings, referees, judgeScores 
+    activeMatch, matches, athletes, currentRound, roundTimer, timerMode, roundEvents, settings, referees, judgeScores 
   } = useTournamentStore();
 
   const [now, setNow] = useState(new Date());
   const [showResult, setShowResult] = useState(false);
   const tickerContentRef = useRef<HTMLDivElement>(null);
 
-  const { red: aggRed, blue: aggBlue } = useLiveAggregateScore();
+  const { red: activeAggRed, blue: activeAggBlue } = useLiveAggregateScore();
+
+  const displayMatch = activeMatch
+    ?? matches.find(m => m.status === "in-progress")
+    ?? matches.find(m => m.status === "scheduled")
+    ?? matches[0];
+
+  const redAthlete = athletes.find(a => a.id === displayMatch?.redCornerId);
+  const blueAthlete = athletes.find(a => a.id === displayMatch?.blueCornerId);
+  const displayScores = useMemo(() => {
+    if (!displayMatch) return { red: 0, blue: 0 };
+    if (activeMatch?.id === displayMatch.id) return { red: activeAggRed, blue: activeAggBlue };
+    if (displayMatch.result) return { red: displayMatch.result.redTotalScore, blue: displayMatch.result.blueTotalScore };
+    const submitted = judgeScores.filter(s => s.matchId === displayMatch.id && s.submitted);
+    return {
+      red: submitted.reduce((sum, score) => sum + score.redScore, 0),
+      blue: submitted.reduce((sum, score) => sum + score.blueScore, 0),
+    };
+  }, [activeAggBlue, activeAggRed, activeMatch?.id, displayMatch, judgeScores]);
 
   // Live clock
   useEffect(() => {
@@ -152,14 +175,14 @@ export default function TVDisplay() {
 
   // Trigger result when match is completed
   useEffect(() => {
-    if (activeMatch?.status === "completed") {
+    if (displayMatch?.status === "completed") {
       setShowResult(true);
       const timer = setTimeout(() => setShowResult(false), 15000);
       return () => clearTimeout(timer);
     } else {
       setShowResult(false);
     }
-  }, [activeMatch?.status]);
+  }, [displayMatch?.status]);
 
   // Ticker animation
   useEffect(() => {
@@ -178,8 +201,8 @@ export default function TVDisplay() {
   // Derived data
   const formatTime = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   
-  const maxTime = activeMatch ? (settings.roundDurations[activeMatch.ageGroup] ?? 180) : 180;
-  const maxRounds = activeMatch?.totalRounds ?? 3;
+  const maxTime = displayMatch ? (settings.roundDurations[displayMatch.ageGroup] ?? 180) : 180;
+  const maxRounds = displayMatch?.totalRounds ?? 3;
   const circumference = 2 * Math.PI * 80;
   const progress = maxTime > 0 ? (roundTimer / maxTime) : 1;
   const dashOffset = circumference * (1 - progress);
@@ -189,16 +212,19 @@ export default function TVDisplay() {
   if (timerMode === "idle" && roundTimer < maxTime) timerStatus = t('paused_uc', settings.language);
   if (timerMode === "passivity") timerStatus = t('wosk_uc', settings.language);
 
-  const matchWinner = activeMatch?.result?.winnerCorner || null;
+  const matchWinner = displayMatch?.result?.winnerCorner || null;
   const winnerName = matchWinner === "RED"
-    ? (activeMatch?.redCornerName ?? t('red_corner', settings.language).toUpperCase())
-    : (activeMatch?.blueCornerName ?? t('blue_corner', settings.language).toUpperCase());
+    ? (displayMatch?.redCornerName ?? t('red_corner', settings.language).toUpperCase())
+    : (displayMatch?.blueCornerName ?? t('blue_corner', settings.language).toUpperCase());
   const winnerColor = matchWinner === "RED" ? "var(--ikf-red)" : "var(--corner-blue)";
   const winnerParticleColor = matchWinner === "RED" ? "#c8102e" : "#0066cc";
 
   // Build ticker text from recent events
   const tickerEvents = useMemo(() => {
-    const recent = [...roundEvents].reverse().slice(0, 10);
+    const matchScopedEvents = displayMatch
+      ? roundEvents.filter(e => e.details?.toLowerCase().includes(`match #${displayMatch.matchNumber}`) || activeMatch?.id === displayMatch.id)
+      : roundEvents;
+    const recent = [...matchScopedEvents].reverse().slice(0, 10);
     if (recent.length === 0) return [t('waiting_for_events', settings.language), t('stay_tuned', settings.language)];
     return recent.map(e => {
       let prefix = "⚡ ";
@@ -209,14 +235,17 @@ export default function TVDisplay() {
       if (e.type === "match-end") prefix = "🏆 ";
       return `${prefix} ${e.corner ? `${e.corner === 'RED' ? t('red_corner', settings.language) : t('blue_corner', settings.language)} - ` : ""}${e.details}`;
     });
-  }, [roundEvents, settings.language]);
+  }, [activeMatch?.id, displayMatch, roundEvents, settings.language]);
 
   const tickerText = tickerEvents.join("   ·   ");
 
-  const redWarnings = roundEvents.filter(e => e.corner === "RED" && e.type === "yellow-card").length;
-  const blueWarnings = roundEvents.filter(e => e.corner === "BLUE" && e.type === "yellow-card").length;
+  const scopedEvents = displayMatch
+    ? roundEvents.filter(e => e.details?.toLowerCase().includes(`match #${displayMatch.matchNumber}`) || activeMatch?.id === displayMatch.id)
+    : roundEvents;
+  const redWarnings = scopedEvents.filter(e => e.corner === "RED" && e.type === "yellow-card").length;
+  const blueWarnings = scopedEvents.filter(e => e.corner === "BLUE" && e.type === "yellow-card").length;
 
-  const assignedJudges = activeMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) || [];
+  const assignedJudges = displayMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) || [];
 
   return (
     <div
@@ -246,7 +275,7 @@ export default function TVDisplay() {
         <div className="text-right">
           <div className="font-mono text-3xl text-white font-bold">{format(now, "HH:mm:ss")}</div>
           <div className="text-sm font-bold text-[rgba(255,255,255,0.4)] tracking-widest uppercase mt-1">
-            {format(now, "d MMMM yyyy")} · {t('mat_uc', settings.language)} {activeMatch?.matNumber ? String(activeMatch.matNumber).padStart(2, '0') : "01"}
+            {format(now, "d MMMM yyyy")} · {t('mat_uc', settings.language)} {displayMatch?.matNumber ? String(displayMatch.matNumber).padStart(2, '0') : "—"}
           </div>
         </div>
       </div>
@@ -257,10 +286,11 @@ export default function TVDisplay() {
         {/* RED CORNER */}
         <CornerCard
           side="RED"
-          name={activeMatch?.redCornerName ?? "RED CORNER"}
-          club=""
-          country=""
-          score={aggRed}
+          name={displayMatch?.redCornerName ?? "RED CORNER"}
+          club={redAthlete?.clubName ?? ""}
+          country={redAthlete?.country ?? ""}
+          score={displayScores.red}
+          label={t('red_corner', settings.language)}
           warnings={redWarnings}
         />
 
@@ -316,10 +346,11 @@ export default function TVDisplay() {
         {/* BLUE CORNER */}
         <CornerCard
           side="BLUE"
-          name={activeMatch?.blueCornerName ?? "BLUE CORNER"}
-          club=""
-          country=""
-          score={aggBlue}
+          name={displayMatch?.blueCornerName ?? "BLUE CORNER"}
+          club={blueAthlete?.clubName ?? ""}
+          country={blueAthlete?.country ?? ""}
+          score={displayScores.blue}
+          label={t('blue_corner', settings.language)}
           warnings={blueWarnings}
         />
       </div>
@@ -329,7 +360,7 @@ export default function TVDisplay() {
         {/* Individual judge scores */}
         {assignedJudges.map((judge, i) => {
           if (!judge) return null;
-          const scoreEntry = judgeScores.find(s => s.matchId === activeMatch?.id && s.round === currentRound && s.judgeId === judge.id);
+          const scoreEntry = judgeScores.find(s => s.matchId === displayMatch?.id && s.round === currentRound && s.judgeId === judge.id);
           const submitted = scoreEntry?.submitted;
           const rScore = scoreEntry?.redScore;
           const bScore = scoreEntry?.blueScore;
@@ -360,20 +391,20 @@ export default function TVDisplay() {
               className="font-display text-4xl"
               style={{
                 color: "var(--ikf-red)",
-                textShadow: aggRed > aggBlue ? "0 0 20px rgba(200,16,46,0.6)" : undefined,
+                textShadow: displayScores.red > displayScores.blue ? "0 0 20px rgba(200,16,46,0.6)" : undefined,
               }}
             >
-              {aggRed}
+              {displayScores.red}
             </span>
             <span className="text-[rgba(255,255,255,0.3)] font-bold text-xl">–</span>
             <span
               className="font-display text-4xl"
               style={{
                 color: "var(--corner-blue)",
-                textShadow: aggBlue > aggRed ? "0 0 20px rgba(0,102,204,0.6)" : undefined,
+                textShadow: displayScores.blue > displayScores.red ? "0 0 20px rgba(0,102,204,0.6)" : undefined,
               }}
             >
-              {aggBlue}
+              {displayScores.blue}
             </span>
           </div>
         </div>
@@ -480,7 +511,7 @@ export default function TVDisplay() {
                 transition={{ delay: 0.9 }}
                 className="font-display text-4xl text-[rgba(255,255,255,0.6)] mt-8 tracking-widest uppercase"
               >
-                {activeMatch?.result?.method} — {activeMatch?.result?.redTotalScore} — {activeMatch?.result?.blueTotalScore}
+                {displayMatch?.result?.method} — {displayMatch?.result?.redTotalScore} — {displayMatch?.result?.blueTotalScore}
               </motion.div>
             </div>
           </motion.div>
