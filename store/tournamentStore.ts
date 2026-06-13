@@ -296,67 +296,155 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     toast.success("Match updated successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
 
-  generateBracket: (categoryId, format, eligibleAthletes) => {
-    const shuffled = [...eligibleAthletes].sort(() => Math.random() - 0.5);
-    const bracketId = uuidv4();
-    const settings = get().settings;
-    const ageGroup = shuffled[0]?.ageGroup ?? 'Senior A';
-    const roundDuration = settings.roundDurations[ageGroup] ?? 180;
-    const totalRounds = ageGroup.startsWith('U') ? 2 : 3;
-    const bracketSize = Math.pow(2, Math.ceil(Math.log2(Math.max(2, shuffled.length))));
-    const slots = [...shuffled, ...Array.from({ length: bracketSize - shuffled.length }, () => null)];
-    const roundNames = bracketSize <= 2 ? ['Final'] : bracketSize <= 4 ? ['Semifinal', 'Final'] : bracketSize <= 8 ? ['Quarterfinal', 'Semifinal', 'Final'] : ['Round of 16', 'Quarterfinal', 'Semifinal', 'Final'];
-
-    const newMatches: Match[] = [];
-    const firstRoundCount = bracketSize / 2;
-    let matchNumber = get().matches.length + 1;
-    const now = Date.now();
-
-    for (let i = 0; i < firstRoundCount; i++) {
-      const red = slots[i * 2];
-      const blue = slots[i * 2 + 1];
-      newMatches.push({
-        id: uuidv4(), matchNumber: matchNumber++, bracketId,
-        category: categoryId, ageGroup, weightCategory: (red ?? blue)?.weightCategory ?? categoryId.split(' ')[0],
-        round: roundNames[0],
-        redCornerId: red?.id ?? '', blueCornerId: blue?.id ?? '',
-        redCornerName: red?.fullName ?? 'BYE', blueCornerName: blue?.fullName ?? 'BYE',
-        matNumber: (i % 3) + 1,
-        scheduledTime: new Date(now + i * 30 * 60000).toISOString(),
-        status: red && blue ? 'scheduled' : 'completed', roundDurationSeconds: roundDuration, totalRounds,
-        ...(red && !blue ? { result: { winnerId: red.id, winnerName: red.fullName, winnerCorner: 'RED', method: 'withdrawal', redTotalScore: 0, blueTotalScore: 0, roundScores: [], validatedAt: new Date(now).toISOString() } } : {}),
-        ...(!red && blue ? { result: { winnerId: blue.id, winnerName: blue.fullName, winnerCorner: 'BLUE', method: 'withdrawal', redTotalScore: 0, blueTotalScore: 0, roundScores: [], validatedAt: new Date(now).toISOString() } } : {}),
-      });
+  generateBracket: (categoryId, format, eligibleAthletes, options) => {
+    const fmt = format as BracketFormat;
+    if (eligibleAthletes.length < 2) {
+      toast.error('Not enough athletes — need at least 2 confirmed athletes to generate a bracket');
+      return;
     }
 
-    let previousRoundMatchIds = newMatches.map(m => m.id);
-    for (let roundIndex = 1; roundIndex < roundNames.length; roundIndex++) {
-      const roundMatchCount = previousRoundMatchIds.length / 2;
-      const currentRoundIds: string[] = [];
-      for (let i = 0; i < roundMatchCount; i++) {
-        const left = newMatches.find(m => m.id === previousRoundMatchIds[i * 2]);
-        const right = newMatches.find(m => m.id === previousRoundMatchIds[i * 2 + 1]);
-        const id = uuidv4();
-        currentRoundIds.push(id);
-        newMatches.push({
-          id, matchNumber: matchNumber++, bracketId,
-          category: categoryId, ageGroup, weightCategory: categoryId.split(' ')[0],
-          round: roundNames[roundIndex],
-          redCornerId: left?.result?.winnerId ?? '', blueCornerId: right?.result?.winnerId ?? '',
-          redCornerName: left?.result?.winnerName ?? 'TBD', blueCornerName: right?.result?.winnerName ?? 'TBD',
-          matNumber: (i % 3) + 1,
-          scheduledTime: new Date(now + (newMatches.length + i) * 30 * 60000).toISOString(),
-          status: 'scheduled', roundDurationSeconds: roundDuration, totalRounds,
+    const settings = get().settings;
+    const ageGroup = (eligibleAthletes[0]?.ageGroup ?? 'Senior') as AgeGroup;
+    const roundDuration = settings.roundDurations[ageGroup] ?? 180;
+    const weightCategory = categoryId.split(' ')[0];
+    const bracketId = uuid();
+    const startMatchNumber = get().matches.length + 1;
+    const base = {
+      category: categoryId, ageGroup, weightCategory,
+      roundDuration, startMatchNumber, startTime: Date.now(), bracketId,
+    };
+
+    const seeded = options?.seeding ? [...eligibleAthletes] : shuffle(eligibleAthletes);
+    let newMatches: Match[] = [];
+    let bracket: Bracket;
+
+    if (fmt === 'single-elimination') {
+      const res = buildSingleElimination(seeded, base);
+      newMatches = res.matches;
+      bracket = {
+        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        format: fmt, status: 'in-progress',
+        matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
+      };
+      if (res.byes > 0) toast(`${seeded.length} athletes — ${res.byes} BYEs assigned automatically`, { icon: 'ℹ️' });
+    } else if (fmt === 'double-elimination') {
+      const res = buildDoubleElimination(seeded, base);
+      newMatches = res.matches;
+      bracket = {
+        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        format: fmt, status: 'in-progress',
+        matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
+        winnersBracketMatches: res.winnersIds, losersBracketMatches: res.losersIds,
+        grandFinalMatchId: res.grandFinalId,
+      };
+      if (res.byes > 0) toast(`${seeded.length} athletes — ${res.byes} BYEs assigned automatically`, { icon: 'ℹ️' });
+    } else if (fmt === 'round-robin') {
+      const pointsForWin = options?.pointsForWin ?? 3;
+      const pointsForDraw = options?.pointsForDraw ?? 1;
+      newMatches = buildRoundRobin(seeded, base);
+      bracket = {
+        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        format: fmt, status: 'in-progress',
+        matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
+        pointsForWin, pointsForDraw,
+        standings: computeStandings(seeded, newMatches, pointsForWin, pointsForDraw),
+      };
+    } else if (fmt === 'pool-elimination') {
+      const perPool = options?.athletesPerPool ?? 4;
+      const grouped = splitIntoPools(seeded, perPool);
+      const pools: Pool[] = [];
+      grouped.forEach((poolAthletes, idx) => {
+        const poolId = uuid();
+        const poolMatches = buildRoundRobin(poolAthletes, { ...base, startMatchNumber: startMatchNumber + newMatches.length }, poolId);
+        newMatches.push(...poolMatches);
+        pools.push({
+          id: poolId, name: `POOL ${String.fromCharCode(65 + idx)}`,
+          athleteIds: poolAthletes.map(a => a.id), matchIds: poolMatches.map(m => m.id),
+          standings: computeStandings(poolAthletes, poolMatches, 3, 1), complete: false,
+        });
+      });
+      bracket = {
+        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        format: fmt, status: 'in-progress',
+        matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
+        pools, eliminationMatches: [], eliminationUnlocked: false,
+      };
+      if (seeded.length < 8) toast('Minimum 8 athletes recommended for Pool + Elimination format.', { icon: 'ℹ️' });
+    } else if (fmt === 'team') {
+      // Group athletes by club.
+      const clubsMap = new Map<string, Athlete[]>();
+      seeded.forEach(a => {
+        const list = clubsMap.get(a.clubId) ?? [];
+        list.push(a); clubsMap.set(a.clubId, list);
+      });
+      const teams = shuffle(Array.from(clubsMap.entries()).map(([clubId, members]) => ({
+        clubId, clubName: members[0]?.clubName ?? clubId, members,
+      })));
+      if (teams.length < 2) {
+        toast.error('Need at least 2 clubs represented to generate a team tournament');
+        return;
+      }
+      const teamMatchups: TeamMatchup[] = [];
+      const matchByWeight = options?.matchByWeight ?? true;
+      // Single-elimination at team level: pair sequentially for round 1.
+      for (let i = 0; i + 1 < teams.length; i += 2) {
+        const red = teams[i];
+        const blue = teams[i + 1];
+        const matchupId = uuid();
+        const individualMatchIds: string[] = [];
+        const redCats = new Set(red.members.map(m => m.weightCategory));
+        const blueByCat = new Map(blue.members.map(m => [m.weightCategory, m]));
+        const sharedCats = matchByWeight
+          ? Array.from(redCats).filter(c => blueByCat.has(c))
+          : Array.from(redCats);
+        sharedCats.forEach((cat, idx) => {
+          const redFighter = red.members.find(m => m.weightCategory === cat)!;
+          const blueFighter = matchByWeight ? blueByCat.get(cat)! : blue.members[idx];
+          if (!blueFighter) { toast(`${red.clubName} has no opponent for ${cat} — skipped`, { icon: '⚠️' }); return; }
+          const mId = uuid();
+          individualMatchIds.push(mId);
+          newMatches.push({
+            id: mId, matchNumber: startMatchNumber + newMatches.length, bracketId,
+            category: `${cat} — ${red.clubName} vs ${blue.clubName}`, ageGroup, weightCategory: cat,
+            round: 'Team Fight',
+            redCornerId: redFighter.id, blueCornerId: blueFighter.id,
+            redCornerName: redFighter.fullName, blueCornerName: blueFighter.fullName,
+            matNumber: (newMatches.length % 3) + 1,
+            scheduledTime: new Date(base.startTime + newMatches.length * 15 * 60000).toISOString(),
+            status: 'scheduled', roundDurationSeconds: roundDuration, totalRounds: ageGroup.startsWith('U') ? 2 : 3,
+            teamMatchupId: matchupId,
+          });
+        });
+        teamMatchups.push({
+          id: matchupId, redClubId: red.clubId, blueClubId: blue.clubId,
+          redClubName: red.clubName, blueClubName: blue.clubName,
+          individualMatchIds, redWins: 0, blueWins: 0, status: 'scheduled',
         });
       }
-      previousRoundMatchIds = currentRoundIds;
+      bracket = {
+        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        format: fmt, status: 'in-progress',
+        matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
+        teamMatchups,
+      };
+    } else {
+      toast.error(`Unknown bracket format: ${format}`);
+      return;
     }
 
-    const newBracket: Bracket = { id: bracketId, categoryId, format, matchIds: newMatches.map(m => m.id) };
-
-    set(s => ({ matches: [...s.matches, ...newMatches], brackets: [...s.brackets, newBracket] }));
-    toast.success(`Bracket generated for ${categoryId} — ${shuffled.length} athletes, ${newMatches.length} matches`);
+    set(s => ({ matches: [...s.matches, ...newMatches], brackets: [...s.brackets, bracket] }));
+    toast.success(`Bracket generated for ${categoryId} — ${eligibleAthletes.length} athletes, ${newMatches.length} matches`);
   },
+
+  deleteBracket: (bracketId) => set(s => {
+    const bracket = s.brackets.find(b => b.id === bracketId);
+    const matchIds = new Set(bracket?.matchIds ?? []);
+    return {
+      brackets: s.brackets.filter(b => b.id !== bracketId),
+      matches: s.matches.filter(m => !matchIds.has(m.id)),
+      judgeScores: s.judgeScores.filter(j => !matchIds.has(j.matchId)),
+    };
+  }),
 
   updateMatchResult: (matchId, result) => set(s => ({
     matches: s.matches.map(m =>
