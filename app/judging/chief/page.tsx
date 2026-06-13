@@ -1,8 +1,8 @@
 /* eslint-disable */
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { CheckCircle2, Clock, AlertTriangle, Zap } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Clock, AlertTriangle, Zap, ClipboardList } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { IKFButton } from "@/components/ui";
@@ -11,13 +11,21 @@ import { t } from "@/lib/i18n";
 
 export default function ChiefRefereeDashboard() {
   const { 
-    activeMatch, currentRound, judgeScores, referees, validateResult, overrideResult, settings
+    activeMatch, matches, currentRound, judgeScores, referees, validateResult, overrideResult, settings, setActiveMatch
   } = useTournamentStore();
 
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
   const [overrideWinner, setOverrideWinner] = useState<"RED" | "BLUE">("RED");
   const [showResult, setShowResult] = useState(false);
+  const [showReviewPanel, setShowReviewPanel] = useState(false);
+
+  useEffect(() => {
+    if (!activeMatch) {
+      const nextMatch = matches.find(m => m.status === "in-progress") ?? matches.find(m => m.status === "scheduled");
+      if (nextMatch) setActiveMatch({ ...nextMatch, status: nextMatch.status === "scheduled" ? "in-progress" : nextMatch.status });
+    }
+  }, [activeMatch, matches, setActiveMatch]);
 
   const activeJudgeScores = useMemo(() => {
     if (!activeMatch) return [];
@@ -43,9 +51,19 @@ export default function ChiefRefereeDashboard() {
     aggregateTotals.blue > aggregateTotals.red ? "BLUE" : null
   );
 
+  const assignedJudgeIds = activeMatch?.assignedJudgeIds || [];
+  const expectedScores = assignedJudgeIds.length * (activeMatch?.totalRounds ?? 0);
+  const submittedScores = activeJudgeScores.filter(s => s.submitted).length;
+  const canValidate = Boolean(activeMatch) && activeMatch?.status !== "completed" && assignedJudgeIds.length > 0 && submittedScores >= expectedScores;
+
   const handleValidate = () => {
     if (!activeMatch) return;
-    validateResult(activeMatch.id, activeMatch.assignedJudgeIds || []);
+    if (!canValidate) {
+      toast.error(`Cannot validate yet: ${submittedScores}/${expectedScores || 0} required judge scores submitted.`);
+      setShowReviewPanel(true);
+      return;
+    }
+    validateResult(activeMatch.id, assignedJudgeIds);
     setShowResult(true);
   };
 
@@ -70,7 +88,7 @@ export default function ChiefRefereeDashboard() {
     );
   }
 
-  const assignedJudges = activeMatch.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) || [];
+  const assignedJudges = assignedJudgeIds.map(id => referees.find(r => r.id === id)).filter(Boolean) || [];
 
   return (
     <div className="flex flex-col min-h-screen bg-[#050508] text-white overflow-hidden">
@@ -133,11 +151,11 @@ export default function ChiefRefereeDashboard() {
                 {/* Round History Scorecard */}
                 <div className="px-4 py-4">
                   <div className="text-[9px] font-bold text-[var(--text-muted)] tracking-widest uppercase mb-3">{t('scorecard', settings.language)}</div>
-                  <div className="grid grid-cols-4 gap-1 text-center text-[10px] font-bold mb-1 text-[var(--text-muted)]">
-                    <div>R1</div><div>R2</div><div>R3</div><div>{t('tot', settings.language)}</div>
+                  <div className={`grid gap-1 text-center text-[10px] font-bold mb-1 text-[var(--text-muted)]`} style={{ gridTemplateColumns: `repeat(${activeMatch.totalRounds + 1}, minmax(0, 1fr))` }}>
+                    {Array.from({ length: activeMatch.totalRounds }, (_, idx) => <div key={idx}>R{idx + 1}</div>)}<div>{t('tot', settings.language)}</div>
                   </div>
-                  <div className="grid grid-cols-4 gap-1 text-center mb-1">
-                    {[1,2,3].map(r => {
+                  <div className="grid gap-1 text-center mb-1" style={{ gridTemplateColumns: `repeat(${activeMatch.totalRounds + 1}, minmax(0, 1fr))` }}>
+                    {Array.from({ length: activeMatch.totalRounds }, (_, idx) => idx + 1).map(r => {
                       const s = judgeScoresForMatch.find(x => x.round === r);
                       return (
                         <div key={r} className={`rounded py-1 text-xs font-bold ${s?.submitted && s.redScore > s.blueScore ? 'bg-[var(--ikf-red)] text-white' : s?.submitted ? 'bg-[var(--bg-elevated)] text-[var(--text-muted)]' : 'bg-[var(--bg-primary)] text-[var(--text-muted)]'}`}>
@@ -147,8 +165,8 @@ export default function ChiefRefereeDashboard() {
                     })}
                     <div className="rounded py-1 text-xs font-bold bg-[rgba(200,16,46,0.2)] text-[var(--ikf-red)]">{redTotal}</div>
                   </div>
-                  <div className="grid grid-cols-4 gap-1 text-center">
-                    {[1,2,3].map(r => {
+                  <div className="grid gap-1 text-center" style={{ gridTemplateColumns: `repeat(${activeMatch.totalRounds + 1}, minmax(0, 1fr))` }}>
+                    {Array.from({ length: activeMatch.totalRounds }, (_, idx) => idx + 1).map(r => {
                       const s = judgeScoresForMatch.find(x => x.round === r);
                       return (
                         <div key={r} className={`rounded py-1 text-xs font-bold ${s?.submitted && s.blueScore > s.redScore ? 'bg-[var(--corner-blue)] text-white' : s?.submitted ? 'bg-[var(--bg-elevated)] text-[var(--text-muted)]' : 'bg-[var(--bg-primary)] text-[var(--text-muted)]'}`}>
@@ -192,15 +210,16 @@ export default function ChiefRefereeDashboard() {
           <div className="flex flex-col gap-4 min-w-[280px]">
             <button 
               onClick={handleValidate}
-              disabled={activeMatch.status === "completed"}
+              disabled={activeMatch.status === "completed" || !canValidate}
               className="h-16 w-full rounded-xl font-display text-2xl tracking-widest bg-[var(--ikf-gold)] text-black hover:bg-[#b58814] shadow-[0_0_20px_rgba(212,160,23,0.3)] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
               {activeMatch.status === "completed" ? t('validated', settings.language) : t('validate_result', settings.language)}
             </button>
             <button 
-              className="h-14 w-full rounded-xl font-bold text-sm tracking-widest bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-white text-white transition-all"
+              onClick={() => setShowReviewPanel(current => !current)}
+              className="h-14 w-full rounded-xl font-bold text-sm tracking-widest bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-white text-white transition-all flex items-center justify-center gap-2"
             >
-              {t('review', settings.language)}
+              <ClipboardList size={16} /> {t('review', settings.language)} {submittedScores}/{expectedScores || 0}
             </button>
             <button 
               onClick={() => setShowOverrideModal(true)}
@@ -211,6 +230,25 @@ export default function ChiefRefereeDashboard() {
             </button>
           </div>
         </div>
+
+        {showReviewPanel && (
+          <div className="mt-6 bg-[var(--bg-card)] border border-[var(--border-default)] rounded-2xl p-6">
+            <div className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-4">Validation readiness</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {assignedJudges.map(judge => {
+                if (!judge) return null;
+                const count = activeJudgeScores.filter(s => s.judgeId === judge.id && s.submitted).length;
+                const ready = count >= activeMatch.totalRounds;
+                return (
+                  <div key={judge.id} className={`rounded-xl border p-4 ${ready ? "border-[var(--status-win)] bg-[rgba(46,204,113,0.08)]" : "border-[var(--ikf-gold)] bg-[rgba(212,160,23,0.08)]"}`}>
+                    <div className="font-bold text-white">{judge.name}</div>
+                    <div className="text-sm text-[var(--text-muted)] mt-1">{count}/{activeMatch.totalRounds} rounds submitted</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* OVERRIDE MODAL */}
@@ -342,6 +380,10 @@ export default function ChiefRefereeDashboard() {
                   {t('close', settings.language)}
                 </button>
                 <button 
+                  onClick={() => {
+                    toast.success("Result is ready on the TV display.");
+                    setShowResult(false);
+                  }}
                   className="px-12 h-16 rounded-xl font-display text-2xl tracking-widest bg-[var(--ikf-gold)] text-black hover:bg-[#b58814] shadow-[0_0_30px_rgba(212,160,23,0.4)] transition-all"
                 >
                   {t('announce_result', settings.language)}

@@ -15,19 +15,24 @@ function formatTime(seconds: number) {
 
 export default function JudgeTabletView() {
   const { 
-    activeMatch, currentRound, roundTimer, timerMode, 
-    judgeScores, setJudgeScore, submitJudgeScore, referees, settings
+    activeMatch, matches, currentRound, roundTimer, timerMode, 
+    judgeScores, setJudgeScore, submitJudgeScore, referees, settings, setActiveMatch
   } = useTournamentStore();
 
   const [selectedJudgeId, setSelectedJudgeId] = useState<string>("");
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
-    // Auto-select first assigned judge if none selected
-    if (activeMatch?.assignedJudgeIds && !selectedJudgeId) {
+    if (!activeMatch) {
+      const nextMatch = matches.find(m => m.status === "in-progress") ?? matches.find(m => m.status === "scheduled");
+      if (nextMatch) setActiveMatch({ ...nextMatch, status: nextMatch.status === "scheduled" ? "in-progress" : nextMatch.status });
+      return;
+    }
+
+    if (activeMatch.assignedJudgeIds && !selectedJudgeId) {
       setSelectedJudgeId(activeMatch.assignedJudgeIds[0] || "");
     }
-  }, [activeMatch, selectedJudgeId]);
+  }, [activeMatch, matches, selectedJudgeId, setActiveMatch]);
 
   if (!activeMatch) {
     return (
@@ -333,7 +338,7 @@ export default function JudgeTabletView() {
         </div>
         
         <div className="flex-1 flex px-8 gap-8 items-center justify-around">
-          {[1,2,3].map(round => {
+          {Array.from({ length: activeMatch.totalRounds }, (_, idx) => idx + 1).map(round => {
             const s = judgeScores.find(x => x.matchId === activeMatch.id && x.round === round && x.judgeId === selectedJudgeId);
             return (
               <div key={round} className="flex flex-col gap-1 items-center">
