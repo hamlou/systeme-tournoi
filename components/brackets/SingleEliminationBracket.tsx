@@ -4,11 +4,9 @@ import React from "react";
 import { Trophy } from "lucide-react";
 import type { Match } from "@/types/tournament";
 import { MatchBox } from "./MatchBox";
-import { roundNamesForSize, nextPowerOfTwo } from "@/lib/bracketGenerators";
 
 export function SingleEliminationBracket({ matches, onMatchClick }: { matches: Match[]; onMatchClick: (m: Match) => void }) {
   const winners = matches.filter(m => m.bracketType !== "losers" && m.bracketType !== "grand-final");
-  const firstRoundCount = winners.filter(m => m.round === (roundNamesForSize(nextPowerOfTwo(winners.length + 1))[0])).length;
   // Derive ordered round names present in the data.
   const roundOrder = Array.from(new Set(winners.map(m => m.round)));
   const finalMatch = winners.find(m => m.round === "Final");
