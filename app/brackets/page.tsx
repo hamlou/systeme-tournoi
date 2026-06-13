@@ -2,213 +2,284 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { motion } from "framer-motion";
-import { Printer, Shuffle, Settings2, Trophy } from "lucide-react";
+import { Printer, Shuffle, Settings2 } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { Match, Bracket } from "@/types/tournament";
-import { PageHeader, IKFButton, IKFCard, IKFBadge, SectionDivider, IKFEmptyState } from "@/components/ui";
+import type { Match, Bracket, BracketFormat, BracketOptions } from "@/types/tournament";
+import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
+import { SingleEliminationBracket } from "@/components/brackets/SingleEliminationBracket";
+import { DoubleEliminationBracket } from "@/components/brackets/DoubleEliminationBracket";
+import { RoundRobinGrid } from "@/components/brackets/RoundRobinGrid";
+import { PoolEliminationBracket } from "@/components/brackets/PoolEliminationBracket";
+import { TeamBracket } from "@/components/brackets/TeamBracket";
+import { MatchDetailModal } from "@/components/brackets/MatchDetailModal";
 import toast from "react-hot-toast";
-import { t } from "@/lib/i18n";
 
-const FORMATS = ["Single Elimination"];
-
-// --- Match Card Component ---
-function MatchCard({ match }: { match: Match }) {
-  const { settings } = useTournamentStore();
-  const isRedWinner = match.result?.winnerCorner === "RED";
-  const isBlueWinner = match.result?.winnerCorner === "BLUE";
-  const redScore = match.result?.redTotalScore;
-  const blueScore = match.result?.blueTotalScore;
-
-  return (
-    <div className="w-[220px] bg-[var(--bg-card)] border border-[var(--border-default)] rounded-lg overflow-hidden flex flex-col shadow-card relative z-10">
-      <div className="bg-[var(--bg-elevated)] p-2 flex justify-between items-center border-b border-[var(--border-default)] text-[10px] font-bold text-[var(--text-muted)] tracking-widest uppercase">
-        <span>{t('mat', settings.language)} {match.matNumber} • {new Date(match.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-        <span>M#{match.matchNumber}</span>
-      </div>
-      
-      {/* Red Corner */}
-      <div className={`p-3 border-l-4 border-[var(--ikf-red)] border-b border-[var(--border-default)] flex justify-between items-center transition-colors ${isRedWinner ? 'bg-[rgba(200,16,46,0.1)]' : ''}`}>
-        <span className={`font-semibold text-sm truncate pr-2 ${isBlueWinner ? 'text-[var(--text-muted)] line-through' : 'text-white'}`}>
-          {match.redCornerName || <span className="text-[var(--text-muted)] italic">{t('tbd', settings.language)}</span>}
-        </span>
-        <div className="flex items-center gap-2">
-          {isRedWinner && <Trophy size={14} className="text-[var(--ikf-gold)]" />}
-          {redScore !== undefined && (
-            <span className={`font-mono text-sm font-bold ${isRedWinner ? 'text-[var(--ikf-gold)]' : 'text-white'}`}>{redScore}</span>
-          )}
-        </div>
-      </div>
-      
-      {/* Blue Corner */}
-      <div className={`p-3 border-l-4 border-[var(--corner-blue)] flex justify-between items-center transition-colors ${isBlueWinner ? 'bg-[rgba(0,102,204,0.1)]' : ''}`}>
-        <span className={`font-semibold text-sm truncate pr-2 ${isRedWinner ? 'text-[var(--text-muted)] line-through' : 'text-white'}`}>
-          {match.blueCornerName || <span className="text-[var(--text-muted)] italic">{t('tbd', settings.language)}</span>}
-        </span>
-        <div className="flex items-center gap-2">
-          {isBlueWinner && <Trophy size={14} className="text-[var(--ikf-gold)]" />}
-          {blueScore !== undefined && (
-            <span className={`font-mono text-sm font-bold ${isBlueWinner ? 'text-[var(--ikf-gold)]' : 'text-white'}`}>{blueScore}</span>
-          )}
-        </div>
-      </div>
-
-      {match.status !== "scheduled" && (
-        <div className="absolute top-0 right-0 -mt-2 -mr-2">
-          <IKFBadge variant={match.status === "completed" ? "win" : "live"} label={match.status} size="sm" />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- Bracket Lines SVG ---
-function BracketLines() {
-  const lineVariants = {
-    hidden: { pathLength: 0, opacity: 0 },
-    visible: { 
-      pathLength: 1, 
-      opacity: 1, 
-      transition: { duration: 1.5 } 
-    }
-  };
-
-  return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{ minWidth: 800 }}>
-      {/* QF to SF lines */}
-      <motion.path d="M 220 90 L 250 90 L 250 170 L 280 170" stroke="var(--border-default)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-      <motion.path d="M 220 250 L 250 250 L 250 170 L 280 170" stroke="var(--border-default)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-      
-      <motion.path d="M 220 410 L 250 410 L 250 490 L 280 490" stroke="var(--border-default)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-      <motion.path d="M 220 570 L 250 570 L 250 490 L 280 490" stroke="var(--border-default)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-
-      {/* SF to Final lines */}
-      <motion.path d="M 500 170 L 530 170 L 530 330 L 560 330" stroke="var(--border-default)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-      <motion.path d="M 500 490 L 530 490 L 530 330 L 560 330" stroke="var(--border-default)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-      
-      {/* Final to Winner */}
-      <motion.path d="M 780 330 L 840 330" stroke="var(--ikf-gold)" strokeWidth="2" fill="none" variants={lineVariants} initial="hidden" animate="visible" />
-    </svg>
-  );
-}
+const FORMATS: { value: BracketFormat; label: string; desc: string }[] = [
+  { value: "single-elimination", label: "Single Elimination", desc: "Lose once and you're out. BYEs auto-assigned for non power-of-2 counts." },
+  { value: "double-elimination", label: "Double Elimination", desc: "Winners & Losers brackets. Lose twice to be eliminated." },
+  { value: "round-robin", label: "Round Robin", desc: "Everyone fights everyone once. Ranked by points." },
+  { value: "pool-elimination", label: "Pool + Elimination", desc: "Round robin pools, then top 2 per pool enter a knockout." },
+  { value: "team", label: "Team Tournament", desc: "Clubs face off; fighters matched by weight category." },
+];
 
 export default function BracketsPage() {
-  const { brackets, matches, athletes, generateBracket, settings } = useTournamentStore();
-  
-  const uniqueCategories = useMemo(() => Array.from(new Set(athletes.filter(a => a.weighInStatus === 'Confirmed').map(a => `${a.weightCategory} ${a.ageGroup}`))), [athletes]);
+  const { brackets, matches, athletes, generateBracket, deleteBracket } = useTournamentStore();
+
+  const confirmed = useMemo(() => athletes.filter(a => a.weighInStatus === "Confirmed"), [athletes]);
+  const uniqueCategories = useMemo(
+    () => Array.from(new Set(confirmed.map(a => `${a.weightCategory} ${a.ageGroup}`))),
+    [confirmed]
+  );
+
   const [selectedCategory, setSelectedCategory] = useState(uniqueCategories[0] || "");
-  const [selectedFormat, setSelectedFormat] = useState(FORMATS[0]);
+  const [selectedFormat, setSelectedFormat] = useState<BracketFormat>("single-elimination");
+  const [printMode, setPrintMode] = useState(false);
+  const [detailMatch, setDetailMatch] = useState<Match | null>(null);
+  const [pendingRegen, setPendingRegen] = useState<Bracket | null>(null);
 
-  const bracket = useMemo(() => brackets.find(b => b.categoryId === selectedCategory), [brackets, selectedCategory]);
-  const bracketMatches = useMemo(() => matches.filter(m => bracket?.matchIds.includes(m.id)), [matches, bracket]);
+  // Options
+  const [seeding, setSeeding] = useState(false);
+  const [pointsForWin, setPointsForWin] = useState(3);
+  const [pointsForDraw, setPointsForDraw] = useState(1);
+  const [athletesPerPool, setAthletesPerPool] = useState(4);
+  const [matchByWeight, setMatchByWeight] = useState(true);
 
-  const qfMatches = bracketMatches.filter(m => m.round === "Quarterfinal");
-  const sfMatches = bracketMatches.filter(m => m.round === "Semifinal");
-  const finalMatch = bracketMatches.find(m => m.round === "Final");
-  
-  const champion = finalMatch?.result ? { name: finalMatch.result.winnerName } : null;
+  const formatInfo = FORMATS.find(f => f.value === selectedFormat)!;
+
+  const bracket = useMemo(
+    () => brackets.find(b => b.categoryId === selectedCategory),
+    [brackets, selectedCategory]
+  );
+  const bracketMatches = useMemo(
+    () => matches.filter(m => bracket?.matchIds.includes(m.id)),
+    [matches, bracket]
+  );
+  const categoryAthletes = useMemo(
+    () => confirmed.filter(a => `${a.weightCategory} ${a.ageGroup}` === selectedCategory),
+    [confirmed, selectedCategory]
+  );
+
+  const buildOptions = (): BracketOptions => ({
+    seeding, pointsForWin, pointsForDraw, athletesPerPool, matchByWeight,
+  });
+
+  const doGenerate = (format: BracketFormat) => {
+    if (categoryAthletes.length < 2) {
+      toast.error("Not enough athletes — need at least 2 confirmed athletes to generate a bracket");
+      return;
+    }
+    if (format === "pool-elimination" && categoryAthletes.length < 8) {
+      if (!window.confirm("Minimum 8 athletes recommended for Pool + Elimination format. Continue anyway?")) return;
+    }
+    generateBracket(selectedCategory, format, categoryAthletes, buildOptions());
+  };
 
   const handleGenerate = () => {
     if (!selectedCategory) return;
-    const categoryAthletes = athletes.filter(a => a.weighInStatus === 'Confirmed' && `${a.weightCategory} ${a.ageGroup}` === selectedCategory);
-    if (categoryAthletes.length < 2) {
-      toast.error(t('not_enough_athletes', settings.language).replace('{category}', selectedCategory));
-      return;
-    }
     if (bracket) {
-      toast.error(t('bracket_already_exists', settings.language).replace('{category}', selectedCategory));
+      setPendingRegen(bracket);
       return;
     }
-    generateBracket(selectedCategory, selectedFormat, categoryAthletes);
+    doGenerate(selectedFormat);
+  };
+
+  const handleRandomize = () => {
+    if (!bracket) { handleGenerate(); return; }
+    setPendingRegen(bracket);
+  };
+
+  const confirmRegen = () => {
+    if (!pendingRegen) return;
+    deleteBracket(pendingRegen.id);
+    const fmt = (pendingRegen.format as BracketFormat) ?? selectedFormat;
+    // Defer generation so the delete is applied first.
+    setTimeout(() => doGenerate(fmt), 0);
+    setPendingRegen(null);
+  };
+
+  const handlePrint = () => {
+    setPrintMode(true);
+    setTimeout(() => {
+      window.print();
+      setPrintMode(false);
+    }, 100);
+  };
+
+  const renderVisual = () => {
+    if (!bracket) return null;
+    switch (bracket.format) {
+      case "single-elimination":
+        return <SingleEliminationBracket matches={bracketMatches} onMatchClick={setDetailMatch} />;
+      case "double-elimination":
+        return <DoubleEliminationBracket bracket={bracket} matches={bracketMatches} onMatchClick={setDetailMatch} />;
+      case "round-robin":
+        return (
+          <RoundRobinGrid
+            athletes={categoryAthletes}
+            matches={bracketMatches}
+            standings={bracket.standings ?? []}
+            onMatchClick={setDetailMatch}
+          />
+        );
+      case "pool-elimination":
+        return <PoolEliminationBracket bracket={bracket} matches={bracketMatches} athletes={athletes} onMatchClick={setDetailMatch} />;
+      case "team":
+        return <TeamBracket bracket={bracket} matches={bracketMatches} onMatchClick={setDetailMatch} />;
+      default:
+        return <div className="p-8 text-[var(--text-muted)]">Unknown format.</div>;
+    }
   };
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
-      <PageHeader 
-        category={t('competition', settings.language)}
-        title={t('draw_brackets', settings.language).toUpperCase()}
-        subtitle={t('draw_brackets_desc', settings.language)}
-        actions={
-          <div className="flex gap-3">
-            <IKFButton variant="secondary" leftIcon={<Printer size={16} />} disabled={!bracket} onClick={() => window.print()}>{t('print_bracket', settings.language)}</IKFButton>
-            <IKFButton variant="primary" leftIcon={<Settings2 size={16} />} disabled={!selectedCategory || Boolean(bracket)} onClick={handleGenerate}>{bracket ? 'Draw Exists' : t('generate_draw', settings.language)}</IKFButton>
+    <div className={`p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20 ${printMode ? "print-mode" : ""}`}>
+      {detailMatch && <MatchDetailModal match={detailMatch} onClose={() => setDetailMatch(null)} />}
+
+      {pendingRegen && (
+        <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+          <div className="bg-[var(--bg-card)] border border-[var(--ikf-red)] rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
+            <h2 className="font-display text-2xl text-white mb-2">Bracket Already Exists</h2>
+            <p className="text-[var(--text-secondary)] text-sm mb-6">A bracket already exists for this category. Regenerating will delete all existing results. Continue?</p>
+            <div className="flex gap-3">
+              <button onClick={() => setPendingRegen(null)} className="flex-1 h-12 rounded-xl border-2 border-[var(--border-default)] text-white font-bold hover:bg-[rgba(255,255,255,0.05)] transition-all">Cancel</button>
+              <button onClick={confirmRegen} className="flex-1 h-12 rounded-xl bg-[var(--ikf-red)] text-white font-bold hover:bg-[#a00d25] transition-all">Regenerate</button>
+            </div>
           </div>
-        }
-      />
+        </div>
+      )}
 
-      {/* TOP CONTROLS */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-4 rounded-xl flex flex-wrap gap-6 items-center justify-between shadow-card">
-        <div className="flex flex-wrap gap-4 flex-1">
-          <select 
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)] min-w-[200px]"
-          >
-            {uniqueCategories.length === 0 && <option value="">No confirmed categories</option>}
-            {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+      <div className="no-print">
+        <PageHeader
+          category="COMPETITION"
+          title="DRAW & BRACKETS"
+          subtitle="Generate and manage tournament brackets across all 5 IKF formats"
+          actions={
+            <div className="flex gap-3">
+              <IKFButton variant="secondary" leftIcon={<Printer size={16} />} disabled={!bracket} onClick={handlePrint}>Print Bracket</IKFButton>
+              <IKFButton variant="secondary" leftIcon={<Shuffle size={16} />} disabled={!bracket} onClick={handleRandomize}>Randomize Seeds</IKFButton>
+              <IKFButton variant="primary" leftIcon={<Settings2 size={16} />} disabled={!selectedCategory} onClick={handleGenerate}>Generate Draw</IKFButton>
+            </div>
+          }
+        />
+      </div>
 
-          <select 
-            value={selectedFormat}
-            onChange={(e) => setSelectedFormat(e.target.value)}
-            className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)] min-w-[200px]"
-          >
-            {FORMATS.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+      {/* CONTROLS */}
+      <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-5 rounded-xl space-y-5 shadow-card no-print">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[220px]">
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Category ({categoryAthletes.length} confirmed)</label>
+            <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
+              {uniqueCategories.length === 0 && <option value="">No confirmed categories</option>}
+              {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[220px]">
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Format</label>
+            <select value={selectedFormat} onChange={e => setSelectedFormat(e.target.value as BracketFormat)}
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
+              {FORMATS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+            </select>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">{formatInfo.desc}</p>
+          </div>
+        </div>
+
+        {/* Per-format options */}
+        <div className="flex flex-wrap gap-6 items-center border-t border-[var(--border-default)] pt-4">
+          {selectedFormat === "single-elimination" && (
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <input type="checkbox" checked={seeding} onChange={e => setSeeding(e.target.checked)} className="w-4 h-4 accent-[var(--ikf-red)]" />
+              Enable seeding (keep input order)
+              <span className="text-[var(--text-muted)]">• BYE placement: auto</span>
+            </label>
+          )}
+          {selectedFormat === "double-elimination" && (
+            <span className="text-sm text-[var(--text-muted)]">No extra options for this format.</span>
+          )}
+          {selectedFormat === "round-robin" && (
+            <>
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">Points for win
+                <input type="number" min={1} value={pointsForWin} onChange={e => setPointsForWin(Number(e.target.value) || 3)} className="w-16 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white font-mono" />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">Points for draw
+                <input type="number" min={0} value={pointsForDraw} onChange={e => setPointsForDraw(Number(e.target.value) || 0)} className="w-16 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white font-mono" />
+              </label>
+            </>
+          )}
+          {selectedFormat === "pool-elimination" && (
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">Athletes per pool
+              <select value={athletesPerPool} onChange={e => setAthletesPerPool(Number(e.target.value))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white">
+                <option value={4}>4</option>
+                <option value={5}>5</option>
+              </select>
+            </label>
+          )}
+          {selectedFormat === "team" && (
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <input type="checkbox" checked={matchByWeight} onChange={e => setMatchByWeight(e.target.checked)} className="w-4 h-4 accent-[var(--ikf-red)]" />
+              Match by weight category
+            </label>
+          )}
         </div>
       </div>
 
-      {/* BRACKET VISUAL */}
-      <IKFCard padding="none" className="overflow-hidden min-h-[650px] relative bg-[var(--bg-primary)]">
+      {/* VISUAL */}
+      <IKFCard padding="none" className="overflow-hidden min-h-[600px] relative bg-[var(--bg-primary)]">
         {bracket ? (
-          <div className="p-8 overflow-x-auto h-full flex items-center relative" style={{ minWidth: 1000 }}>
-            <BracketLines />
-            
-            <div className="flex gap-[60px] relative z-10 h-[600px] items-center">
-              {/* Column 1: QF */}
-              <div className="flex flex-col gap-[60px] justify-center w-[220px]">
-                {qfMatches.map((m, i) => (
-                  <MatchCard key={m.id || i} match={m} />
-                ))}
+          <div className="bracket-print-area">
+            <div className="flex items-center justify-between p-4 border-b border-[var(--border-default)]">
+              <div>
+                <span className="font-display text-2xl text-white">{bracket.category}</span>
+                <span className="text-[var(--text-muted)] text-sm ml-3">{FORMATS.find(f => f.value === bracket.format)?.label ?? bracket.format}</span>
               </div>
-              
-              {/* Column 2: SF */}
-              <div className="flex flex-col gap-[220px] justify-center w-[220px]">
-                {sfMatches.map((m, i) => (
-                  <MatchCard key={m.id || i} match={m} />
-                ))}
-              </div>
-
-              {/* Column 3: Final */}
-              <div className="flex flex-col justify-center w-[220px]">
-                {finalMatch && <MatchCard match={finalMatch} />}
-              </div>
-
-              {/* Column 4: Winner */}
-              <div className="flex flex-col justify-center w-[200px] ml-6">
-                <div className={`p-6 border-2 rounded-xl text-center shadow-[var(--shadow-gold-glow)] transition-all ${champion ? 'border-[var(--ikf-gold)] bg-[rgba(212,160,23,0.1)]' : 'border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)]'}`}>
-                  <Trophy size={48} className={`mx-auto mb-4 ${champion ? 'text-[var(--ikf-gold)]' : 'text-[var(--border-default)]'}`} />
-                  <div className="text-xs font-bold text-[var(--text-muted)] tracking-widest uppercase mb-2">{t('champion', settings.language)}</div>
-                  <div className={`font-display text-3xl leading-none ${champion ? 'text-white' : 'text-[var(--text-muted)]'}`}>
-                    {champion ? champion.name : t('tbd', settings.language)}
-                  </div>
-                </div>
-              </div>
+              <IKFBadge variant={bracket.status === "complete" ? "win" : "live"} label={bracket.status ?? "in-progress"} size="sm" />
             </div>
+            {renderVisual()}
           </div>
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <IKFEmptyState 
-              icon={<Settings2 size={48} />} 
-              title={t('no_bracket_generated', settings.language)} 
-              subtitle={t('select_category_to_generate', settings.language)} 
-              actionLabel={t('generate_draw', settings.language)} 
-              onAction={handleGenerate} 
+          <div className="absolute inset-0 flex items-center justify-center no-print">
+            <IKFEmptyState
+              icon={<Settings2 size={48} />}
+              title="No bracket generated"
+              subtitle="Select a category and format, then generate the draw"
+              actionLabel="Generate Draw"
+              onAction={handleGenerate}
             />
           </div>
         )}
       </IKFCard>
+
+      {/* MATCH SCHEDULE */}
+      {bracket && (
+        <IKFCard padding="none" className="overflow-hidden bracket-print-area">
+          <div className="p-4 border-b border-[var(--border-default)] font-display text-xl text-white">Match Schedule</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[var(--bg-elevated)] text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
+                <tr>
+                  <th className="py-3 px-4">Match #</th><th className="py-3 px-4">Round / Pool</th>
+                  <th className="py-3 px-4">Red Fighter</th><th className="py-3 px-4">Blue Fighter</th>
+                  <th className="py-3 px-4">Mat</th><th className="py-3 px-4">Time</th>
+                  <th className="py-3 px-4">Status</th><th className="py-3 px-4">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...bracketMatches].sort((a, b) => a.matchNumber - b.matchNumber).map(m => (
+                  <tr key={m.id} onClick={() => setDetailMatch(m)} className="border-b border-[rgba(255,255,255,0.04)] cursor-pointer hover:bg-[rgba(200,16,46,0.06)]">
+                    <td className="py-3 px-4 font-mono text-[var(--text-muted)]">#{m.matchNumber}</td>
+                    <td className="py-3 px-4 text-[var(--text-secondary)]">{m.round}</td>
+                    <td className="py-3 px-4 text-white">{m.redCornerName}</td>
+                    <td className="py-3 px-4 text-white">{m.blueCornerName}</td>
+                    <td className="py-3 px-4 text-[var(--text-muted)]">{m.matNumber}</td>
+                    <td className="py-3 px-4 text-[var(--text-muted)] font-mono">{new Date(m.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                    <td className="py-3 px-4"><IKFBadge variant={m.status === "completed" ? "win" : m.status === "in-progress" ? "live" : "pending"} label={m.status} size="sm" /></td>
+                    <td className="py-3 px-4 text-[var(--ikf-gold)]">{m.result ? m.result.winnerName : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </IKFCard>
+      )}
     </div>
   );
 }
-
