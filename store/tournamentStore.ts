@@ -6,8 +6,14 @@ import type {
   Athlete, Club, WeighinRecord, Match, Bracket, Referee,
   RoundEvent, JudgeScore, TournamentReport, MatchResult,
   TournamentSettings, AgeGroup, TimerMode, WeighinStatus, AppNotification,
+  BracketOptions, Pool, TeamMatchup, Standing, BracketFormat,
 } from '@/types/tournament';
 import { getSocket } from "@/lib/socketClient";
+import {
+  buildSingleElimination, buildDoubleElimination, buildRoundRobin,
+  computeStandings, splitIntoPools, shuffle,
+} from "@/lib/bracketGenerators";
+import { v4 as uuid } from "uuid";
 
 // ─── Seed Mock Data ──────────────────────────────────────────────────────────
 
@@ -179,9 +185,13 @@ interface TournamentStore {
   brackets: Bracket[];
   addMatch: (m: Match) => void;
   updateMatch: (id: string, data: Partial<Match>) => void;
-  generateBracket: (categoryId: string, format: string, athletes: Athlete[]) => void;
+  generateBracket: (categoryId: string, format: string, athletes: Athlete[], options?: BracketOptions) => void;
+  deleteBracket: (bracketId: string) => void;
   updateMatchResult: (matchId: string, result: MatchResult) => void;
   advanceWinner: (matchId: string, winnerId: string, winnerName: string) => void;
+  updateRoundRobinStandings: (bracketId: string) => void;
+  advancePoolWinners: (bracketId: string) => void;
+  updateTeamScore: (teamMatchupId: string) => void;
 
   // Referees
   referees: Referee[];
