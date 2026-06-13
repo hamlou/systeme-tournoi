@@ -97,11 +97,84 @@ export interface Match {
   totalRounds: number;
 }
 
+export type BracketFormat =
+  | 'single-elimination'
+  | 'double-elimination'
+  | 'round-robin'
+  | 'pool-elimination'
+  | 'team';
+
+export type BracketStatus = 'pending' | 'in-progress' | 'complete';
+
+export interface Standing {
+  athleteId: string;
+  athleteName: string;
+  clubName: string;
+  wins: number;
+  draws: number;
+  losses: number;
+  points: number;
+  matchesPlayed: number;
+}
+
+export interface Pool {
+  id: string;
+  name: string; // 'POOL A', 'POOL B', etc.
+  athleteIds: string[];
+  matchIds: string[];
+  standings: Standing[];
+  complete: boolean;
+}
+
+export interface TeamMatchup {
+  id: string;
+  redClubId: string;
+  blueClubId: string;
+  redClubName: string;
+  blueClubName: string;
+  individualMatchIds: string[];
+  redWins: number;
+  blueWins: number;
+  status: 'scheduled' | 'in-progress' | 'complete';
+  winnerId?: string;
+}
+
 export interface Bracket {
   id: string;
+  // Legacy fields kept for backwards compatibility with existing data/logic.
   categoryId: string;
-  format: string;
   matchIds: string[];
+  // New, richer descriptors.
+  category?: string;
+  ageGroup?: string;
+  weightCategory?: string;
+  format: BracketFormat | string;
+  status?: BracketStatus;
+  matches?: string[]; // mirror of matchIds for the new API
+  // Double elimination
+  bracketType?: 'winners' | 'losers';
+  winnersBracketMatches?: string[];
+  losersBracketMatches?: string[];
+  grandFinalMatchId?: string;
+  grandFinalResetMatchId?: string;
+  // Round robin
+  standings?: Standing[];
+  pointsForWin?: number;
+  pointsForDraw?: number;
+  // Pool + elimination
+  pools?: Pool[];
+  eliminationMatches?: string[];
+  eliminationUnlocked?: boolean;
+  // Team
+  teamMatchups?: TeamMatchup[];
+}
+
+export interface BracketOptions {
+  seeding?: boolean;
+  pointsForWin?: number;
+  pointsForDraw?: number;
+  athletesPerPool?: number;
+  matchByWeight?: boolean;
 }
 
 export interface Referee {
