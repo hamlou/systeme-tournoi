@@ -1,0 +1,41 @@
+# CI for the IKF Kenshido Next.js app.
+# Validates every push: type-checking, linting and a production build.
+
+image: node:20
+
+stages:
+  - validate
+  - build
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+.install: &install
+  - npm ci --cache .npm --prefer-offline
+
+typecheck:
+  stage: validate
+  before_script: *install
+  script:
+    - npm run typecheck
+
+lint:
+  stage: validate
+  before_script: *install
+  script:
+    - npm run lint
+  allow_failure: true
+
+build:
+  stage: build
+  before_script: *install
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - .next/
+    expire_in: 1 day
