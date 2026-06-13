@@ -6,11 +6,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import toast from "react-hot-toast";
-import { UploadCloud, Building2 } from "lucide-react";
+import { UploadCloud, Building2, Loader2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Club } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
+import { COUNTRIES } from "@/lib/countries";
+import { uploadImageToImgBB } from "@/lib/imgbb";
 
 const clubSchema = z.object({
   name: z.string().min(2, "Club name is required"),
@@ -18,7 +20,6 @@ const clubSchema = z.object({
   presidentName: z.string().min(2, "President name is required"),
   email: z.string().email("Valid email is required"),
   phone: z.string().min(5, "Phone number is required"),
-  affiliationNumber: z.string().min(1, "Affiliation number is required"),
   expectedAthletes: z.number().min(1, "Must expect at least 1 athlete"),
   notes: z.string().optional(),
   logoUrl: z.string().optional(),
@@ -26,14 +27,15 @@ const clubSchema = z.object({
 
 type ClubFormValues = z.infer<typeof clubSchema>;
 
-const COUNTRIES = ["Tunisia 🇹🇳", "Algeria 🇩🇿", "France 🇫🇷", "Morocco 🇲🇦", "Egypt 🇪🇬", "Brazil 🇧🇷", "USA 🇺🇸", "Senegal 🇸🇳", "Italy 🇮🇹", "Spain 🇪🇸", "Japan 🇯🇵"];
-
 export default function RegisterClubPage() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get("edit");
   const { clubs, addClub, updateClub } = useTournamentStore();
   const editingClub = editId ? clubs.find(c => c.id === editId) : null;
+
+  const [logoUrl, setLogoUrl] = React.useState(editingClub?.logoUrl ?? "");
+  const [isUploading, setIsUploading] = React.useState(false);
 
   const {
     register,
@@ -47,20 +49,33 @@ export default function RegisterClubPage() {
       presidentName: editingClub.presidentName,
       email: editingClub.email,
       phone: editingClub.phone,
-      affiliationNumber: editingClub.affiliationNumber,
       expectedAthletes: editingClub.expectedAthletes,
       notes: editingClub.notes ?? "",
-      logoUrl: editingClub.logoUrl ?? "",
     } : undefined,
   });
+
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const url = await uploadImageToImgBB(file);
+      setLogoUrl(url);
+      toast.success("Logo uploaded successfully");
+    } catch (error) {
+      toast.error("Logo upload failed. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const onSubmit = async (data: ClubFormValues) => {
     // Simulate network delay
     await new Promise(r => setTimeout(r, 800));
     
-    const duplicateClub = clubs.find(c => c.id !== editingClub?.id && (c.name.trim().toLowerCase() === data.name.trim().toLowerCase() || c.affiliationNumber.trim().toLowerCase() === data.affiliationNumber.trim().toLowerCase()));
+    const duplicateClub = clubs.find(c => c.id !== editingClub?.id && c.name.trim().toLowerCase() === data.name.trim().toLowerCase());
     if (duplicateClub) {
-      toast.error("A club with this name or affiliation number already exists.");
+      toast.error("A club with this name already exists.");
       return;
     }
 
@@ -71,15 +86,16 @@ export default function RegisterClubPage() {
         presidentName: data.presidentName,
         email: data.email,
         phone: data.phone,
-        affiliationNumber: data.affiliationNumber,
         expectedAthletes: data.expectedAthletes,
         notes: data.notes,
-        logoUrl: data.logoUrl,
+        logoUrl: logoUrl,
       });
       toast.success(`${data.name} updated successfully`);
       router.push("/clubs");
       return;
     }
+
+    const affiliationNumber = `IKF-${uuidv4().slice(0, 8).toUpperCase()}`;
 
     const newClub: Club = {
       id: uuidv4(),
@@ -88,11 +104,11 @@ export default function RegisterClubPage() {
       presidentName: data.presidentName,
       email: data.email,
       phone: data.phone,
-      affiliationNumber: data.affiliationNumber,
+      affiliationNumber,
       expectedAthletes: data.expectedAthletes,
       status: "Active",
       notes: data.notes,
-      logoUrl: data.logoUrl,
+      logoUrl: logoUrl,
     };
     
     addClub(newClub);
@@ -100,7 +116,7 @@ export default function RegisterClubPage() {
     toast.success(
       <div>
         <p className="font-bold">Club Registered!</p>
-        <p className="text-sm font-mono mt-1">{data.name} — {data.affiliationNumber}</p>
+        <p className="text-sm font-mono mt-1">{data.name} — {affiliationNumber}</p>
       </div>,
       { duration: 5000 }
     );
@@ -138,15 +154,9 @@ export default function RegisterClubPage() {
               {errors.country && <p className="text-[var(--ikf-red)] text-xs mt-1.5">{errors.country.message}</p>}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">President / Head of Delegation *</label>
-                <IKFInput {...register("presidentName")} placeholder="Full Name" error={errors.presidentName?.message} />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">Official Affiliation # *</label>
-                <IKFInput {...register("affiliationNumber")} placeholder="e.g. IKF-XX-000" className="font-mono uppercase" error={errors.affiliationNumber?.message} />
-              </div>
+            <div>
+              <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">President / Head of Delegation *</label>
+              <IKFInput {...register("presidentName")} placeholder="Full Name" error={errors.presidentName?.message} />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -174,14 +184,18 @@ export default function RegisterClubPage() {
 
             <div>
               <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">Club Logo Upload</label>
-              <input type="url" {...register("logoUrl")} placeholder="https://example.com/logo.png" className="mb-3 w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)] transition-colors" />
-              <div className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-10 flex flex-col items-center justify-center text-center group">
-                <div className="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.05)] flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-[rgba(212,160,23,0.1)] transition-all">
-                  <UploadCloud size={24} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)]" />
-                </div>
-                <p className="text-sm font-medium text-[var(--text-secondary)]">Paste a hosted logo URL above</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1.5">Upload storage is not configured, so this field stores an external image URL.</p>
-              </div>
+              <label className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-10 flex flex-col items-center justify-center text-center group cursor-pointer hover:border-[var(--ikf-gold)] transition-colors">
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={isUploading} />
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Club logo" className="h-24 w-24 object-contain rounded-lg mb-4" />
+                ) : (
+                  <div className="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.05)] flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-[rgba(212,160,23,0.1)] transition-all">
+                    {isUploading ? <Loader2 size={24} className="text-[var(--ikf-gold)] animate-spin" /> : <UploadCloud size={24} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)]" />}
+                  </div>
+                )}
+                <p className="text-sm font-medium text-[var(--text-secondary)]">{isUploading ? "Uploading..." : logoUrl ? "Click to replace logo" : "Click to upload a logo image"}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1.5">Images are hosted on ImgBB. PNG, JPG or SVG.</p>
+              </label>
             </div>
 
             <div>
