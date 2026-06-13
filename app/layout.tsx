@@ -6,6 +6,7 @@ import { ThemeProvider } from "next-themes";
 import "../styles/globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { SocketProvider } from "@/components/providers/SocketProvider";
+import { AuthGate } from "@/components/auth/AuthGate";
 
 /* ── Google Fonts ──────────────────────────────────────────────────────────── */
 
@@ -82,11 +83,13 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <SocketProvider>
-            <AppShell>
-              {children}
-            </AppShell>
-          </SocketProvider>
+          <AuthGate>
+            <SocketProvider>
+              <AppShell>
+                {children}
+              </AppShell>
+            </SocketProvider>
+          </AuthGate>
 
           {/* Global notification system */}
           <Toaster

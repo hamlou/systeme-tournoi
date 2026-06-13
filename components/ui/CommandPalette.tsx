@@ -37,8 +37,7 @@ export function CommandPalette() {
       // Navigation shortcuts (only if no modal is open and not typing in an input)
       if (!isOpen && !showShortcuts && e.target === document.body) {
         switch (e.key.toLowerCase()) {
-          case "d": router.push("/"); break;
-          case "j": router.push("/judging/chief"); break;
+          case "d": router.push("/dashboard"); break;          case "j": router.push("/judging/chief"); break;
           case "t": router.push("/tv"); break;
           case "r": router.push("/reports"); break;
         }

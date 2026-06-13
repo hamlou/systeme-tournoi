@@ -15,12 +15,14 @@ import {
   FileText,
   BarChart3,
   Brain,
+  LogOut,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useNavigationStore } from "@/store/navigationStore";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
+import { clearAdminSession, getStoredAdminSession } from "@/components/auth/AuthGate";
 
 const NAV_SECTIONS = [
   {
@@ -62,6 +64,16 @@ export function Sidebar() {
   const { settings } = useTournamentStore();
   const router = useRouter();
   const pathname = usePathname();
+  const [adminName, setAdminName] = React.useState("Admin");
+
+  React.useEffect(() => {
+    setAdminName(getStoredAdminSession()?.username ?? "Admin");
+  }, []);
+
+  const handleLogout = () => {
+    clearAdminSession();
+    router.push("/dashboard");
+  };
 
   return (
     <aside className="w-[80px] lg:w-[260px] flex-shrink-0 bg-[var(--bg-secondary)] border-r border-[var(--border-default)] flex flex-col z-50 transition-all duration-300">
@@ -149,23 +161,31 @@ export function Sidebar() {
       </nav>
 
       {/* ── User Profile Bottom ── */}
-      <div className="p-4 border-t border-[var(--border-default)] bg-[rgba(0,0,0,0.1)] flex justify-center lg:justify-start">
-        <div className="flex items-center gap-3">
-          <div className="relative">
+      <div className="p-4 border-t border-[var(--border-default)] bg-[rgba(0,0,0,0.1)] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative flex-shrink-0">
             <div className="w-9 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center">
               <Shield size={16} className="text-[var(--text-secondary)]" />
             </div>
             <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[var(--status-live)] rounded-full border-2 border-[var(--bg-secondary)]" />
           </div>
-          <div className="flex-col hidden lg:flex">
-            <span className="text-sm font-semibold text-[var(--text-primary)] leading-tight">
-              Tournament Director
+          <div className="flex-col hidden lg:flex min-w-0">
+            <span className="text-sm font-semibold text-[var(--text-primary)] leading-tight truncate">
+              {adminName}
             </span>
             <span className="text-[10px] text-[var(--text-muted)] font-medium mt-0.5">
-              IKF Official Platform
+              IKF Admin Platform
             </span>
           </div>
         </div>
+        <button
+          onClick={handleLogout}
+          className="w-9 h-9 rounded-full border border-[var(--border-default)] bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)] hover:text-white hover:border-[rgba(200,16,46,0.45)] hover:bg-[rgba(200,16,46,0.12)] transition-all flex-shrink-0"
+          title="Logout"
+          aria-label="Logout"
+        >
+          <LogOut size={15} />
+        </button>
       </div>
     </aside>
   );
