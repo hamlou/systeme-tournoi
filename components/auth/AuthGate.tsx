@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { LockKeyhole, ShieldCheck, Trophy, Sparkles, Eye, EyeOff } from "lucide-react";
+import { LockKeyhole, ShieldCheck, Trophy, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 
 const ADMIN_USERS = Array.from({ length: 7 }, (_, index) => {
@@ -44,7 +44,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [showPassword, setShowPassword] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
@@ -104,10 +103,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <div className="mb-9 text-center"><div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl border border-[rgba(200,16,46,0.35)] bg-[rgba(200,16,46,0.1)] shadow-[0_0_60px_rgba(200,16,46,0.22)]"><LockKeyhole className="text-[var(--ikf-red)]" size={34} /></div><p className="text-xs font-black uppercase tracking-[0.38em] text-[var(--ikf-gold)]">Admin Login</p><h2 className="mt-3 font-display text-5xl tracking-wide text-white">Welcome Back</h2><p className="mt-3 text-sm text-[var(--text-secondary)]">Only the seven approved admin accounts can access the platform.</p></div>
               <div className="space-y-5">
                 <label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Login</span><input value={username} onChange={(event) => setUsername(event.target.value)} className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 text-base font-semibold text-white outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]" placeholder="admin1" autoComplete="username" required /></label>
-                <label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Password</span><div className="relative"><input value={password} onChange={(event) => setPassword(event.target.value)} type={showPassword ? "text" : "password"} className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 pr-14 text-base font-semibold text-white outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]" placeholder="admin1password" autoComplete="current-password" required /><button type="button" onClick={() => setShowPassword((current) => !current)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] transition-colors hover:text-white" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button></div></label>
+                <label className="block"><span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Password</span><div className="relative"><input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 text-base font-semibold text-white outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]" placeholder="Enter your password" autoComplete="current-password" required /></div></label>
               </div>
               <button type="submit" disabled={isSubmitting} className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[var(--ikf-red)] to-[#e0344f] font-black uppercase tracking-[0.2em] text-white shadow-[0_20px_45px_rgba(200,16,46,0.28)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(200,16,46,0.38)] disabled:cursor-not-allowed disabled:opacity-70">{isSubmitting ? "Checking..." : "Enter Command Center"}<ShieldCheck size={19} /></button>
-              <div className="mt-7 rounded-2xl border border-[rgba(212,160,23,0.16)] bg-[rgba(212,160,23,0.06)] p-4 text-center text-xs font-semibold text-[var(--text-secondary)]">Available accounts: admin1 through admin7, each using admin[number]password.</div>
             </div>
           </motion.form>
         </div>
