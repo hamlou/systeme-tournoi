@@ -101,7 +101,6 @@ export interface Match {
   loserNextMatchId?: string;
   loserNextMatchSlot?: 'RED' | 'BLUE';
   // Grouping for the various formats.
-  bracketId?: string;
   bracketType?: 'winners' | 'losers' | 'grand-final';
   poolId?: string;
   teamMatchupId?: string;
