@@ -24,12 +24,13 @@ export default function RoundManagementPage() {
     roundTimer, setRoundTimer,
     timerMode, setTimerMode,
     roundEvents, addRoundEvent,
-    settings
+    settings, updateMatch
   } = useTournamentStore();
 
   const [woskTimeLeft, setWoskTimeLeft] = useState(10);
   const [woskCorner, setWoskCorner] = useState<"RED" | "BLUE" | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(60);
+  const [resumeMode, setResumeMode] = useState<"round" | "rest" | null>(null);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -41,92 +42,126 @@ export default function RoundManagementPage() {
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
 
-    if (timerMode === "round") {
-      timerRef.current = setInterval(() => {
-        if (roundTimer > 0) {
-          setRoundTimer(roundTimer - 1);
-        } else {
-          endRound();
-        }
-      }, 1000);
-    } else if (timerMode === "rest") {
-      timerRef.current = setInterval(() => {
-        if (restTimeLeft > 0) {
-          setRestTimeLeft(prev => prev - 1);
-        } else {
-          startNextRound();
-        }
-      }, 1000);
-    } else if (timerMode === "passivity") {
-      timerRef.current = setInterval(() => {
-        if (woskTimeLeft > 0) {
-          setWoskTimeLeft(prev => prev - 1);
-        } else {
-          setTimerMode("idle");
-          addRoundEvent({ type: "deduction", corner: woskCorner || "RED", details: "WOSK Penalty Applied (Timeout)" });
-        }
-      }, 1000);
-    }
+    timerRef.current = setInterval(() => {
+      if (timerMode === "round") {
+        setRoundTimer(Math.max(0, roundTimer - 1));
+      }
+      if (timerMode === "rest") {
+        setRestTimeLeft(prev => Math.max(0, prev - 1));
+      }
+      if (timerMode === "passivity") {
+        setWoskTimeLeft(prev => Math.max(0, prev - 1));
+      }
+    }, 1000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [timerMode, roundTimer, restTimeLeft, woskTimeLeft]);
+  }, [timerMode, roundTimer, setRoundTimer]);
+
+  useEffect(() => {
+    if (timerMode === "round" && roundTimer === 0) endRound();
+  }, [timerMode, roundTimer]);
+
+  useEffect(() => {
+    if (timerMode === "rest" && restTimeLeft === 0) startNextRound();
+  }, [timerMode, restTimeLeft]);
+
+  useEffect(() => {
+    if (timerMode === "passivity" && woskTimeLeft === 0) {
+      setTimerMode(resumeMode ?? "round");
+      addRoundEvent({ type: "deduction", corner: woskCorner || "RED", details: `Match #${activeMatch?.matchNumber ?? ""} — WOSK penalty applied after timeout` });
+      setResumeMode(null);
+    }
+  }, [timerMode, woskTimeLeft, resumeMode, woskCorner, activeMatch?.matchNumber]);
 
 
   const handleSelectMatch = (m: Match) => {
-    setActiveMatch(m);
+    if (timerMode === "round" || timerMode === "rest" || timerMode === "passivity") {
+      toast.error("Pause or stop the current match before switching matches.");
+      return;
+    }
+    const selected = { ...m, status: m.status === "scheduled" ? "in-progress" : m.status } as Match;
+    if (m.status === "scheduled") updateMatch(m.id, { status: "in-progress" });
+    setActiveMatch(selected);
     setTimerMode("idle");
+    setRestTimeLeft(60);
+    setWoskTimeLeft(10);
+    setResumeMode(null);
   };
 
   const maxTime = activeMatch ? (settings.roundDurations[activeMatch.ageGroup] ?? 180) : 180;
   const maxRounds = activeMatch?.totalRounds ?? 3;
 
   const startTimer = () => {
+    if (!activeMatch) return;
+    if (roundTimer <= 0) setRoundTimer(maxTime);
+    if (activeMatch.status === "scheduled") updateMatch(activeMatch.id, { status: "in-progress" });
     setTimerMode("round");
-    addRoundEvent({ type: "round-start", details: `Round ${currentRound} started` });
+    addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Round ${currentRound} started` });
   };
 
   const pauseTimer = () => {
+    if (!activeMatch) return;
+    setResumeMode(timerMode === "rest" ? "rest" : timerMode === "round" ? "round" : resumeMode);
     setTimerMode("idle");
-    addRoundEvent({ type: "wosk-stop", details: `Timer paused` });
+    addRoundEvent({ type: "wosk-stop", details: `Match #${activeMatch.matchNumber} — Timer paused` });
   };
 
   const triggerWosk = (corner: "RED" | "BLUE") => {
+    if (!activeMatch) return;
+    setResumeMode(timerMode === "rest" ? "rest" : "round");
     setTimerMode("passivity");
     setWoskTimeLeft(10);
     setWoskCorner(corner);
-    addRoundEvent({ type: "yellow-card", corner, details: `WOSK passivity warning` });
+    addRoundEvent({ type: "yellow-card", corner, details: `Match #${activeMatch.matchNumber} — WOSK passivity warning` });
   };
 
   const triggerMedical = () => {
+    if (!activeMatch) return;
+    setResumeMode(timerMode === "rest" ? "rest" : "round");
     setTimerMode("medical");
-    addRoundEvent({ type: "doctor", details: `Doctor requested to Mat` });
+    addRoundEvent({ type: "doctor", details: `Match #${activeMatch.matchNumber} — Doctor requested to Mat` });
   };
 
   const endRound = () => {
+    if (!activeMatch || timerMode === "rest") return;
     setTimerMode("idle");
-    addRoundEvent({ type: "round-end", details: `Round ${currentRound} ended` });
+    addRoundEvent({ type: "round-end", details: `Match #${activeMatch.matchNumber} — Round ${currentRound} ended` });
     
     if (currentRound < maxRounds) {
       setTimerMode("rest");
       setRestTimeLeft(60);
+      setResumeMode("rest");
     } else {
       toast("Match Complete. Awaiting Judge Validation.", { icon: "🏁", duration: 5000 });
-      addRoundEvent({ type: "match-end", details: "All rounds completed. Awaiting chief referee validation." });
+      addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} — All rounds completed. Awaiting chief referee validation.` });
+      setResumeMode(null);
     }
   };
 
   const startNextRound = () => {
-    setCurrentRound(currentRound + 1);
+    if (!activeMatch) return;
+    const nextRound = Math.min(currentRound + 1, maxRounds);
+    setCurrentRound(nextRound);
     setRoundTimer(maxTime);
     setTimerMode("round");
-    addRoundEvent({ type: "round-start", details: `Round ${currentRound + 1} started` });
+    setResumeMode(null);
+    addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Round ${nextRound} started` });
   };
 
   const stopMatch = () => {
+    if (activeMatch) addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} — Match stopped by table official` });
     setTimerMode("idle");
+    setResumeMode(null);
     setActiveMatch(null);
+  };
+
+  const resumeTimer = () => {
+    if (!activeMatch) return;
+    setTimerMode(resumeMode ?? "round");
+    addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Timer resumed` });
+    setResumeMode(null);
   };
 
   // Status mapping
@@ -308,18 +343,18 @@ export default function RoundManagementPage() {
               {/* Row 1 - Primary Controls */}
               <div className="flex gap-4">
                 <button 
-                  onClick={startTimer}
-                  disabled={displayStatus === t('status_running', settings.language)}
+                  onClick={timerMode === "medical" || (timerMode === "idle" && resumeMode) ? resumeTimer : startTimer}
+                  disabled={displayStatus === t('status_running', settings.language) || timerMode === "rest" || currentRound > maxRounds}
                   className={`flex-1 h-20 rounded-xl font-display text-3xl tracking-wider flex items-center justify-center gap-4 transition-all ${
                     displayStatus === t('status_running', settings.language) ? 'bg-[var(--bg-card)] text-[var(--text-muted)] border-2 border-[var(--border-default)] cursor-not-allowed' : 
                     'bg-[var(--ikf-gold)] text-black hover:bg-[#b58814] hover:shadow-[0_0_20px_rgba(212,160,23,0.4)]'
                   }`}
                 >
-                  <Play size={32} fill="currentColor" /> {t('start', settings.language)}
+                  <Play size={32} fill="currentColor" /> {timerMode === "medical" || resumeMode ? "RESUME" : t('start', settings.language)}
                 </button>
                 <button 
                   onClick={pauseTimer}
-                  disabled={displayStatus !== t('status_running', settings.language) && displayStatus !== t('status_wosk', settings.language) && displayStatus !== t('status_rest', settings.language)}
+                  disabled={displayStatus !== t('status_running', settings.language) && displayStatus !== t('status_wosk', settings.language) && displayStatus !== t('status_rest', settings.language) && displayStatus !== t('status_medical', settings.language)}
                   className="flex-1 h-20 bg-[var(--bg-card)] border-2 border-[var(--border-default)] hover:border-white rounded-xl font-display text-3xl tracking-wider text-white flex items-center justify-center gap-4 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Pause size={32} fill="currentColor" /> {t('pause', settings.language)}
@@ -357,7 +392,7 @@ export default function RoundManagementPage() {
                 </button>
                 <button 
                   onClick={endRound}
-                  disabled={displayStatus === t('status_rest', settings.language)}
+                  disabled={displayStatus === t('status_rest', settings.language) || displayStatus === t('status_medical', settings.language) || !activeMatch}
                   className="flex-1 h-16 bg-[rgba(212,160,23,0.1)] border-2 border-[var(--ikf-gold)] hover:bg-[var(--ikf-gold)] hover:text-black rounded-xl font-bold text-sm tracking-widest text-[var(--ikf-gold)] flex items-center justify-center gap-2 transition-all disabled:opacity-30"
                 >
                   <FastForward size={16} /> {t('end_round', settings.language)}
