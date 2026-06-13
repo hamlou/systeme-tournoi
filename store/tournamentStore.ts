@@ -456,34 +456,148 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     const state = get();
     const currentMatch = state.matches.find(m => m.id === matchId);
     if (!currentMatch) return;
-
-    // Find the bracket containing this match
     const bracket = state.brackets.find(b => b.matchIds.includes(matchId));
+
+    // Determine the loser (for double elimination drop-down).
+    const loserId = currentMatch.redCornerId === winnerId ? currentMatch.blueCornerId : currentMatch.redCornerId;
+    const loserName = currentMatch.redCornerId === winnerId ? currentMatch.blueCornerName : currentMatch.redCornerName;
+
+    if (currentMatch.nextMatchId || currentMatch.loserNextMatchId) {
+      // Explicit wiring (new multi-format brackets).
+      set(s => ({
+        matches: s.matches.map(m => {
+          if (m.id === currentMatch.nextMatchId) {
+            return currentMatch.nextMatchSlot === 'RED'
+              ? { ...m, redCornerId: winnerId, redCornerName: winnerName }
+              : { ...m, blueCornerId: winnerId, blueCornerName: winnerName };
+          }
+          if (m.id === currentMatch.loserNextMatchId && loserId) {
+            return currentMatch.loserNextMatchSlot === 'RED'
+              ? { ...m, redCornerId: loserId, redCornerName: loserName }
+              : { ...m, blueCornerId: loserId, blueCornerName: loserName };
+          }
+          return m;
+        }),
+      }));
+    } else if (bracket) {
+      // Legacy positional advancement (seed data / older brackets).
+      const currentIndex = bracket.matchIds.indexOf(matchId);
+      const nextMatchIndex = Math.floor(currentIndex / 2) + Math.floor(bracket.matchIds.length / 2);
+      const nextMatchId = bracket.matchIds[nextMatchIndex];
+      if (nextMatchId && nextMatchId !== matchId) {
+        const isEvenSlot = currentIndex % 2 === 0;
+        set(s => ({
+          matches: s.matches.map(m => m.id === nextMatchId
+            ? { ...m, ...(isEvenSlot ? { redCornerId: winnerId, redCornerName: winnerName } : { blueCornerId: winnerId, blueCornerName: winnerName }) }
+            : m),
+        }));
+      }
+    }
+
+    // Format-specific follow-ups.
+    if (bracket) {
+      if (bracket.format === 'round-robin') get().updateRoundRobinStandings(bracket.id);
+      if (bracket.format === 'pool-elimination') get().advancePoolWinners(bracket.id);
+      if (bracket.format === 'team' && currentMatch.teamMatchupId) get().updateTeamScore(currentMatch.teamMatchupId);
+    }
+  },
+
+  updateRoundRobinStandings: (bracketId) => {
+    const state = get();
+    const bracket = state.brackets.find(b => b.id === bracketId);
     if (!bracket) return;
-
-    // Find the next unscheduled match in the same bracket
-    const currentIndex = bracket.matchIds.indexOf(matchId);
-    const nextMatchIndex = Math.floor(currentIndex / 2) + Math.floor(bracket.matchIds.length / 2);
-    const nextMatchId = bracket.matchIds[nextMatchIndex];
-    if (!nextMatchId || nextMatchId === matchId) return;
-
-    const nextMatch = state.matches.find(m => m.id === nextMatchId);
-    if (!nextMatch || nextMatch.status === 'completed') return;
-
-    // Place winner in the next match
-    const isEvenSlot = currentIndex % 2 === 0;
+    const bracketMatches = state.matches.filter(m => bracket.matchIds.includes(m.id));
+    const athleteIds = new Set<string>();
+    bracketMatches.forEach(m => { athleteIds.add(m.redCornerId); athleteIds.add(m.blueCornerId); });
+    const athletes = state.athletes.filter(a => athleteIds.has(a.id));
+    const standings = computeStandings(athletes, bracketMatches, bracket.pointsForWin ?? 3, bracket.pointsForDraw ?? 1);
+    const complete = bracketMatches.every(m => m.status === 'completed');
     set(s => ({
-      matches: s.matches.map(m =>
-        m.id === nextMatchId
-          ? {
-              ...m,
-              ...(isEvenSlot
-                ? { redCornerId: winnerId, redCornerName: winnerName }
-                : { blueCornerId: winnerId, blueCornerName: winnerName }
-              )
-            }
-          : m
-      )
+      brackets: s.brackets.map(b => b.id === bracketId
+        ? { ...b, standings, status: complete ? 'complete' : 'in-progress' }
+        : b),
+    }));
+  },
+
+  advancePoolWinners: (bracketId) => {
+    const state = get();
+    const bracket = state.brackets.find(b => b.id === bracketId);
+    if (!bracket || !bracket.pools) return;
+
+    // Recompute each pool's standings + completion.
+    const updatedPools: Pool[] = bracket.pools.map(pool => {
+      const poolMatches = state.matches.filter(m => pool.matchIds.includes(m.id));
+      const poolAthletes = state.athletes.filter(a => pool.athleteIds.includes(a.id));
+      const standings = computeStandings(poolAthletes, poolMatches, 3, 1);
+      const complete = poolMatches.length > 0 && poolMatches.every(m => m.status === 'completed');
+      return { ...pool, standings, complete };
+    });
+
+    const allPoolsComplete = updatedPools.every(p => p.complete);
+    let eliminationMatches = bracket.eliminationMatches ?? [];
+    let newMatches: Match[] = [];
+    let eliminationUnlocked = bracket.eliminationUnlocked ?? false;
+
+    if (allPoolsComplete && !eliminationUnlocked) {
+      // Top 2 from each pool advance.
+      const qualifiers: Athlete[] = [];
+      updatedPools.forEach(pool => {
+        pool.standings.slice(0, 2).forEach(st => {
+          const ath = state.athletes.find(a => a.id === st.athleteId);
+          if (ath) qualifiers.push(ath);
+        });
+      });
+      if (qualifiers.length >= 2) {
+        const ageGroup = (qualifiers[0]?.ageGroup ?? 'Senior') as AgeGroup;
+        const roundDuration = state.settings.roundDurations[ageGroup] ?? 180;
+        const res = buildSingleElimination(qualifiers, {
+          category: `${bracket.category} — Finals`, ageGroup,
+          weightCategory: bracket.weightCategory ?? '', roundDuration,
+          startMatchNumber: state.matches.length + 1, startTime: Date.now(), bracketId: bracket.id,
+        });
+        newMatches = res.matches;
+        eliminationMatches = newMatches.map(m => m.id);
+        eliminationUnlocked = true;
+        toast.success('Pool stage complete — elimination bracket unlocked');
+      }
+    }
+
+    set(s => ({
+      matches: [...s.matches, ...newMatches],
+      brackets: s.brackets.map(b => b.id === bracketId
+        ? {
+            ...b, pools: updatedPools, eliminationMatches, eliminationUnlocked,
+            matchIds: [...b.matchIds, ...newMatches.map(m => m.id)],
+            matches: [...(b.matches ?? b.matchIds), ...newMatches.map(m => m.id)],
+          }
+        : b),
+    }));
+  },
+
+  updateTeamScore: (teamMatchupId) => {
+    const state = get();
+    const bracket = state.brackets.find(b => b.teamMatchups?.some(tm => tm.id === teamMatchupId));
+    if (!bracket || !bracket.teamMatchups) return;
+    const updated = bracket.teamMatchups.map(tm => {
+      if (tm.id !== teamMatchupId) return tm;
+      const fights = state.matches.filter(m => tm.individualMatchIds.includes(m.id));
+      let redWins = 0, blueWins = 0;
+      fights.forEach(f => {
+        if (f.status === 'completed' && f.result) {
+          if (f.result.winnerId === f.redCornerId) redWins++;
+          else if (f.result.winnerId === f.blueCornerId) blueWins++;
+        }
+      });
+      const allDone = fights.length > 0 && fights.every(f => f.status === 'completed');
+      const winnerId = redWins > blueWins ? tm.redClubId : blueWins > redWins ? tm.blueClubId : undefined;
+      return {
+        ...tm, redWins, blueWins,
+        status: allDone ? 'complete' as const : (redWins + blueWins > 0 ? 'in-progress' as const : 'scheduled' as const),
+        winnerId: allDone ? winnerId : undefined,
+      };
+    });
+    set(s => ({
+      brackets: s.brackets.map(b => b.id === bracket.id ? { ...b, teamMatchups: updated } : b),
     }));
   },
 
