@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, LabelList,
@@ -9,8 +10,8 @@ import {
   PolarAngleAxis, PolarRadiusAxis, LineChart, Line,
 } from "recharts";
 import { motion, useInView } from "framer-motion";
-import { Star } from "lucide-react";
-import { PageHeader, IKFCard, SectionDivider } from "@/components/ui";
+import { BarChart3, Bot, FileText, GitBranch, Star } from "lucide-react";
+import { PageHeader, IKFButton, IKFCard, SectionDivider } from "@/components/ui";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { t } from "@/lib/i18n";
 
@@ -115,7 +116,8 @@ function MedalDots({ gold, silver, bronze }: { gold: number; silver: number; bro
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function StatisticsPage() {
-  const { matches, athletes, referees, settings } = useTournamentStore();
+  const router = useRouter();
+  const { matches, athletes, referees, settings, roundEvents } = useTournamentStore();
 
   const completedMatches = matches.filter(m => m.status === "completed");
 
@@ -151,54 +153,67 @@ export default function StatisticsPage() {
   }, [matches]);
 
   const COUNTRIES = useMemo(() => {
-    const stats: Record<string, { gold: number, silver: number, bronze: number, wins: number, total: number }> = {};
+    const stats: Record<string, { gold: number, silver: number, bronze: number, wins: number, bouts: number }> = {};
     athletes.forEach(a => {
-      if (!stats[a.country]) stats[a.country] = { gold: 0, silver: 0, bronze: 0, wins: 0, total: 0 };
+      if (!stats[a.country]) stats[a.country] = { gold: 0, silver: 0, bronze: 0, wins: 0, bouts: 0 };
     });
-    
-    // Simplistic win count calculation for demo
+
     completedMatches.forEach(m => {
-      if (m.result?.winnerId) {
-        const winner = athletes.find(a => a.id === m.result?.winnerId);
-        if (winner) {
-          stats[winner.country].wins++;
-          stats[winner.country].total++;
-        }
+      const red = athletes.find(a => a.id === m.redCornerId);
+      const blue = athletes.find(a => a.id === m.blueCornerId);
+      const winner = athletes.find(a => a.id === m.result?.winnerId);
+      const loser = m.result?.winnerCorner === "RED" ? blue : red;
+
+      if (red) stats[red.country].bouts++;
+      if (blue) stats[blue.country].bouts++;
+      if (winner) {
+        stats[winner.country].wins++;
+        stats[winner.country].gold++;
       }
+      if (loser) stats[loser.country].silver++;
     });
 
     return Object.entries(stats)
       .map(([country, s]) => ({
         country,
-        gold: Math.floor(s.wins / 3), // mock medals based on wins
-        silver: Math.floor(s.wins / 4),
-        bronze: Math.floor(s.wins / 5),
+        gold: s.gold,
+        silver: s.silver,
+        bronze: Math.max(0, s.bouts - s.wins - s.silver),
         wins: s.wins,
-        rate: s.total > 0 ? Math.round((s.wins / s.total) * 100) : 0,
+        rate: s.bouts > 0 ? Math.round((s.wins / s.bouts) * 100) : 0,
       }))
-      .filter(c => c.wins > 0)
-      .sort((a, b) => b.gold - a.gold || b.wins - a.wins)
+      .filter(c => c.wins > 0 || c.silver > 0 || c.bronze > 0)
+      .sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.wins - a.wins)
       .map((c, i) => ({ ...c, rank: i + 1 }))
       .slice(0, 8);
   }, [athletes, completedMatches]);
 
   const GOLD_BARS = COUNTRIES.slice(0, 6).map(c => ({ country: c.country.split(" ")[0], gold: c.gold }));
 
-  const TIMELINE = [
-    { time: "08:00", matches: 0 }, { time: "09:00", matches: 6 },
-    { time: "10:00", matches: 18 }, { time: "11:00", matches: 24 },
-    { time: "12:00", matches: 10 }, { time: "13:00", matches: 5 },
-    { time: "14:00", matches: completedMatches.length },
-  ];
+  const TIMELINE = useMemo(() => {
+    const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+    return hours.map((time) => {
+      const hour = Number(time.split(":")[0]);
+      const count = completedMatches.filter((match) => new Date(match.result?.validatedAt ?? match.scheduledTime).getHours() === hour).length;
+      return { time, matches: count };
+    });
+  }, [completedMatches]);
 
-  const REFEREES_DATA = referees.map(r => ({
-    name: r.name,
-    matches: matches.filter(m => m.assignedJudgeIds?.includes(r.id) || m.assignedRefereeId === r.id).length,
-    yellow: Math.floor(Math.random() * 10),
-    red: Math.floor(Math.random() * 2),
-    protests: "0 sustained / 0 rejected",
-    rating: r.grade === "A" ? 5 : r.grade === "B" ? 4 : 3,
-  })).sort((a,b) => b.matches - a.matches).slice(0, 5);
+  const REFEREES_DATA = referees.map(r => {
+    const assignedMatches = matches.filter(m => m.assignedJudgeIds?.includes(r.id) || m.assignedRefereeId === r.id);
+    const refereeEvents = roundEvents.filter(e => assignedMatches.some(m => e.details?.toLowerCase().includes(`match #${m.matchNumber}`)));
+    const yellow = refereeEvents.filter(e => e.type === "yellow-card").length;
+    const red = refereeEvents.filter(e => e.type === "red-card").length;
+    const rating = r.grade.includes("S") ? 5 : r.grade.includes("A") ? 5 : r.grade.includes("B") ? 4 : 3;
+    return {
+      name: r.name,
+      matches: assignedMatches.length,
+      yellow,
+      red,
+      protests: "0 sustained / 0 rejected",
+      rating,
+    };
+  }).sort((a,b) => b.matches - a.matches || b.rating - a.rating).slice(0, 5);
 
   const SPARKLINES = {
     athletes:     [180, 195, 210, 220, 230, 240, athletes.length],
@@ -215,6 +230,14 @@ export default function StatisticsPage() {
         category={t('analytics', settings.language)}
         title={t('tournament_statistics', settings.language)}
         subtitle={t('complete_performance_data', settings.language)}
+        categoryIcon={<BarChart3 size={16} />}
+        actions={
+          <>
+            <IKFButton variant="ghost" leftIcon={<GitBranch size={16} />} onClick={() => router.push('/brackets')}>Brackets</IKFButton>
+            <IKFButton variant="secondary" leftIcon={<FileText size={16} />} onClick={() => router.push('/reports')}>Reports</IKFButton>
+            <IKFButton variant="gold" leftIcon={<Bot size={16} />} onClick={() => router.push('/ai')}>AI Insights</IKFButton>
+          </>
+        }
       />
 
       {/* ── HERO STATS ────────────────────────────────────────────────────── */}
@@ -409,7 +432,7 @@ export default function StatisticsPage() {
             <RadarChart data={CATEGORY_BARS.map(c => ({ category: c.cat, value: c.matches }))} cx="50%" cy="50%" outerRadius={160}>
               <PolarGrid stroke={MUTED} />
               <PolarAngleAxis dataKey="category" tick={{ fill: TEXT, fontSize: 12, fontWeight: 600 }} />
-              <PolarRadiusAxis angle={90} domain={[0, Math.max(...CATEGORY_BARS.map(c => c.matches))]} tick={{ fill: TEXT, fontSize: 10 }} axisLine={false} />
+              <PolarRadiusAxis angle={90} domain={[0, Math.max(1, ...CATEGORY_BARS.map(c => c.matches))]} tick={{ fill: TEXT, fontSize: 10 }} axisLine={false} />
               <Radar
                 name="Matches" dataKey="value"
                 stroke={RED} fill={RED} fillOpacity={0.18}
