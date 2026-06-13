@@ -8,11 +8,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { differenceInYears } from "date-fns";
 import toast from "react-hot-toast";
-import { AlertTriangle, UploadCloud } from "lucide-react";
+import { AlertTriangle, UploadCloud, Loader2 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, AgeGroup } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
+import { COUNTRIES } from "@/lib/countries";
+import { uploadImageToImgBB } from "@/lib/imgbb";
 
 const registerSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -29,21 +31,17 @@ const registerSchema = z.object({
 
 type FormValues = z.infer<typeof registerSchema>;
 
-const COUNTRIES = ["Tunisia 🇹🇳","Algeria 🇩🇿","France 🇫🇷","Morocco 🇲🇦","Egypt 🇪🇬","Brazil 🇧🇷","USA 🇺🇸","Senegal 🇸🇳","Italy 🇮🇹","Spain 🇪🇸","Germany 🇩🇪","UK 🇬🇧","Russia 🇷🇺","China 🇨🇳","Japan 🇯🇵","Mexico 🇲🇽"];
 const WEIGHT_CATEGORIES = ["-40kg","-45kg","-50kg","-55kg","-60kg","-65kg","-70kg","-75kg","-80kg","-85kg","-90kg","+90kg"];
 
+// Official competition age categories:
+// Mini: 6-11 years, Cadet: 12-14 years, Junior: 15-17 years, Senior: 18+ years
 function calculateAgeGroup(dobString: string): AgeGroup {
-  if (!dobString) return "Senior A";
+  if (!dobString) return "Senior";
   const age = differenceInYears(new Date(), new Date(dobString));
-  if (age < 8) return "U8";
-  if (age < 10) return "U10";
-  if (age < 12) return "U12";
-  if (age < 14) return "U14";
-  if (age < 16) return "U16";
-  if (age < 18) return "U18";
-  if (age < 25) return "Senior A";
-  if (age < 35) return "Senior B";
-  return "Senior C";
+  if (age < 12) return "Mini";
+  if (age < 15) return "Cadet";
+  if (age < 18) return "Junior";
+  return "Senior";
 }
 
 export default function RegisterAthletePage() {
@@ -56,6 +54,24 @@ export default function RegisterAthletePage() {
 
   const licenseNumber = React.useMemo(() =>
     editingAthlete?.licenseNumber ?? `IKF-26-${Math.floor(1000 + Math.random() * 9000)}`, [editingAthlete]);
+
+  const [photoUrl, setPhotoUrl] = React.useState(editingAthlete?.photoUrl ?? "");
+  const [isUploading, setIsUploading] = React.useState(false);
+
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const url = await uploadImageToImgBB(file);
+      setPhotoUrl(url);
+      toast.success("Photo uploaded successfully");
+    } catch (error) {
+      toast.error("Photo upload failed. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(registerSchema),
@@ -96,6 +112,7 @@ export default function RegisterAthletePage() {
         ...data,
         ageGroup: data.ageGroup as AgeGroup,
         clubName: selectedClub?.name ?? data.clubId,
+        photoUrl,
       });
       toast.success(`${data.fullName} updated successfully`);
     } else {
@@ -104,6 +121,7 @@ export default function RegisterAthletePage() {
         ...data,
         ageGroup: data.ageGroup as AgeGroup,
         clubName: selectedClub?.name ?? data.clubId,
+        photoUrl,
         weighInStatus: "Pending",
         registrationStatus: "Active",
       };
@@ -170,6 +188,22 @@ export default function RegisterAthletePage() {
               {errors.country && <p className="text-xs text-[var(--ikf-red)] mt-1">{errors.country.message}</p>}
             </div>
             <IKFInput label="National ID / Passport *" placeholder="e.g. TN12345678" error={errors.nationalId?.message} {...register("nationalId")} />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Athlete Photo</label>
+            <label className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-8 flex flex-col items-center justify-center text-center group cursor-pointer hover:border-[var(--ikf-gold)] transition-colors">
+              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploading} />
+              {photoUrl ? (
+                <img src={photoUrl} alt="Athlete" className="h-24 w-24 object-cover rounded-full mb-3" />
+              ) : (
+                <div className="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.05)] flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-[rgba(212,160,23,0.1)] transition-all">
+                  {isUploading ? <Loader2 size={24} className="text-[var(--ikf-gold)] animate-spin" /> : <UploadCloud size={24} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)]" />}
+                </div>
+              )}
+              <p className="text-sm font-medium text-[var(--text-secondary)]">{isUploading ? "Uploading..." : photoUrl ? "Click to replace photo" : "Click to upload a photo"}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">Images are hosted on ImgBB. PNG or JPG.</p>
+            </label>
           </div>
         </IKFCard>
 
