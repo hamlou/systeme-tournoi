@@ -142,6 +142,7 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   startDate: '2026-06-10',
   defaultJudgesCount: 3,
   roundDurations: {
+    'Mini': 60, 'Cadet': 90, 'Junior': 120, 'Senior': 180,
     'U8': 60, 'U10': 60, 'U12': 90, 'U14': 90,
     'U16': 120, 'U18': 120,
     'Senior A': 180, 'Senior B': 180, 'Senior C': 180,
