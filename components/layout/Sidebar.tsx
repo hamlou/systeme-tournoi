@@ -65,6 +65,7 @@ export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const [adminName, setAdminName] = React.useState("Admin");
+  const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
 
   React.useEffect(() => {
     setAdminName(getStoredAdminSession()?.username ?? "Admin");
@@ -72,6 +73,7 @@ export function Sidebar() {
 
   const handleLogout = () => {
     clearAdminSession();
+    setShowLogoutConfirm(false);
     router.push("/dashboard");
   };
 
@@ -179,7 +181,7 @@ export function Sidebar() {
           </div>
         </div>
         <button
-          onClick={handleLogout}
+          onClick={() => setShowLogoutConfirm(true)}
           className="w-9 h-9 rounded-full border border-[var(--border-default)] bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-muted)] hover:text-white hover:border-[rgba(200,16,46,0.45)] hover:bg-[rgba(200,16,46,0.12)] transition-all flex-shrink-0"
           title="Logout"
           aria-label="Logout"
@@ -187,6 +189,24 @@ export function Sidebar() {
           <LogOut size={15} />
         </button>
       </div>
+
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--ikf-red)] rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
+            <div className="w-16 h-16 rounded-full bg-[rgba(200,16,46,0.1)] border border-[var(--ikf-red)] flex items-center justify-center mx-auto mb-4">
+              <LogOut size={26} className="text-[var(--ikf-red)]" />
+            </div>
+            <h2 className="font-display text-2xl text-white mb-2">Log Out</h2>
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
+              Are you sure you want to log out?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-[var(--border-default)] text-white font-bold hover:bg-[rgba(255,255,255,0.05)] transition-all">Cancel</button>
+              <button onClick={handleLogout} className="flex-1 h-12 rounded-xl bg-[var(--ikf-red)] text-white font-bold hover:bg-[#a00d25] transition-all">Log Out</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
