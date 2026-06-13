@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
 import type {
@@ -222,7 +223,7 @@ interface TournamentStore {
 
 // ─── Store Implementation ────────────────────────────────────────────────────
 
-export const useTournamentStore = create<TournamentStore>((set, get) => ({
+export const useTournamentStore = create<TournamentStore>()(persist((set, get) => ({
   settings: DEFAULT_SETTINGS,
   updateSettings: (data) => set(s => ({ settings: { ...s.settings, ...data } })),
   notifications: [
@@ -590,6 +591,22 @@ export const useTournamentStore = create<TournamentStore>((set, get) => ({
   updateReportStatus: (reportId, status) => set(s => ({
     reports: s.reports.map(r => r.id === reportId ? { ...r, status } : r)
   })),
+}), {
+  name: 'ikf-tournament-store',
+  storage: createJSONStorage(() => localStorage),
+  // Only persist domain data; keep transient match/round/timer state in memory.
+  partialize: (state) => ({
+    settings: state.settings,
+    athletes: state.athletes,
+    clubs: state.clubs,
+    weighinRecords: state.weighinRecords,
+    matches: state.matches,
+    brackets: state.brackets,
+    referees: state.referees,
+    judgeScores: state.judgeScores,
+    reports: state.reports,
+    notifications: state.notifications,
+  }),
 }));
 
 // ─── Selector helpers ────────────────────────────────────────────────────────
