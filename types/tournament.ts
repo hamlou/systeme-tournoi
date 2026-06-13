@@ -1,6 +1,6 @@
 // ─── IKF Kenshido — Shared Types ─────────────────────────────────────────────
 
-export type AgeGroup = 'U8' | 'U10' | 'U12' | 'U14' | 'U16' | 'U18' | 'Senior A' | 'Senior B' | 'Senior C';
+export type AgeGroup = 'Mini' | 'Cadet' | 'Junior' | 'Senior' | 'U8' | 'U10' | 'U12' | 'U14' | 'U16' | 'U18' | 'Senior A' | 'Senior B' | 'Senior C';
 export type Gender = 'Male' | 'Female';
 export type WeighinStatus = 'Pending' | 'Confirmed' | 'Overweight';
 export type RegistrationStatus = 'Active' | 'Withdrawn' | 'Suspended';
