@@ -95,6 +95,17 @@ export interface Match {
   assignedJudgeIds?: string[];
   roundDurationSeconds: number;
   totalRounds: number;
+  // Feed-forward wiring used by generated brackets.
+  nextMatchId?: string;
+  nextMatchSlot?: 'RED' | 'BLUE';
+  loserNextMatchId?: string;
+  loserNextMatchSlot?: 'RED' | 'BLUE';
+  // Grouping for the various formats.
+  bracketId?: string;
+  bracketType?: 'winners' | 'losers' | 'grand-final';
+  poolId?: string;
+  teamMatchupId?: string;
+  isBye?: boolean;
 }
 
 export type BracketFormat =
