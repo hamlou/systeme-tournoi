@@ -2,15 +2,24 @@
 
 import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Building2, Edit2, User } from "lucide-react";
+import { Search, Building2, Edit2, User, Trash2 } from "lucide-react";
+import toast from "react-hot-toast";
 import { useTournamentStore } from "@/store/tournamentStore";
+import type { Club } from "@/types/tournament";
 import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
 import { t } from "@/lib/i18n";
 
 export default function ClubsPage() {
   const router = useRouter();
-  const { clubs, athletes, settings } = useTournamentStore();
+  const { clubs, athletes, settings, deleteClub } = useTournamentStore();
   const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
+
+  const handleDeleteClub = (club: Club) => {
+    deleteClub(club.id);
+    toast.success(`${club.name} removed from registry`);
+    setDeleteTarget(null);
+  };
 
   const filteredClubs = useMemo(() => {
     return clubs.filter(c => 
@@ -21,6 +30,24 @@ export default function ClubsPage() {
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in">
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--ikf-red)] rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
+            <div className="w-16 h-16 rounded-full bg-[rgba(200,16,46,0.1)] border border-[var(--ikf-red)] flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={28} className="text-[var(--ikf-red)]" />
+            </div>
+            <h2 className="font-display text-2xl text-white mb-2">Delete Club</h2>
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
+              Are you sure you want to remove <span className="text-white font-semibold">{deleteTarget.name}</span> ({deleteTarget.country})? This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="flex-1 h-12 rounded-xl border-2 border-[var(--border-default)] text-white font-bold hover:bg-[rgba(255,255,255,0.05)] transition-all">Cancel</button>
+              <button onClick={() => handleDeleteClub(deleteTarget)} className="flex-1 h-12 rounded-xl bg-[var(--ikf-red)] text-white font-bold hover:bg-[#a00d25] transition-all">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <PageHeader 
         category={t('management', settings.language)}
         title={t('club_registry', settings.language)}
@@ -94,6 +121,9 @@ export default function ClubsPage() {
               <div className="flex gap-2 mb-4">
                 <IKFButton variant="ghost" size="sm" leftIcon={<Edit2 size={14} />} onClick={(event) => { event.stopPropagation(); router.push(`/clubs/register?edit=${club.id}`); }}>
                   Edit Club
+                </IKFButton>
+                <IKFButton variant="ghost" size="sm" leftIcon={<Trash2 size={14} />} onClick={(event) => { event.stopPropagation(); setDeleteTarget(club); }}>
+                  Delete
                 </IKFButton>
               </div>
 
