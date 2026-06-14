@@ -39,8 +39,18 @@ const TYPE_ICONS: Record<ReportType, React.ReactNode> = {
 };
 
 // ── REPORT PREVIEW DOCUMENT ─────────────────────────────────────────────────
+function normalizeAgeGroup(ageGroup?: string) {
+  if (!ageGroup) return "—";
+  if (["Mini", "Cadet", "Junior", "Senior"].includes(ageGroup)) return ageGroup;
+  if (["Senior A", "Senior B", "Senior C"].includes(ageGroup)) return "Senior";
+  if (["U16", "U18"].includes(ageGroup)) return "Junior";
+  if (["U14"].includes(ageGroup)) return "Cadet";
+  if (["U8", "U10", "U12"].includes(ageGroup)) return "Mini";
+  return ageGroup;
+}
+
 function MatchReportDocument({ report }: { report: Report }) {
-  const { matches, athletes, reports: storeReports, settings } = useTournamentStore();
+  const { matches, athletes, reports: storeReports, settings, referees } = useTournamentStore();
   const storeReport = storeReports.find(r => r.id === report.id || r.matchId === report.matchId);
   const match = storeReport?.matchData ?? matches.find(m => m.id === report.matchId);
 
@@ -51,6 +61,9 @@ function MatchReportDocument({ report }: { report: Report }) {
   const matchEvents = (storeReport?.events ?? []).filter(event => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`));
   const redAthlete = athletes.find(a => a.id === match.redCornerId);
   const blueAthlete = athletes.find(a => a.id === match.blueCornerId);
+  const centralReferee = referees.find(r => r.id === match.assignedRefereeId);
+  const cornerJudges = match.assignedJudgeIds?.map(id => referees.find(r => r.id === id)?.name).filter(Boolean) ?? [];
+  const officialAgeGroup = normalizeAgeGroup(match.ageGroup);
   const generatedAt = report.generatedAt instanceof Date ? report.generatedAt : new Date(report.generatedAt);
   const validatedAt = match.result?.validatedAt ? new Date(match.result.validatedAt) : null;
   
@@ -112,7 +125,7 @@ function MatchReportDocument({ report }: { report: Report }) {
             {[
               [t('full_name', settings.language), match.redCornerName || "TBD", match.blueCornerName || "TBD"],
               [t('club', settings.language), redAthlete?.clubName ?? "—", blueAthlete?.clubName ?? "—"],
-              [t('age_group', settings.language), match.ageGroup, match.ageGroup],
+              [t('age_group', settings.language), officialAgeGroup, officialAgeGroup],
               [t('weight_category', settings.language), match.weightCategory, match.weightCategory],
             ].map(([field, red, blue], i) => (
               <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
@@ -201,13 +214,35 @@ function MatchReportDocument({ report }: { report: Report }) {
         </table>
       </div>
 
+      {/* OFFICIALS */}
+      <div className="mb-6">
+        <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Assigned Officials</div>
+        <table className="w-full border-collapse text-sm">
+          <tbody>
+            <tr className="bg-white">
+              <td className="px-4 py-2 font-semibold text-gray-500 border border-gray-200 text-[11px] uppercase tracking-wider w-1/4">Central Referee</td>
+              <td className="px-4 py-2 border border-gray-200 font-bold">{centralReferee?.name ?? "Unassigned"}</td>
+            </tr>
+            <tr className="bg-gray-50">
+              <td className="px-4 py-2 font-semibold text-gray-500 border border-gray-200 text-[11px] uppercase tracking-wider">Corner Judges</td>
+              <td className="px-4 py-2 border border-gray-200 font-bold">{cornerJudges.length > 0 ? cornerJudges.join(", ") : "Unassigned"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       {/* SIGNATURES */}
       <div className="mt-8 pt-6 border-t border-gray-300">
         <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-5">{t('official_signatures', settings.language)}</div>
         <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-          {[t('central_referee', settings.language), t('chief_judge', settings.language), t('table_official', settings.language), t('medical_officer', settings.language)].map(role => (
+          {[
+            [t('central_referee', settings.language), centralReferee?.name ?? ""],
+            [t('chief_judge', settings.language), ""],
+            [t('table_official', settings.language), ""],
+            [t('medical_officer', settings.language), ""],
+          ].map(([role, name]) => (
             <div key={role}>
-              <div className="border-b border-black h-8 mb-1" />
+              <div className="border-b border-black h-8 mb-1 flex items-end text-xs font-semibold">{name}</div>
               <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{role}</div>
             </div>
           ))}
@@ -236,7 +271,7 @@ export default function ReportsPage() {
         status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? "Official"),
         matchId: m.id,
         matchNumber: m.matchNumber,
-        category: m.category,
+        category: `${normalizeAgeGroup(m.ageGroup)} ${m.weightCategory}`,
         mat: `Mat ${m.matNumber}`
       };
     });
