@@ -95,7 +95,8 @@ export default function RegisterClubPage() {
       return;
     }
 
-    const affiliationNumber = `IKF-${uuidv4().slice(0, 8).toUpperCase()}`;
+    const countryCode = data.country.match(/[A-Z]{2,}/)?.[0]?.slice(0, 2) ?? data.country.slice(0, 2).toUpperCase();
+    const affiliationNumber = `IKF-${countryCode}-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const newClub: Club = {
       id: uuidv4(),
