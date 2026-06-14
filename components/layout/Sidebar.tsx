@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Users,
   Building2,
-  Scale,
   GitBranch,
   Shield,
   Timer,
@@ -36,7 +35,6 @@ const NAV_SECTIONS = [
   {
     label: "COMPETITION",
     items: [
-      { id: "Weigh-in", route: "/weighin", icon: Scale },
       { id: "Draw & Brackets", route: "/brackets", icon: GitBranch },
       { id: "Referee Management", route: "/referees", icon: Shield },
       { id: "Round Management", route: "/rounds", icon: Timer },
