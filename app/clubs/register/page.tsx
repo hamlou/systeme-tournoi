@@ -116,7 +116,7 @@ export default function RegisterClubPage() {
     toast.success(
       <div>
         <p className="font-bold">Club Registered!</p>
-        <p className="text-sm font-mono mt-1">{data.name} — {affiliationNumber}</p>
+        <p className="text-sm font-mono mt-1">{data.name}</p>
       </div>,
       { duration: 5000 }
     );

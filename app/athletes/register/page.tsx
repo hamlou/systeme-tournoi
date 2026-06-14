@@ -32,6 +32,12 @@ const registerSchema = z.object({
 type FormValues = z.infer<typeof registerSchema>;
 
 const WEIGHT_CATEGORIES = ["-40kg","-45kg","-50kg","-55kg","-60kg","-65kg","-70kg","-75kg","-80kg","-85kg","-90kg","+90kg"];
+const AGE_GROUP_LABELS: Record<"Mini" | "Cadet" | "Junior" | "Senior", string> = {
+  Mini: "Mini: 6–11 years",
+  Cadet: "Cadet: 12–14 years",
+  Junior: "Junior: 15–17 years",
+  Senior: "Senior: 18 years and older",
+};
 
 // Official competition age categories:
 // Mini: 6-11 years, Cadet: 12-14 years, Junior: 15-17 years, Senior: 18+ years
@@ -229,8 +235,9 @@ export default function RegisterAthletePage() {
             </div>
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Age Group (Auto-calculated)</label>
-              <input {...register("ageGroup")} readOnly
+              <input value={AGE_GROUP_LABELS[watch("ageGroup") as keyof typeof AGE_GROUP_LABELS] ?? ""} readOnly
                 className="w-full bg-[rgba(212,160,23,0.05)] border border-[rgba(212,160,23,0.3)] rounded-lg px-4 py-3 text-sm text-[var(--ikf-gold)] font-bold outline-none cursor-not-allowed" />
+              <input type="hidden" {...register("ageGroup")} />
             </div>
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">License Type *</label>
