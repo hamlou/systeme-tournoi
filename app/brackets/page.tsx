@@ -4,7 +4,9 @@
 import React, { useState, useMemo } from "react";
 import { Printer, Shuffle, Settings2 } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { Match, Bracket, BracketFormat, BracketOptions } from "@/types/tournament";
+import type { Match, Bracket, BracketFormat, BracketOptions, AgeGroup } from "@/types/tournament";
+import { useMatchNotifications } from "@/hooks/useMatchNotifications";
+import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
 import { SingleEliminationBracket } from "@/components/brackets/SingleEliminationBracket";
 import { DoubleEliminationBracket } from "@/components/brackets/DoubleEliminationBracket";
@@ -23,15 +25,21 @@ const FORMATS: { value: BracketFormat; label: string; desc: string }[] = [
 ];
 
 export default function BracketsPage() {
-  const { brackets, matches, athletes, generateBracket, deleteBracket } = useTournamentStore();
+  const { brackets, matches, athletes, generateBracket, generateFightOrder, deleteBracket } = useTournamentStore();
+  const upcomingMatches = useMatchNotifications();
 
-  const confirmed = useMemo(() => athletes.filter(a => a.weighInStatus === "Confirmed"), [athletes]);
-  const uniqueCategories = useMemo(
-    () => Array.from(new Set(confirmed.map(a => `${a.weightCategory} ${a.ageGroup}`))),
-    [confirmed]
-  );
+  const ageOptions: { value: AgeGroup; label: string }[] = [
+    { value: "Mini", label: "Mini (6-11 years)" },
+    { value: "Cadet", label: "Cadet (12-14 years)" },
+    { value: "Junior", label: "Junior (15-17 years)" },
+    { value: "Senior", label: "Senior (18+ years)" },
+  ];
+  const confirmed = useMemo(() => athletes.filter(a => a.weighInStatus === "Confirmed" && a.registrationStatus === "Active"), [athletes]);
+  const uniqueWeights = useMemo(() => Array.from(new Set(confirmed.map(a => a.weightCategory))).sort(), [confirmed]);
 
-  const [selectedCategory, setSelectedCategory] = useState(uniqueCategories[0] || "");
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup | "">("Senior");
+  const [selectedWeightCategory, setSelectedWeightCategory] = useState(uniqueWeights[0] || "");
+  const selectedCategory = selectedAgeGroup && selectedWeightCategory ? `${selectedAgeGroup} ${selectedWeightCategory}` : "";
   const [selectedFormat, setSelectedFormat] = useState<BracketFormat>("single-elimination");
   const [printMode, setPrintMode] = useState(false);
   const [detailMatch, setDetailMatch] = useState<Match | null>(null);
@@ -55,8 +63,12 @@ export default function BracketsPage() {
     [matches, bracket]
   );
   const categoryAthletes = useMemo(
-    () => confirmed.filter(a => `${a.weightCategory} ${a.ageGroup}` === selectedCategory),
-    [confirmed, selectedCategory]
+    () => confirmed.filter(a => (!selectedAgeGroup || a.ageGroup === selectedAgeGroup) && (!selectedWeightCategory || a.weightCategory === selectedWeightCategory)),
+    [confirmed, selectedAgeGroup, selectedWeightCategory]
+  );
+  const fightOrderMatches = useMemo(
+    () => matches.filter(m => m.round === "Fight Order" && m.ageGroup === selectedAgeGroup && m.weightCategory === selectedWeightCategory).sort((a, b) => a.matchNumber - b.matchNumber),
+    [matches, selectedAgeGroup, selectedWeightCategory]
   );
 
   const buildOptions = (): BracketOptions => ({
@@ -72,6 +84,20 @@ export default function BracketsPage() {
       if (!window.confirm("Minimum 8 athletes recommended for Pool + Elimination format. Continue anyway?")) return;
     }
     generateBracket(selectedCategory, format, categoryAthletes, buildOptions());
+  };
+
+  const handleFightOrder = () => {
+    if (!selectedAgeGroup || !selectedWeightCategory) {
+      toast.error("Select both age and weight category first");
+      return;
+    }
+    if (fightOrderMatches.length > 0 && !window.confirm("This will delete existing matches for this category. Continue?")) return;
+    generateFightOrder(selectedAgeGroup, selectedWeightCategory);
+  };
+
+  const clearFilters = () => {
+    setSelectedAgeGroup("");
+    setSelectedWeightCategory("");
   };
 
   const handleGenerate = () => {
@@ -132,6 +158,7 @@ export default function BracketsPage() {
 
   return (
     <div className={`p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20 ${printMode ? "print-mode" : ""}`}>
+      <UpcomingMatchAlert matches={upcomingMatches} />
       {detailMatch && <MatchDetailModal match={detailMatch} onClose={() => setDetailMatch(null)} />}
 
       {pendingRegen && (
@@ -155,6 +182,7 @@ export default function BracketsPage() {
           actions={
             <div className="flex gap-3">
               <IKFButton variant="secondary" leftIcon={<Printer size={16} />} disabled={!bracket} onClick={handlePrint}>Print Bracket</IKFButton>
+              <IKFButton variant="secondary" leftIcon={<Shuffle size={16} />} disabled={!selectedCategory} onClick={handleFightOrder}>Generate Fight Order</IKFButton>
               <IKFButton variant="secondary" leftIcon={<Shuffle size={16} />} disabled={!bracket} onClick={handleRandomize}>Randomize Seeds</IKFButton>
               <IKFButton variant="primary" leftIcon={<Settings2 size={16} />} disabled={!selectedCategory} onClick={handleGenerate}>Generate Draw</IKFButton>
             </div>
@@ -166,14 +194,24 @@ export default function BracketsPage() {
       <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-5 rounded-xl space-y-5 shadow-card no-print">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[220px]">
-            <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Category ({categoryAthletes.length} confirmed)</label>
-            <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Age Category</label>
+            <select value={selectedAgeGroup} onChange={e => setSelectedAgeGroup(e.target.value as AgeGroup | "")}
               className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
-              {uniqueCategories.length === 0 && <option value="">No confirmed categories</option>}
-              {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="">All ages</option>
+              {ageOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
           <div className="flex-1 min-w-[220px]">
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Weight Category</label>
+            <select value={selectedWeightCategory} onChange={e => setSelectedWeightCategory(e.target.value)}
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
+              <option value="">All weights</option>
+              {uniqueWeights.map(w => <option key={w} value={w}>{w}</option>)}
+            </select>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">{categoryAthletes.length} confirmed athletes{selectedAgeGroup || selectedWeightCategory ? ` in ${[selectedAgeGroup, selectedWeightCategory].filter(Boolean).join(" ")}` : ""}</p>
+          </div>
+          <div className="flex-1 min-w-[220px]">
+            <div className="flex justify-end mb-2"><button type="button" onClick={clearFilters} className="text-[10px] font-bold uppercase tracking-widest text-[var(--ikf-gold)] hover:text-white">Clear Filters</button></div>
             <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Format</label>
             <select value={selectedFormat} onChange={e => setSelectedFormat(e.target.value as BracketFormat)}
               className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
@@ -248,6 +286,18 @@ export default function BracketsPage() {
         )}
       </IKFCard>
 
+      {fightOrderMatches.length > 0 && (
+        <IKFCard padding="none" className="overflow-hidden bracket-print-area">
+          <div className="p-4 border-b border-[var(--border-default)] font-display text-xl text-white">Fight Order</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-[var(--bg-elevated)] text-[10px] uppercase tracking-widest text-[var(--text-muted)]"><tr><th className="py-3 px-4">Match #</th><th className="py-3 px-4">Red Corner</th><th className="py-3 px-4">Blue Corner</th><th className="py-3 px-4">Mat</th><th className="py-3 px-4">Time</th><th className="py-3 px-4">Status</th></tr></thead>
+              <tbody>{fightOrderMatches.map(m => <tr key={m.id} onClick={() => setDetailMatch(m)} className="border-b border-[rgba(255,255,255,0.04)] cursor-pointer hover:bg-[rgba(200,16,46,0.06)]"><td className="py-3 px-4 font-mono text-[var(--text-muted)]">#{m.matchNumber}</td><td className="py-3 px-4 text-[var(--ikf-red)] font-bold">{m.redCornerName}</td><td className="py-3 px-4 text-[var(--corner-blue)] font-bold">{m.blueCornerName}</td><td className="py-3 px-4 text-[var(--text-muted)]">{m.matNumber}</td><td className="py-3 px-4 text-[var(--text-muted)] font-mono">{m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "TBD"}</td><td className="py-3 px-4"><IKFBadge variant={m.status === "completed" ? "win" : m.status === "in-progress" ? "live" : "pending"} label={m.isBye ? "BYE" : m.status} size="sm" /></td></tr>)}</tbody>
+            </table>
+          </div>
+        </IKFCard>
+      )}
+
       {/* MATCH SCHEDULE */}
       {bracket && (
         <IKFCard padding="none" className="overflow-hidden bracket-print-area">
@@ -270,7 +320,7 @@ export default function BracketsPage() {
                     <td className="py-3 px-4 text-white">{m.redCornerName}</td>
                     <td className="py-3 px-4 text-white">{m.blueCornerName}</td>
                     <td className="py-3 px-4 text-[var(--text-muted)]">{m.matNumber}</td>
-                    <td className="py-3 px-4 text-[var(--text-muted)] font-mono">{new Date(m.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>
+                    <td className="py-3 px-4 text-[var(--text-muted)] font-mono">{m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "TBD"}</td>
                     <td className="py-3 px-4"><IKFBadge variant={m.status === "completed" ? "win" : m.status === "in-progress" ? "live" : "pending"} label={m.status} size="sm" /></td>
                     <td className="py-3 px-4 text-[var(--ikf-gold)]">{m.result ? m.result.winnerName : "—"}</td>
                   </tr>

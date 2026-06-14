@@ -10,6 +10,8 @@ import { PageHeader, IKFCard, IKFButton, SectionDivider, IKFBadge, IKFEmptyState
 import toast from "react-hot-toast";
 import { useLiveAggregateScore } from "@/store/tournamentStore";
 import { t } from "@/lib/i18n";
+import { useMatchNotifications } from "@/hooks/useMatchNotifications";
+import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -26,6 +28,7 @@ export default function RoundManagementPage() {
     roundEvents, addRoundEvent,
     settings, updateMatch
   } = useTournamentStore();
+  const upcomingMatches = useMatchNotifications();
 
   const [woskTimeLeft, setWoskTimeLeft] = useState(10);
   const [woskCorner, setWoskCorner] = useState<"RED" | "BLUE" | null>(null);
@@ -182,6 +185,7 @@ export default function RoundManagementPage() {
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
+      <UpcomingMatchAlert matches={upcomingMatches} />
       <PageHeader 
         category={t('live', settings.language)}
         title={t('round_management', settings.language).toUpperCase()}
@@ -204,7 +208,7 @@ export default function RoundManagementPage() {
               <span className="font-bold text-white text-sm">{t('match_number', settings.language).replace('#', '')} #{m.matchNumber}</span>
               <IKFBadge variant="live" label={`${t('mat', settings.language).toUpperCase()} ${m.matNumber}`} size="sm" />
             </div>
-            <div className="text-xs text-[var(--text-muted)] font-mono mb-2">{m.category} • {new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            <div className="text-xs text-[var(--text-muted)] font-mono mb-2">{m.category} • {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}</div>
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className="text-[var(--ikf-red)] truncate flex-1">{m.redCornerName}</span>
               <span className="text-[var(--text-muted)]">vs</span>

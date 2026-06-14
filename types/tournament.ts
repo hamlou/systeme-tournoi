@@ -38,7 +38,7 @@ export interface Club {
   presidentName: string;
   email: string;
   phone: string;
-  affiliationNumber: string;
+  affiliationNumber?: string;
   expectedAthletes: number;
   status: 'Active' | 'Incomplete' | 'Suspended';
   logoUrl?: string;
@@ -88,7 +88,7 @@ export interface Match {
   redCornerName: string;
   blueCornerName: string;
   matNumber: number;
-  scheduledTime: string;
+  scheduledTime: string | null;
   status: MatchStatus;
   result?: MatchResult;
   assignedRefereeId?: string;

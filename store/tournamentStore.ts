@@ -186,6 +186,7 @@ interface TournamentStore {
   addMatch: (m: Match) => void;
   updateMatch: (id: string, data: Partial<Match>) => void;
   generateBracket: (categoryId: string, format: string, athletes: Athlete[], options?: BracketOptions) => void;
+  generateFightOrder: (ageGroup: AgeGroup, weightCategory: string) => void;
   deleteBracket: (bracketId: string) => void;
   updateMatchResult: (matchId: string, result: MatchResult) => void;
   advanceWinner: (matchId: string, winnerId: string, winnerName: string) => void;
@@ -197,7 +198,7 @@ interface TournamentStore {
   referees: Referee[];
   addReferee: (r: Referee) => void;
   updateReferee: (id: string, data: Partial<Referee>) => void;
-  assignRefereeToMatch: (matchId: string, refereeId: string, judgeIds: string[]) => void;
+  assignRefereeToMatch: (matchId: string, refereeId: string, judgeIds: string[], scheduledTime?: string) => void;
 
   // Active Match & Round State
   activeMatch: Match | null;
@@ -311,9 +312,18 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
   updateMatch: (id, data) => {
-    set(s => ({
-      matches: s.matches.map(m => m.id === id ? { ...m, ...data } : m)
-    }));
+    set(s => {
+      const current = s.matches.find(m => m.id === id);
+      const completed = data.status === 'completed';
+      const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
+      return {
+        matches: s.matches.map(m => m.id === id ? { ...m, ...data } : m),
+        activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data } as Match : s.activeMatch,
+        referees: completed
+          ? s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined } : r)
+          : s.referees,
+      };
+    });
     toast.success("Match updated successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -457,6 +467,63 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
     toast.success(`Bracket generated for ${categoryId} — ${eligibleAthletes.length} athletes, ${newMatches.length} matches`);
   },
 
+  generateFightOrder: (ageGroup, weightCategory) => {
+    const state = get();
+    const eligibleAthletes = state.athletes.filter(a =>
+      a.weighInStatus === 'Confirmed' &&
+      a.registrationStatus === 'Active' &&
+      a.ageGroup === ageGroup &&
+      a.weightCategory === weightCategory
+    );
+
+    if (eligibleAthletes.length < 2) {
+      toast.error('Need at least 2 confirmed athletes to generate a fight order');
+      return;
+    }
+
+    const category = `${ageGroup} ${weightCategory}`;
+    const fightOrderId = `fight-order-${ageGroup}-${weightCategory}`;
+    const previousMatches = state.matches.filter(m => m.bracketId === fightOrderId || (m.ageGroup === ageGroup && m.weightCategory === weightCategory && m.round === 'Fight Order'));
+    const previousIds = new Set(previousMatches.map(m => m.id));
+    const fighters = shuffle(eligibleAthletes);
+    const startMatchNumber = Math.max(0, ...state.matches.filter(m => !previousIds.has(m.id)).map(m => m.matchNumber)) + 1;
+    const roundDurationSeconds = state.settings.roundDurations[ageGroup] ?? 180;
+    const newMatches: Match[] = [];
+
+    for (let index = 0; index < fighters.length; index += 2) {
+      const red = fighters[index];
+      const blue = fighters[index + 1];
+      newMatches.push({
+        id: uuid(),
+        matchNumber: startMatchNumber + newMatches.length,
+        bracketId: fightOrderId,
+        category,
+        ageGroup,
+        weightCategory,
+        round: 'Fight Order',
+        redCornerId: red.id,
+        blueCornerId: blue?.id ?? '',
+        redCornerName: red.fullName,
+        blueCornerName: blue?.fullName ?? 'BYE',
+        matNumber: (newMatches.length % 3) + 1,
+        scheduledTime: null,
+        status: blue ? 'scheduled' : 'completed',
+        roundDurationSeconds,
+        totalRounds: ageGroup.startsWith('U') || ageGroup === 'Mini' || ageGroup === 'Cadet' || ageGroup === 'Junior' ? 2 : 3,
+        isBye: !blue,
+      });
+    }
+
+    set(s => ({
+      matches: [...s.matches.filter(m => !previousIds.has(m.id)), ...newMatches],
+      judgeScores: s.judgeScores.filter(j => !previousIds.has(j.matchId)),
+      referees: s.referees.map(r => previousMatches.some(m => m.assignedRefereeId === r.id || m.assignedJudgeIds?.includes(r.id))
+        ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined }
+        : r),
+    }));
+    toast.success(`Fight order generated for ${category} — ${newMatches.length} fights`);
+  },
+
   deleteBracket: (bracketId) => set(s => {
     const bracket = s.brackets.find(b => b.id === bracketId);
     const matchIds = new Set(bracket?.matchIds ?? []);
@@ -467,11 +534,17 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
     };
   }),
 
-  updateMatchResult: (matchId, result) => set(s => ({
-    matches: s.matches.map(m =>
-      m.id === matchId ? { ...m, status: 'completed', result } : m
-    )
-  })),
+  updateMatchResult: (matchId, result) => {
+    const match = get().matches.find(m => m.id === matchId);
+    const assignedIds = match ? [match.assignedRefereeId, ...(match.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
+    set(s => ({
+      matches: s.matches.map(m =>
+        m.id === matchId ? { ...m, status: 'completed', result } : m
+      ),
+      activeMatch: s.activeMatch?.id === matchId ? { ...s.activeMatch, status: 'completed', result } as Match : s.activeMatch,
+      referees: s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined } : r),
+    }));
+  },
 
   advanceWinner: (matchId, winnerId, winnerName) => {
     const state = get();
@@ -628,7 +701,7 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
   updateReferee: (id, data) => set(s => ({
     referees: s.referees.map(r => r.id === id ? { ...r, ...data } : r)
   })),
-  assignRefereeToMatch: (matchId, refereeId, judgeIds) => {
+  assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
     const match = get().matches.find(m => m.id === matchId);
     if (!match) return;
     if (judgeIds.includes(refereeId)) {
@@ -643,11 +716,14 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
     const ref = get().referees.find(r => r.id === refereeId);
     const assignment = `Mat ${match.matNumber} — Match #${match.matchNumber}`;
 
+    const previousAssignedIds = [match.assignedRefereeId, ...(match.assignedJudgeIds ?? [])].filter(Boolean) as string[];
+
     set(s => ({
       matches: s.matches.map(m =>
-        m.id === matchId ? { ...m, assignedRefereeId: refereeId, assignedJudgeIds: judgeIds } : m
+        m.id === matchId ? { ...m, scheduledTime: scheduledTime ?? m.scheduledTime, assignedRefereeId: refereeId, assignedJudgeIds: judgeIds } : m
       ),
       referees: s.referees.map(r => {
+        if (previousAssignedIds.includes(r.id) && r.id !== refereeId && !judgeIds.includes(r.id)) return { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined };
         if (r.id === refereeId) return { ...r, status: 'In Match', currentMatchId: matchId, currentAssignment: assignment };
         if (judgeIds.includes(r.id)) return { ...r, status: 'In Match', currentMatchId: matchId, currentAssignment: assignment };
         return r;
