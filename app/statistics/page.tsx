@@ -147,7 +147,8 @@ export default function StatisticsPage() {
   const CATEGORY_BARS = useMemo(() => {
     const counts: Record<string, number> = {};
     matches.forEach(m => {
-      counts[m.weightCategory] = (counts[m.weightCategory] || 0) + 1;
+      const key = `${m.ageGroup} ${m.weightCategory}`;
+      counts[key] = (counts[key] || 0) + 1;
     });
     return Object.entries(counts).map(([cat, count]) => ({ cat, matches: count })).sort((a,b) => b.matches - a.matches);
   }, [matches]);
@@ -191,12 +192,16 @@ export default function StatisticsPage() {
   const GOLD_BARS = COUNTRIES.slice(0, 6).map(c => ({ country: c.country.split(" ")[0], gold: c.gold }));
 
   const TIMELINE = useMemo(() => {
-    const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
-    return hours.map((time) => {
-      const hour = Number(time.split(":")[0]);
-      const count = completedMatches.filter((match) => new Date(match.result?.validatedAt ?? match.scheduledTime).getHours() === hour).length;
-      return { time, matches: count };
+    const buckets = new Map<string, number>();
+    completedMatches.forEach((match) => {
+      const rawTime = match.result?.validatedAt ?? match.scheduledTime;
+      if (!rawTime) return;
+      const label = `${String(new Date(rawTime).getHours()).padStart(2, "0")}:00`;
+      buckets.set(label, (buckets.get(label) ?? 0) + 1);
     });
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([time, matches]) => ({ time, matches }));
   }, [completedMatches]);
 
   const REFEREES_DATA = referees.map(r => {
@@ -204,7 +209,8 @@ export default function StatisticsPage() {
     const refereeEvents = roundEvents.filter(e => assignedMatches.some(m => e.details?.toLowerCase().includes(`match #${m.matchNumber}`)));
     const yellow = refereeEvents.filter(e => e.type === "yellow-card").length;
     const red = refereeEvents.filter(e => e.type === "red-card").length;
-    const rating = r.grade.includes("S") ? 5 : r.grade.includes("A") ? 5 : r.grade.includes("B") ? 4 : 3;
+    const completedAssigned = assignedMatches.filter(m => m.status === "completed").length;
+    const rating = completedAssigned >= 5 ? 5 : completedAssigned >= 3 ? 4 : completedAssigned >= 1 ? 3 : 2;
     return {
       name: r.name,
       matches: assignedMatches.length,
@@ -215,13 +221,14 @@ export default function StatisticsPage() {
     };
   }).sort((a,b) => b.matches - a.matches || b.rating - a.rating).slice(0, 5);
 
+  const buildTrend = (current: number) => [0, 0, 0, 0, 0, 0, current];
   const SPARKLINES = {
-    athletes:     [180, 195, 210, 220, 230, 240, athletes.length],
-    matches:      [80, 105, 132, 150, 163, 179, matches.length],
-    kos:          [5, 9, 13, 16, 19, 21, RESULT_PIE.find(p=>p.name===t('ko_tko', settings.language))?.value||0],
-    decisions:    [55, 78, 98, 115, 128, 138, RESULT_PIE.find(p=>p.name===t('decision', settings.language))?.value||0],
-    ippons:       [4, 7, 10, 12, 15, 17, RESULT_PIE.find(p=>p.name===t('ippon_kids', settings.language))?.value||0],
-    disquals:     [1, 2, 3, 3, 5, 5, RESULT_PIE.find(p=>p.name===t('disqualification', settings.language))?.value||0],
+    athletes: buildTrend(athletes.length),
+    matches: buildTrend(matches.length),
+    kos: buildTrend(RESULT_PIE.find(p=>p.name===t('ko_tko', settings.language))?.value||0),
+    decisions: buildTrend(RESULT_PIE.find(p=>p.name===t('decision', settings.language))?.value||0),
+    ippons: buildTrend(RESULT_PIE.find(p=>p.name===t('ippon_kids', settings.language))?.value||0),
+    disquals: buildTrend(RESULT_PIE.find(p=>p.name===t('disqualification', settings.language))?.value||0),
   };
 
   return (
@@ -243,8 +250,8 @@ export default function StatisticsPage() {
       {/* ── HERO STATS ────────────────────────────────────────────────────── */}
       <AnimatedSection>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-5">
-          <HeroStat label={t('total_athletes', settings.language)}   value={athletes.length} trend={SPARKLINES.athletes}  color={RED}    delta="+1 today" />
-          <HeroStat label={t('total_matches', settings.language)}    value={matches.length} trend={SPARKLINES.matches}   color={BLUE}   delta="+2 today" />
+          <HeroStat label={t('total_athletes', settings.language)}   value={athletes.length} trend={SPARKLINES.athletes}  color={RED}    delta="live registry" />
+          <HeroStat label={t('total_matches', settings.language)}    value={matches.length} trend={SPARKLINES.matches}   color={BLUE}   delta="live schedule" />
           <HeroStat label={t('kos_tkos', settings.language)}       value={SPARKLINES.kos[6]}  trend={SPARKLINES.kos}       color={RED}    delta="-" />
           <HeroStat label={t('decisions', settings.language)}        value={SPARKLINES.decisions[6]} trend={SPARKLINES.decisions} color={TEAL}   delta="-" />
           <HeroStat label={t('ippons_kids', settings.language)}    value={SPARKLINES.ippons[6]}  trend={SPARKLINES.ippons}    color={GOLD}   delta="-" />
@@ -307,6 +314,36 @@ export default function StatisticsPage() {
             </ResponsiveContainer>
           </IKFCard>
         </div>
+      </AnimatedSection>
+
+      {/* ── SECTION 1B: REAL MATCH TIMELINE CURVE ─────────────────────────── */}
+      <AnimatedSection delay={0.05}>
+        <IKFCard padding="lg">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-widest">Completed Matches Timeline</h3>
+            <span className="text-xs text-[var(--text-muted)]">Real data from validated match times</span>
+          </div>
+          {TIMELINE.length === 0 ? (
+            <div className="h-[260px] flex items-center justify-center text-[var(--text-muted)] border border-dashed border-[var(--border-default)] rounded-xl">No completed match timing data yet.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={TIMELINE} margin={{ top: 12, right: 24, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="matchesCurve" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={GOLD} stopOpacity={0.55} />
+                    <stop offset="70%" stopColor={RED} stopOpacity={0.12} />
+                    <stop offset="100%" stopColor={RED} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="4 6" stroke="rgba(255,255,255,0.08)" vertical={false} />
+                <XAxis dataKey="time" tick={{ fill: TEXT, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fill: TEXT, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<DarkTooltip />} cursor={{ stroke: GOLD, strokeWidth: 1, strokeDasharray: "4 4" }} />
+                <Area type="monotone" dataKey="matches" name="Completed matches" stroke={GOLD} strokeWidth={3} fill="url(#matchesCurve)" dot={{ r: 4, strokeWidth: 2, stroke: "#050508", fill: GOLD }} activeDot={{ r: 7, stroke: "#fff", strokeWidth: 2, fill: RED }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </IKFCard>
       </AnimatedSection>
 
       {/* ── SECTION 2: COUNTRY PERFORMANCE ─────────────────────────────────── */}
