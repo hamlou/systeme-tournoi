@@ -198,6 +198,7 @@ interface TournamentStore {
   referees: Referee[];
   addReferee: (r: Referee) => void;
   updateReferee: (id: string, data: Partial<Referee>) => void;
+  deleteReferee: (id: string) => void;
   assignRefereeToMatch: (matchId: string, refereeId: string, judgeIds: string[], scheduledTime?: string) => void;
 
   // Active Match & Round State
@@ -697,10 +698,34 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
 
   // ── Referees ──
   referees: MOCK_REFEREES,
-  addReferee: (r) => set(s => ({ referees: [r, ...s.referees] })),
+  addReferee: (r) => {
+    const referee: Referee = { ...r, status: r.status ?? 'Available', grade: r.grade || 'IKF Official' };
+    set(s => ({ referees: [referee, ...s.referees] }));
+    toast.success(`${referee.name} added as ${referee.role}`);
+  },
   updateReferee: (id, data) => set(s => ({
     referees: s.referees.map(r => r.id === id ? { ...r, ...data } : r)
   })),
+  deleteReferee: (id) => {
+    const state = get();
+    const referee = state.referees.find(r => r.id === id);
+    if (!referee) return;
+    const activeAssignment = state.matches.find(m => m.status !== 'completed' && (m.assignedRefereeId === id || m.assignedJudgeIds?.includes(id)));
+    if (activeAssignment) {
+      toast.error(`${referee.name} is assigned to Match #${activeAssignment.matchNumber}. Reassign or complete the match first.`);
+      return;
+    }
+    set(s => ({
+      referees: s.referees.filter(r => r.id !== id),
+      matches: s.matches.map(m => ({
+        ...m,
+        assignedRefereeId: m.assignedRefereeId === id ? undefined : m.assignedRefereeId,
+        assignedJudgeIds: m.assignedJudgeIds?.filter(judgeId => judgeId !== id),
+      })),
+      judgeScores: s.judgeScores.filter(score => score.judgeId !== id),
+    }));
+    toast.success(`${referee.name} removed from referee roster`);
+  },
   assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
     const match = get().matches.find(m => m.id === matchId);
     if (!match) return;
