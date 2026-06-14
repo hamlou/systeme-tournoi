@@ -314,10 +314,12 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
   updateMatch: (id, data) => {
+    let updatedMatch: Match | undefined;
     set(s => {
       const current = s.matches.find(m => m.id === id);
       const completed = data.status === 'completed';
       const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
+      updatedMatch = current ? { ...current, ...data } as Match : undefined;
       return {
         matches: s.matches.map(m => m.id === id ? { ...m, ...data } : m),
         activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data } as Match : s.activeMatch,
@@ -326,6 +328,7 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
           : s.referees,
       };
     });
+    if (updatedMatch) getSocket()?.emit('send-event', { type: 'match_updated', data: { match: updatedMatch } });
     toast.success("Match updated successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -763,28 +766,32 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
   setActiveMatch: (m) => {
     const state = get();
     const duration = m ? (state.settings.roundDurations[m.ageGroup] ?? 180) : 0;
-    set({
+    const nextState = {
       activeMatch: m,
       currentRound: 1,
       roundTimer: duration,
-      timerMode: 'idle',
+      timerMode: 'idle' as TimerMode,
       roundEvents: [],
       currentResult: null,
-    });
-    // Clear judge scores for new match
+    };
+    set(nextState);
+    getSocket()?.emit('send-event', { type: 'match_state', data: nextState });
     if (m) get().clearJudgeScores(m.id);
   },
   currentRound: 1,
-  setCurrentRound: (r) => set({ currentRound: r }),
+  setCurrentRound: (r) => {
+    set({ currentRound: r });
+    getSocket()?.emit('send-event', { type: 'match_state', data: { currentRound: r, activeMatch: get().activeMatch } });
+  },
   roundTimer: 180,
   setRoundTimer: (t) => {
     set({ roundTimer: t });
-    getSocket()?.emit('send-event', { type: 'timer_update', data: { roundTimer: t } });
+    getSocket()?.emit('send-event', { type: 'timer_update', data: { roundTimer: t, activeMatch: get().activeMatch, currentRound: get().currentRound } });
   },
   timerMode: 'idle',
   setTimerMode: (mode) => {
     set({ timerMode: mode });
-    getSocket()?.emit('send-event', { type: 'timer_update', data: { timerMode: mode } });
+    getSocket()?.emit('send-event', { type: 'timer_update', data: { timerMode: mode, activeMatch: get().activeMatch, currentRound: get().currentRound, roundTimer: get().roundTimer } });
   },
   roundEvents: [],
   addRoundEvent: (e) => {

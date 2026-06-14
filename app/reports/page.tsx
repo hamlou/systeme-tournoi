@@ -46,8 +46,9 @@ function MatchReportDocument({ report }: { report: Report }) {
 
   if (!match) return <div className="bg-white text-black p-10">No match data available for this report.</div>;
 
-  const matchScores = storeReport?.judgeScores ?? match.result?.roundScores ?? [];
-  const matchEvents = storeReport?.events ?? [];
+  const allJudgeScores = useTournamentStore.getState().judgeScores;
+  const matchScores = (storeReport?.judgeScores?.length ? storeReport.judgeScores : match.result?.roundScores?.length ? match.result.roundScores : allJudgeScores.filter(score => score.matchId === match.id)).filter(score => score.matchId === match.id || !('matchId' in score));
+  const matchEvents = (storeReport?.events ?? []).filter(event => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`));
   const redAthlete = athletes.find(a => a.id === match.redCornerId);
   const blueAthlete = athletes.find(a => a.id === match.blueCornerId);
   const generatedAt = report.generatedAt instanceof Date ? report.generatedAt : new Date(report.generatedAt);
@@ -88,7 +89,7 @@ function MatchReportDocument({ report }: { report: Report }) {
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('start_time', settings.language)}</div>
-          <div className="font-bold">{new Date(match.scheduledTime).toLocaleTimeString()}</div>
+          <div className="font-bold">{match.scheduledTime ? new Date(match.scheduledTime).toLocaleTimeString() : "Not scheduled"}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('end_time_duration', settings.language)}</div>
@@ -231,7 +232,7 @@ export default function ReportsPage() {
         id: stored?.id ?? `mrep-${m.id}`,
         type: stored?.type ?? "Match Report",
         title: stored?.title ?? `${t('match_number', settings.language).replace('#', '')} #${m.matchNumber} — ${m.redCornerName} ${t('vs', settings.language)} ${m.blueCornerName}`,
-        generatedAt: new Date(stored?.generatedAt ?? m.result?.validatedAt ?? m.scheduledTime),
+        generatedAt: new Date(stored?.generatedAt ?? m.result?.validatedAt ?? m.scheduledTime ?? Date.now()),
         status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? "Official"),
         matchId: m.id,
         matchNumber: m.matchNumber,

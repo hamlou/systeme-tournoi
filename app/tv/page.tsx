@@ -31,7 +31,7 @@ function Particles({ color }: { color: string }) {
   })), []);
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {particles.map((_, i) => (
+      {particles.map((particle, i) => (
         <div
           key={i}
           className="absolute w-2 h-2 rounded-full opacity-80"
@@ -149,7 +149,8 @@ export default function TVDisplay() {
 
   const { red: activeAggRed, blue: activeAggBlue } = useLiveAggregateScore();
 
-  const displayMatch = activeMatch
+  const syncedActiveMatch = activeMatch ? matches.find(m => m.id === activeMatch.id) ?? activeMatch : null;
+  const displayMatch = syncedActiveMatch
     ?? matches.find(m => m.status === "in-progress")
     ?? matches.find(m => m.status === "scheduled")
     ?? matches[0];
@@ -158,14 +159,14 @@ export default function TVDisplay() {
   const blueAthlete = athletes.find(a => a.id === displayMatch?.blueCornerId);
   const displayScores = useMemo(() => {
     if (!displayMatch) return { red: 0, blue: 0 };
-    if (activeMatch?.id === displayMatch.id) return { red: activeAggRed, blue: activeAggBlue };
+    if (syncedActiveMatch?.id === displayMatch.id) return { red: activeAggRed, blue: activeAggBlue };
     if (displayMatch.result) return { red: displayMatch.result.redTotalScore, blue: displayMatch.result.blueTotalScore };
     const submitted = judgeScores.filter(s => s.matchId === displayMatch.id && s.submitted);
     return {
       red: submitted.reduce((sum, score) => sum + score.redScore, 0),
       blue: submitted.reduce((sum, score) => sum + score.blueScore, 0),
     };
-  }, [activeAggBlue, activeAggRed, activeMatch?.id, displayMatch, judgeScores]);
+  }, [activeAggBlue, activeAggRed, syncedActiveMatch?.id, displayMatch, judgeScores]);
 
   // Live clock
   useEffect(() => {

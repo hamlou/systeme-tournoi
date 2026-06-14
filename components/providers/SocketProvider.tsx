@@ -49,7 +49,27 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
           case "judge_score_submitted":
             store.setJudgeScore(obj.data.score);
             break;
+          case "match_state":
+            useTournamentStore.setState((s) => ({
+              activeMatch: obj.data.activeMatch ?? s.activeMatch,
+              currentRound: obj.data.currentRound ?? s.currentRound,
+              roundTimer: obj.data.roundTimer ?? s.roundTimer,
+              timerMode: obj.data.timerMode ?? s.timerMode,
+              roundEvents: obj.data.roundEvents ?? s.roundEvents,
+              currentResult: obj.data.currentResult ?? s.currentResult,
+            }));
+            break;
+          case "match_updated":
+            if (obj.data.match) {
+              useTournamentStore.setState((s) => ({
+                matches: s.matches.map(m => m.id === obj.data.match.id ? obj.data.match : m),
+                activeMatch: s.activeMatch?.id === obj.data.match.id ? obj.data.match : s.activeMatch,
+              }));
+            }
+            break;
           case "timer_update":
+            if (obj.data.activeMatch) useTournamentStore.setState({ activeMatch: obj.data.activeMatch });
+            if (obj.data.currentRound !== undefined) useTournamentStore.setState({ currentRound: obj.data.currentRound });
             if (obj.data.roundTimer !== undefined) {
               useTournamentStore.setState({ roundTimer: obj.data.roundTimer });
             }
