@@ -34,7 +34,9 @@ const MOCK_CLUBS: Club[] = [
   { id: "8", name: "NY Martial Arts", country: "USA 🇺🇸", presidentName: "David Johnson", email: "info@nymartialarts.com", phone: "+1 212-555-0198", affiliationNumber: "IKF-US-551", expectedAthletes: 10, status: "Active", registeredAthletes: 8, confirmedAthletes: 8, pendingAthletes: 0 },
 ];
 
-export const useClubStore = create<ClubState>((set) => ({
+type SetState = (partial: Partial<ClubState> | ((state: ClubState) => Partial<ClubState>)) => void;
+
+export const useClubStore = create<ClubState>((set: SetState) => ({
   clubs: MOCK_CLUBS,
   addClub: (club) => set((state) => ({ clubs: [club, ...state.clubs] })),
 }));

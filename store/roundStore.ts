@@ -53,7 +53,10 @@ const emitMatchEvent = (message: string) => {
   getSocket()?.emit("match_event", { message });
 };
 
-export const useRoundStore = create<RoundState>((set, get) => ({
+type SetState = (partial: Partial<RoundState> | ((state: RoundState) => Partial<RoundState>)) => void;
+type GetState = () => RoundState;
+
+export const useRoundStore = create<RoundState>((set: SetState, get: GetState) => ({
   activeMatch: null,
   status: "IDLE",
   timeLeft: 0,

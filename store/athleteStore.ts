@@ -42,7 +42,9 @@ const MOCK_ATHLETES: Athlete[] = [
   { id: "15", licenseNumber: "IKF-26-0015", fullName: "Elena Rossi", dob: "1996-05-04", gender: "Female", country: "Italy 🇮🇹", nationalId: "IT456789", club: "Rome Kenshido", weightCategory: "-55kg", ageGroup: "Senior A", licenseType: "Annual", medicalClearance: true, weighInStatus: "Confirmed", registrationStatus: "Active" },
 ];
 
-export const useAthleteStore = create<AthleteState>((set) => ({
+type SetState = (partial: Partial<AthleteState> | ((state: AthleteState) => Partial<AthleteState>)) => void;
+
+export const useAthleteStore = create<AthleteState>((set: SetState) => ({
   athletes: MOCK_ATHLETES,
   addAthlete: (athlete) => set((state) => ({ athletes: [athlete, ...state.athletes] })),
   updateAthlete: (id, data) => set((state) => ({

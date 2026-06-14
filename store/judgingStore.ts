@@ -51,7 +51,10 @@ const MOCK_MATCH: MatchReference = {
   blueCorner: { name: "Karim Mansouri", score: 0 }
 };
 
-export const useJudgingStore = create<JudgingState>((set, get) => ({
+type SetState = (partial: Partial<JudgingState> | ((state: JudgingState) => Partial<JudgingState>)) => void;
+type GetState = () => JudgingState;
+
+export const useJudgingStore = create<JudgingState>((set: SetState, get: GetState) => ({
   activeMatch: MOCK_MATCH,
   judges: [
     createEmptyJudge("j1", "JUDGE 1"),

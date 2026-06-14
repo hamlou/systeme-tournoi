@@ -22,7 +22,9 @@ const MOCK_LOGS: WeighInRecord[] = [
   { id: "log-4", athleteId: "9", athleteName: "Tariq Aziz", recordedWeight: 44.9, category: "-45kg", status: "Confirmed", timestamp: "2026-06-10T08:42:50Z" },
 ];
 
-export const useWeighinStore = create<WeighInState>((set) => ({
+type SetState = (partial: Partial<WeighInState> | ((state: WeighInState) => Partial<WeighInState>)) => void;
+
+export const useWeighinStore = create<WeighInState>((set: SetState) => ({
   logs: MOCK_LOGS,
   addLog: (log) => set((state) => ({ logs: [log, ...state.logs] })),
 }));

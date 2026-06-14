@@ -29,7 +29,9 @@ const MOCK_REFEREES: Referee[] = [
   { id: "ref-10", name: "Maria Garcia", role: "Corner Judge", country: "Mexico 🇲🇽", grade: "IKF Grade B", status: "Available" },
 ];
 
-export const useRefereeStore = create<RefereeState>((set) => ({
+type SetState = (partial: Partial<RefereeState> | ((state: RefereeState) => Partial<RefereeState>)) => void;
+
+export const useRefereeStore = create<RefereeState>((set: SetState) => ({
   referees: MOCK_REFEREES,
   addReferee: (referee) => set((state) => ({ referees: [referee, ...state.referees] })),
   updateRefereeStatus: (id, status, assignment) => set((state) => ({
