@@ -254,9 +254,10 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
   // ── Athletes ──
   athletes: MOCK_ATHLETES,
   addAthlete: (a) => {
-    set(s => ({ athletes: [a, ...s.athletes] }));
-    get().addNotification("New Athlete Registered", `${a.fullName} added to ${a.weightCategory}`);
-    toast.success(`Athlete ${a.fullName} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
+    const readyAthlete: Athlete = { ...a, weighInStatus: 'Confirmed', registrationStatus: 'Active' };
+    set(s => ({ athletes: [readyAthlete, ...s.athletes] }));
+    get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}`);
+    toast.success(`Athlete ${readyAthlete.fullName} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
   },
   updateAthlete: (id, data) => set(s => ({
     athletes: s.athletes.map(a => a.id === id ? { ...a, ...data } : a)
@@ -470,14 +471,13 @@ export const useTournamentStore = create<TournamentStore>()(persist((set: SetSta
   generateFightOrder: (ageGroup, weightCategory) => {
     const state = get();
     const eligibleAthletes = state.athletes.filter(a =>
-      a.weighInStatus === 'Confirmed' &&
       a.registrationStatus === 'Active' &&
       a.ageGroup === ageGroup &&
       a.weightCategory === weightCategory
     );
 
     if (eligibleAthletes.length < 2) {
-      toast.error('Need at least 2 confirmed athletes to generate a fight order');
+      toast.error('Need at least 2 athletes in this age and weight category');
       return;
     }
 

@@ -34,7 +34,7 @@ export default function BracketsPage() {
     { value: "Junior", label: "Junior (15-17 years)" },
     { value: "Senior", label: "Senior (18+ years)" },
   ];
-  const confirmed = useMemo(() => athletes.filter(a => a.weighInStatus === "Confirmed" && a.registrationStatus === "Active"), [athletes]);
+  const confirmed = useMemo(() => athletes.filter(a => a.registrationStatus === "Active"), [athletes]);
   const uniqueWeights = useMemo(() => Array.from(new Set(confirmed.map(a => a.weightCategory))).sort(), [confirmed]);
 
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup | "">("Senior");
@@ -77,7 +77,7 @@ export default function BracketsPage() {
 
   const doGenerate = (format: BracketFormat) => {
     if (categoryAthletes.length < 2) {
-      toast.error("Not enough athletes — need at least 2 confirmed athletes to generate a bracket");
+      toast.error("Not enough athletes — need at least 2 athletes in this age and weight category");
       return;
     }
     if (format === "pool-elimination" && categoryAthletes.length < 8) {

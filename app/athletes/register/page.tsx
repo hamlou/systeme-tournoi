@@ -83,7 +83,7 @@ export default function RegisterAthletePage() {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       licenseType: editingAthlete?.licenseType ?? "Annual",
-      medicalClearance: editingAthlete?.medicalClearance ?? false,
+      medicalClearance: editingAthlete?.medicalClearance ?? true,
       fullName: editingAthlete?.fullName ?? "",
       dob: editingAthlete?.dob ?? "",
       gender: editingAthlete?.gender ?? "Male",
@@ -128,7 +128,7 @@ export default function RegisterAthletePage() {
         ageGroup: data.ageGroup as AgeGroup,
         clubName: selectedClub?.name ?? data.clubId,
         photoUrl,
-        weighInStatus: "Pending",
+        weighInStatus: "Confirmed",
         registrationStatus: "Active",
       };
       addAthlete(newAthlete);
