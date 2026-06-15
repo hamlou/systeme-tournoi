@@ -39,7 +39,7 @@ export default function DashboardPage() {
 
   const liveMatches = matches.filter(m => m.status === "in-progress");
   const scheduledMatches = matches.filter(m => m.status === "scheduled").sort(
-    (a, b) => new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime()
+    (a, b) => new Date(a.scheduledTime || 0).getTime() - new Date(b.scheduledTime || 0).getTime()
   );
   const completedMatches = matches.filter(m => m.status === "completed").sort(
     (a, b) => new Date(b.result?.validatedAt ?? 0).getTime() - new Date(a.result?.validatedAt ?? 0).getTime()
@@ -124,7 +124,7 @@ export default function DashboardPage() {
                       <LiveTimer initialSeconds={activeMatch?.id === match.id ? roundTimer : match.roundDurationSeconds} />
                     ) : (
                       <span className="font-mono text-lg text-[var(--text-muted)] tracking-widest">
-                        {format(new Date(match.scheduledTime), "HH:mm")}
+                        {format(new Date(match.scheduledTime || 0), "HH:mm")}
                       </span>
                     )}
                   </div>
@@ -149,7 +149,7 @@ export default function DashboardPage() {
             ) : scheduledMatches.slice(0, 8).map((m, i) => (
               <div key={m.id} onClick={() => router.push('/rounds')} className={`flex items-center gap-4 p-3.5 rounded-lg transition-colors border border-transparent hover:border-[var(--border-default)] hover:bg-[var(--bg-elevated)] group cursor-pointer ${i % 2 === 0 ? 'bg-[rgba(255,255,255,0.01)]' : ''}`}>
                 <div className="text-sm font-mono text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors w-14">
-                  {format(new Date(m.scheduledTime), "HH:mm")}
+                  {format(new Date(m.scheduledTime || 0), "HH:mm")}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 truncate">

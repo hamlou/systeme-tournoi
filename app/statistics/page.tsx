@@ -194,7 +194,7 @@ export default function StatisticsPage() {
     const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
     return hours.map((time) => {
       const hour = Number(time.split(":")[0]);
-      const count = completedMatches.filter((match) => new Date(match.result?.validatedAt ?? match.scheduledTime).getHours() === hour).length;
+      const count = completedMatches.filter((match) => new Date(match.result?.validatedAt ?? match.scheduledTime ?? 0).getHours() === hour).length;
       return { time, matches: count };
     });
   }, [completedMatches]);
@@ -227,7 +227,7 @@ export default function StatisticsPage() {
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-12 animate-fade-in pb-20">
       <PageHeader
-        category={t('analytics', settings.language)}
+        category={t('analytics' as any, settings.language)}
         title={t('tournament_statistics', settings.language)}
         subtitle={t('complete_performance_data', settings.language)}
         categoryIcon={<BarChart3 size={16} />}
@@ -243,10 +243,10 @@ export default function StatisticsPage() {
       {/* ── HERO STATS ────────────────────────────────────────────────────── */}
       <AnimatedSection>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-5">
-          <HeroStat label={t('total_athletes', settings.language)}   value={athletes.length} trend={SPARKLINES.athletes}  color={RED}    delta="+1 today" />
+          <HeroStat label={t('total_athletes' as any, settings.language)}   value={athletes.length} trend={SPARKLINES.athletes}  color={RED}    delta="+1 today" />
           <HeroStat label={t('total_matches', settings.language)}    value={matches.length} trend={SPARKLINES.matches}   color={BLUE}   delta="+2 today" />
           <HeroStat label={t('kos_tkos', settings.language)}       value={SPARKLINES.kos[6]}  trend={SPARKLINES.kos}       color={RED}    delta="-" />
-          <HeroStat label={t('decisions', settings.language)}        value={SPARKLINES.decisions[6]} trend={SPARKLINES.decisions} color={TEAL}   delta="-" />
+          <HeroStat label={t('decisions' as any, settings.language)}        value={SPARKLINES.decisions[6]} trend={SPARKLINES.decisions} color={TEAL}   delta="-" />
           <HeroStat label={t('ippons_kids', settings.language)}    value={SPARKLINES.ippons[6]}  trend={SPARKLINES.ippons}    color={GOLD}   delta="-" />
           <HeroStat label={t('disqualifications', settings.language)} value={SPARKLINES.disquals[6]}  trend={SPARKLINES.disquals}  color={PURPLE} delta="-" />
         </div>
@@ -398,7 +398,7 @@ export default function StatisticsPage() {
         <IKFCard padding="none" className="mt-6 overflow-hidden">
           <div className="grid grid-cols-[1fr_80px_120px_200px_100px] gap-x-4 px-6 py-3 bg-[var(--bg-elevated)] border-b border-[var(--border-default)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
             <div>{t('referee', settings.language)}</div>
-            <div className="text-center">{t('matches_uc', settings.language)}</div>
+            <div className="text-center">{t('matches_uc' as any, settings.language)}</div>
             <div className="text-center">{t('cards_yr', settings.language)}</div>
             <div>{t('protests', settings.language)}</div>
             <div className="text-right">{t('rating', settings.language)}</div>

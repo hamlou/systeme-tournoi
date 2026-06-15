@@ -71,7 +71,7 @@ function MatchReportDocument({ report }: { report: Report }) {
       {/* TOURNAMENT INFO */}
       <div className="bg-gray-50 p-4 rounded border border-gray-200 mb-6 grid grid-cols-2 gap-4">
         <div>
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('tournament', settings.language)}</div>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('tournament' as any, settings.language)}</div>
           <div className="font-bold">{settings.tournamentName}</div>
         </div>
         <div>
@@ -88,7 +88,7 @@ function MatchReportDocument({ report }: { report: Report }) {
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('start_time', settings.language)}</div>
-          <div className="font-bold">{new Date(match.scheduledTime).toLocaleTimeString()}</div>
+          <div className="font-bold">{new Date(match.scheduledTime || 0).toLocaleTimeString()}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('end_time_duration', settings.language)}</div>
@@ -204,7 +204,7 @@ function MatchReportDocument({ report }: { report: Report }) {
       <div className="mt-8 pt-6 border-t border-gray-300">
         <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-5">{t('official_signatures', settings.language)}</div>
         <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-          {[t('central_referee', settings.language), t('chief_judge', settings.language), t('table_official', settings.language), t('medical_officer', settings.language)].map(role => (
+          {[t('central_referee', settings.language), t('chief_judge' as any, settings.language), t('table_official', settings.language), t('medical_officer', settings.language)].map(role => (
             <div key={role}>
               <div className="border-b border-black h-8 mb-1" />
               <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{role}</div>
@@ -231,7 +231,7 @@ export default function ReportsPage() {
         id: stored?.id ?? `mrep-${m.id}`,
         type: stored?.type ?? "Match Report",
         title: stored?.title ?? `${t('match_number', settings.language).replace('#', '')} #${m.matchNumber} — ${m.redCornerName} ${t('vs', settings.language)} ${m.blueCornerName}`,
-        generatedAt: new Date(stored?.generatedAt ?? m.result?.validatedAt ?? m.scheduledTime),
+        generatedAt: new Date(stored?.generatedAt ?? m.result?.validatedAt ?? m.scheduledTime ?? 0),
         status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? "Official"),
         matchId: m.id,
         matchNumber: m.matchNumber,
@@ -321,7 +321,7 @@ export default function ReportsPage() {
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
       <PageHeader
-        category={t('analytics', settings.language)}
+        category={t('analytics' as any, settings.language)}
         title={t('instant_reports', settings.language).toUpperCase()}
         subtitle={t('auto_generated_reports', settings.language)}
         actions={
@@ -409,7 +409,7 @@ export default function ReportsPage() {
 
                 {/* Badge + Actions */}
                 <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                  <IKFBadge variant={statusVariant(report.status)} label={t(report.status.toLowerCase(), settings.language) || report.status} size="sm" />
+                  <IKFBadge variant={statusVariant(report.status)} label={t(report.status.toLowerCase() as any, settings.language) || report.status} size="sm" />
                 </div>
 
                 {selectedReport?.id === report.id && (

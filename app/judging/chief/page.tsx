@@ -377,7 +377,7 @@ export default function ChiefRefereeDashboard() {
                   onClick={() => setShowResult(false)}
                   className="px-12 h-16 rounded-xl font-bold text-sm tracking-widest border-2 border-white text-white hover:bg-white hover:text-black transition-all"
                 >
-                  {t('close', settings.language)}
+                  {t('close' as any, settings.language)}
                 </button>
                 <button 
                   onClick={() => {

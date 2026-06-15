@@ -51,7 +51,7 @@ export function MatchDetailModal({ match, onClose }: { match: Match; onClose: ()
 
         <div className="grid grid-cols-3 gap-3 text-sm mb-6">
           <div><div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Mat</div><div className="text-white font-semibold">{match.matNumber}</div></div>
-          <div><div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Time</div><div className="text-white font-semibold">{new Date(match.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div></div>
+          <div><div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Time</div><div className="text-white font-semibold">{new Date(match.scheduledTime || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div></div>
           <div><div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Status</div><IKFBadge variant={match.status === "completed" ? "win" : match.status === "in-progress" ? "live" : "pending"} label={match.status} size="sm" /></div>
         </div>
 

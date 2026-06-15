@@ -31,7 +31,7 @@ function Particles({ color }: { color: string }) {
   })), []);
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {particles.map((_, i) => (
+      {particles.map((particle, i) => (
         <div
           key={i}
           className="absolute w-2 h-2 rounded-full opacity-80"

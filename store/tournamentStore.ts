@@ -235,10 +235,7 @@ interface TournamentStore {
 
 // ─── Store Implementation ────────────────────────────────────────────────────
 
-type SetState = (partial: Partial<TournamentStore> | ((state: TournamentStore) => Partial<TournamentStore>)) => void;
-type GetState = () => TournamentStore;
-
-export const useTournamentStore = create<TournamentStore>()(persist((set: SetState, get: GetState) => ({
+export const useTournamentStore = create<TournamentStore>()(persist((set, get) => ({
   settings: DEFAULT_SETTINGS,
   updateSettings: (data) => set(s => ({ settings: { ...s.settings, ...data } })),
   notifications: [

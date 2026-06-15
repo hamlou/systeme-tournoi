@@ -59,7 +59,7 @@ export function TeamBracket({ bracket, matches, onMatchClick }: Props) {
                           <td className="py-2 px-4">
                             {f.status === "completed" && f.result
                               ? <span className="text-[var(--ikf-gold)]">{redWin ? f.redCornerName : f.blueCornerName} won</span>
-                              : <span className="text-[var(--text-muted)]">{new Date(f.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+                              : <span className="text-[var(--text-muted)]">{new Date(f.scheduledTime || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
                           </td>
                         </tr>
                       );

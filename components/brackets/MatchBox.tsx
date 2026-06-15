@@ -17,7 +17,7 @@ export function MatchBox({ match, onClick, compact }: MatchBoxProps) {
   const redScore = match.result?.redTotalScore;
   const blueScore = match.result?.blueTotalScore;
 
-  const time = new Date(match.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const time = new Date(match.scheduledTime || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
     <button

@@ -22,7 +22,7 @@ export function RoundRobinGrid({ athletes, matches, standings, onMatchClick, com
     const m = findMatch(rowId, colId);
     if (!m) return { cls: "", text: "" };
     if (m.status !== "completed" || !m.result) {
-      return { cls: "text-[var(--text-muted)] text-[10px]", text: new Date(m.scheduledTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), match: m };
+      return { cls: "text-[var(--text-muted)] text-[10px]", text: new Date(m.scheduledTime || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), match: m };
     }
     const isDraw = m.result.method === "draw";
     const rowIsRed = m.redCornerId === rowId;
