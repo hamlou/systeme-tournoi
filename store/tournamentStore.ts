@@ -198,6 +198,7 @@ interface TournamentStore {
   referees: Referee[];
   addReferee: (r: Referee) => void;
   updateReferee: (id: string, data: Partial<Referee>) => void;
+  deleteReferee: (id: string) => void;
   assignRefereeToMatch: (matchId: string, refereeId: string, judgeIds: string[], scheduledTime?: string) => void;
 
   // Active Match & Round State
@@ -251,9 +252,10 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
   // ── Athletes ──
   athletes: MOCK_ATHLETES,
   addAthlete: (a) => {
-    set(s => ({ athletes: [a, ...s.athletes] }));
-    get().addNotification("New Athlete Registered", `${a.fullName} added to ${a.weightCategory}`);
-    toast.success(`Athlete ${a.fullName} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
+    const readyAthlete: Athlete = { ...a, weighInStatus: 'Confirmed', registrationStatus: 'Active' };
+    set(s => ({ athletes: [readyAthlete, ...s.athletes] }));
+    get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}`);
+    toast.success(`Athlete ${readyAthlete.fullName} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
   },
   updateAthlete: (id, data) => set(s => ({
     athletes: s.athletes.map(a => a.id === id ? { ...a, ...data } : a)
@@ -309,10 +311,12 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
   updateMatch: (id, data) => {
+    let updatedMatch: Match | undefined;
     set(s => {
       const current = s.matches.find(m => m.id === id);
       const completed = data.status === 'completed';
       const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
+      updatedMatch = current ? { ...current, ...data } as Match : undefined;
       return {
         matches: s.matches.map(m => m.id === id ? { ...m, ...data } : m),
         activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data } as Match : s.activeMatch,
@@ -321,6 +325,7 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
           : s.referees,
       };
     });
+    if (updatedMatch) getSocket()?.emit('send-event', { type: 'match_updated', data: { match: updatedMatch } });
     toast.success("Match updated successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -467,14 +472,13 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
   generateFightOrder: (ageGroup, weightCategory) => {
     const state = get();
     const eligibleAthletes = state.athletes.filter(a =>
-      a.weighInStatus === 'Confirmed' &&
       a.registrationStatus === 'Active' &&
       a.ageGroup === ageGroup &&
       a.weightCategory === weightCategory
     );
 
     if (eligibleAthletes.length < 2) {
-      toast.error('Need at least 2 confirmed athletes to generate a fight order');
+      toast.error('Need at least 2 athletes in this age and weight category');
       return;
     }
 
@@ -694,10 +698,34 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
 
   // ── Referees ──
   referees: MOCK_REFEREES,
-  addReferee: (r) => set(s => ({ referees: [r, ...s.referees] })),
+  addReferee: (r) => {
+    const referee: Referee = { ...r, status: r.status ?? 'Available', grade: r.grade || 'IKF Official' };
+    set(s => ({ referees: [referee, ...s.referees] }));
+    toast.success(`${referee.name} added as ${referee.role}`);
+  },
   updateReferee: (id, data) => set(s => ({
     referees: s.referees.map(r => r.id === id ? { ...r, ...data } : r)
   })),
+  deleteReferee: (id) => {
+    const state = get();
+    const referee = state.referees.find(r => r.id === id);
+    if (!referee) return;
+    const activeAssignment = state.matches.find(m => m.status !== 'completed' && (m.assignedRefereeId === id || m.assignedJudgeIds?.includes(id)));
+    if (activeAssignment) {
+      toast.error(`${referee.name} is assigned to Match #${activeAssignment.matchNumber}. Reassign or complete the match first.`);
+      return;
+    }
+    set(s => ({
+      referees: s.referees.filter(r => r.id !== id),
+      matches: s.matches.map(m => ({
+        ...m,
+        assignedRefereeId: m.assignedRefereeId === id ? undefined : m.assignedRefereeId,
+        assignedJudgeIds: m.assignedJudgeIds?.filter(judgeId => judgeId !== id),
+      })),
+      judgeScores: s.judgeScores.filter(score => score.judgeId !== id),
+    }));
+    toast.success(`${referee.name} removed from referee roster`);
+  },
   assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
     const match = get().matches.find(m => m.id === matchId);
     if (!match) return;
@@ -735,28 +763,32 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
   setActiveMatch: (m) => {
     const state = get();
     const duration = m ? (state.settings.roundDurations[m.ageGroup] ?? 180) : 0;
-    set({
+    const nextState = {
       activeMatch: m,
       currentRound: 1,
       roundTimer: duration,
-      timerMode: 'idle',
+      timerMode: 'idle' as TimerMode,
       roundEvents: [],
       currentResult: null,
-    });
-    // Clear judge scores for new match
+    };
+    set(nextState);
+    getSocket()?.emit('send-event', { type: 'match_state', data: nextState });
     if (m) get().clearJudgeScores(m.id);
   },
   currentRound: 1,
-  setCurrentRound: (r) => set({ currentRound: r }),
+  setCurrentRound: (r) => {
+    set({ currentRound: r });
+    getSocket()?.emit('send-event', { type: 'match_state', data: { currentRound: r, activeMatch: get().activeMatch } });
+  },
   roundTimer: 180,
   setRoundTimer: (t) => {
     set({ roundTimer: t });
-    getSocket()?.emit('send-event', { type: 'timer_update', data: { roundTimer: t } });
+    getSocket()?.emit('send-event', { type: 'timer_update', data: { roundTimer: t, activeMatch: get().activeMatch, currentRound: get().currentRound } });
   },
   timerMode: 'idle',
   setTimerMode: (mode) => {
     set({ timerMode: mode });
-    getSocket()?.emit('send-event', { type: 'timer_update', data: { timerMode: mode } });
+    getSocket()?.emit('send-event', { type: 'timer_update', data: { timerMode: mode, activeMatch: get().activeMatch, currentRound: get().currentRound, roundTimer: get().roundTimer } });
   },
   roundEvents: [],
   addRoundEvent: (e) => {

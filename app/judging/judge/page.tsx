@@ -111,12 +111,12 @@ export default function JudgeTabletView() {
     <div className="flex flex-col h-screen text-white select-none bg-[#050508]">
       
       {/* TOP BAR */}
-      <div className="bg-[var(--bg-elevated)] h-14 flex items-center justify-between px-6 border-b border-[var(--border-default)]">
+      <div className="bg-gradient-to-r from-[#15050a] via-[var(--bg-elevated)] to-[#031229] min-h-20 flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-[var(--border-default)] shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
         <div className="flex items-center gap-4">
           <select 
             value={selectedJudgeId}
             onChange={e => setSelectedJudgeId(e.target.value)}
-            className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded px-2 py-1 text-xs font-bold text-[var(--text-muted)] tracking-widest outline-none focus:border-white transition-colors"
+            className="bg-black/40 border border-[var(--border-default)] rounded-xl px-4 py-3 text-sm font-bold text-white tracking-widest outline-none focus:border-[var(--ikf-gold)] transition-colors min-w-[260px]"
           >
             <option value="" disabled>{t('select_judge_profile', settings.language)}</option>
             {activeMatch.assignedJudgeIds?.map(id => {
@@ -125,8 +125,11 @@ export default function JudgeTabletView() {
             })}
           </select>
         </div>
-        <div className="text-sm font-semibold tracking-wider text-[var(--text-secondary)]">
-          {t('match_number', settings.language).replace('#', '')} #{activeMatch.matchNumber} <span className="mx-2 text-[var(--text-muted)]">|</span> {activeMatch.category} <span className="mx-2 text-[var(--text-muted)]">|</span> {t('round', settings.language)} {currentRound}
+        <div className="text-center">
+          <div className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Electronic Judging</div>
+          <div className="text-lg font-display tracking-wider text-white">
+            Match #{activeMatch.matchNumber} · {activeMatch.category} · Round {currentRound}
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <IKFBadge variant={timerMode === "round" ? "live" : "pending"} label={timerMode.toUpperCase()} size="sm" />
@@ -136,11 +139,17 @@ export default function JudgeTabletView() {
         </div>
       </div>
 
+      {!judge && (
+        <div className="bg-[rgba(212,160,23,0.12)] border-b border-[rgba(212,160,23,0.35)] px-6 py-3 text-center text-[var(--ikf-gold)] text-sm font-bold uppercase tracking-widest">
+          Select your judge profile before scoring this match
+        </div>
+      )}
+
       {/* MAIN SCORING PANELS */}
-      <div className="flex-1 flex">
+      <div className="flex-1 flex gap-3 p-3 bg-[radial-gradient(circle_at_center,rgba(212,160,23,0.08),transparent_45%)]">
         
         {/* RED CORNER */}
-        <div className="flex-1 border-r-4 border-[#050508] bg-[rgba(200,16,46,0.05)] flex flex-col relative">
+        <div className="flex-1 rounded-3xl border border-[rgba(200,16,46,0.35)] bg-[linear-gradient(180deg,rgba(200,16,46,0.16),rgba(200,16,46,0.04))] flex flex-col relative overflow-hidden shadow-[0_0_45px_rgba(200,16,46,0.12)]">
           <div className="p-8 border-b-2 border-[rgba(200,16,46,0.2)] text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-[rgba(200,16,46,0.1)] to-transparent pointer-events-none" />
             <h2 className="font-display text-6xl text-[var(--ikf-red)] leading-none relative z-10">{activeMatch.redCornerName}</h2>
@@ -221,7 +230,7 @@ export default function JudgeTabletView() {
         </div>
 
         {/* BLUE CORNER */}
-        <div className="flex-1 border-l-4 border-[#050508] bg-[rgba(0,102,204,0.05)] flex flex-col relative">
+        <div className="flex-1 rounded-3xl border border-[rgba(0,102,204,0.35)] bg-[linear-gradient(180deg,rgba(0,102,204,0.16),rgba(0,102,204,0.04))] flex flex-col relative overflow-hidden shadow-[0_0_45px_rgba(0,102,204,0.12)]">
           <div className="p-8 border-b-2 border-[rgba(0,102,204,0.2)] text-center relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-b from-[rgba(0,102,204,0.1)] to-transparent pointer-events-none" />
             <h2 className="font-display text-6xl text-[var(--corner-blue)] leading-none relative z-10">{activeMatch.blueCornerName}</h2>

@@ -38,7 +38,6 @@ function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => v
             [t('club', settings.language), athlete.clubName], [t('age_group', settings.language), athlete.ageGroup],
             [t('weight_category', settings.language), athlete.weightCategory], [t('license_type', settings.language), athlete.licenseType],
             [t('medical_clearance', settings.language), athlete.medicalClearance ? "✅ " + t('confirmed', settings.language) : "❌ " + t('pending', settings.language)],
-            [t('registration', settings.language), athlete.registrationStatus],
           ].map(([label, val]) => (
             <div key={label as string}>
               <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">{label}</div>
@@ -47,8 +46,7 @@ function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => v
           ))}
         </div>
         <div className="mt-6 flex gap-3">
-          <IKFBadge variant={athlete.weighInStatus === "Confirmed" ? "win" : athlete.weighInStatus === "Overweight" ? "cancelled" : "pending"} label={`${t('weigh_in', settings.language)}: ${athlete.weighInStatus}`} />
-          <IKFBadge variant={athlete.registrationStatus === "Active" ? "win" : athlete.registrationStatus === "Suspended" ? "cancelled" : "loss"} label={athlete.registrationStatus} />
+          <IKFBadge variant="win" label="Ready for matches" />
         </div>
       </div>
     </div>
@@ -95,10 +93,10 @@ export default function AthletesPage() {
   }, [deleteAthlete]);
 
   const handleExportCSV = () => {
-    const headers = ["License #", "Full Name", "DOB", "Gender", "Country", "Club", "Weight Category", "Age Group", "Weigh-in Status", "Registration Status"];
+    const headers = ["License #", "Full Name", "DOB", "Gender", "Country", "Club", "Weight Category", "Age Group"];
     const rows = athletes.map(a => [
       a.licenseNumber, a.fullName, a.dob, a.gender, a.country,
-      a.clubName, a.weightCategory, a.ageGroup, a.weighInStatus, a.registrationStatus,
+      a.clubName, a.weightCategory, a.ageGroup,
     ]);
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -154,20 +152,6 @@ export default function AthletesPage() {
     columnHelper.accessor("country", {
       header: t('country', settings.language),
       cell: info => <span className="text-sm">{info.getValue()}</span>,
-    }),
-    columnHelper.accessor("weighInStatus", {
-      header: t('weigh_in', settings.language),
-      cell: info => {
-        const v = info.getValue();
-        return <IKFBadge variant={v === "Confirmed" ? "win" : v === "Overweight" ? "cancelled" : "pending"} label={v} size="sm" />;
-      },
-    }),
-    columnHelper.accessor("registrationStatus", {
-      header: t('status', settings.language),
-      cell: info => {
-        const v = info.getValue();
-        return <IKFBadge variant={v === "Active" ? "win" : v === "Suspended" ? "cancelled" : "loss"} label={v} size="sm" />;
-      },
     }),
     columnHelper.display({
       id: "actions",
@@ -265,7 +249,7 @@ export default function AthletesPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={10} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <IKFEmptyState icon={<User size={48} />} title={t('no_athletes_found', settings.language)}
                       subtitle={t('no_athletes_match', settings.language)}
                       actionLabel={t('register_first_athlete', settings.language)} onAction={() => router.push('/athletes/register')} />

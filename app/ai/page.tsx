@@ -91,31 +91,49 @@ function ComparisonBar({ label, redVal, blueVal, redText, blueText }: any) {
   );
 }
 
-function localFallbackAnalysis(match: any, judgeScores: any[], events: any[]) {
+function summarizeJudgeDecisions(judgeScores: any[], referees: any[]) {
+  const byJudge = new Map<string, { judgeName: string; rounds: any[]; redRounds: number; blueRounds: number; draws: number }>();
+  judgeScores.filter(score => score.submitted).forEach(score => {
+    const existing = byJudge.get(score.judgeId) ?? { judgeName: score.judgeName ?? referees.find(r => r.id === score.judgeId)?.name ?? score.judgeId, rounds: [], redRounds: 0, blueRounds: 0, draws: 0 };
+    if (score.redScore > score.blueScore) existing.redRounds += 1;
+    else if (score.blueScore > score.redScore) existing.blueRounds += 1;
+    else existing.draws += 1;
+    existing.rounds.push({ round: score.round, redScore: score.redScore, blueScore: score.blueScore });
+    byJudge.set(score.judgeId, existing);
+  });
+  return Array.from(byJudge.values());
+}
+
+function localFallbackAnalysis(match: any, judgeScores: any[], events: any[], referees: any[] = []) {
   const result = match.result;
   const winner = result?.winnerName ?? "No winner validated yet";
   const method = result?.method?.replace(/-/g, " ") ?? "pending decision";
   const scoreLine = result ? `${result.redTotalScore ?? 0}-${result.blueTotalScore ?? 0}` : "no official score yet";
   const eventTypes = events.map((event) => event.type).join(", ") || "no events recorded";
-  const submittedScores = judgeScores.filter((score) => score.matchId === match.id && score.submitted).length;
+  const decisions = summarizeJudgeDecisions(judgeScores, referees);
+  const judgeLine = decisions.length ? decisions.map(j => `${j.judgeName}: red rounds ${j.redRounds}, blue rounds ${j.blueRounds}, draws ${j.draws}`).join("; ") : "No submitted judge decisions yet";
 
-  return `Fallback local analysis: ${match.redCornerName} vs ${match.blueCornerName} is ${match.status}. Current official outcome: ${winner} by ${method}, score ${scoreLine}. ${submittedScores} judge score entries are submitted. Recorded event pattern: ${eventTypes}. Recommendation: verify all judge scorecards, confirm round events are complete, and use this insight only as coaching/tournament intelligence — never as a replacement for official judging.`;
+  return `Local serious analysis\n\nMatch Summary: ${match.redCornerName} vs ${match.blueCornerName} is ${match.status}. Outcome: ${winner} by ${method}, score ${scoreLine}.\n\nFighter Signals: Red total ${result?.redTotalScore ?? 0}; Blue total ${result?.blueTotalScore ?? 0}. Review momentum by round before final validation.\n\nReferee/Judge Decisions: ${judgeLine}.\n\nIntegrity Checks: Event pattern: ${eventTypes}. Confirm every submitted score belongs to this match and all assigned judges submitted each required round.\n\nRecommendation: Treat this as advisory intelligence only; official referee and chief validation remain authoritative.`;
 }
 
-function buildPrompt(match: any, judgeScores: any[], events: any[], tournamentStats: any) {
-  return `You are an advisory AI analyst for an IKF Kenshido tournament platform. Provide concise, professional text analysis only. Never claim to override official judges.
+function buildPrompt(match: any, judgeScores: any[], events: any[], tournamentStats: any, fighters: any, officials: any) {
+  return `You are a senior IKF Kenshido tournament intelligence analyst. Your work is advisory only: never override, invalidate, or replace official referees, judges, or chief referee decisions.
 
-Analyze this match and tournament context:
-${JSON.stringify({ match, judgeScores, events, tournamentStats }, null, 2)}
+Analyze ONLY the provided data. If data is missing, explicitly say it is missing. Do not invent facts.
 
-Return exactly these sections:
-1. Match Summary
-2. Performance Signals
-3. Risk / Integrity Checks
-4. Coaching Recommendation
-5. Tournament Trend
+MATCH DATA:
+${JSON.stringify({ match, fighters, officials, judgeDecisionBreakdown: summarizeJudgeDecisions(judgeScores, officials?.allReferees ?? []), judgeScores, events, tournamentStats }, null, 2)}
 
-Keep it under 220 words. Be practical and clear.`;
+Required output format:
+1. Executive Match Summary — status, category, winner/method if available, scoreline.
+2. Red Fighter Analytics — strengths, score trend, risk signals, event impact.
+3. Blue Fighter Analytics — strengths, score trend, risk signals, event impact.
+4. Referee & Judge Decision Audit — for each judge/referee decision: who made it, round, red/blue score, direction of decision, agreement/disagreement patterns, missing submissions.
+5. Integrity / Data Quality Checks — missing officials, missing rounds, impossible scores, mixed-match data, late/absent events.
+6. Tactical Recommendations — practical advice for coaches/table officials.
+7. Tournament Context — compare this match to overall tournament totals and common decision methods.
+
+Tone: serious, precise, professional. Keep under 450 words but include concrete names and numbers.`;
 }
 
 function normalizePuterResponse(response: any) {
@@ -144,6 +162,15 @@ export default function AIPage() {
     () => selectedReport?.events ?? roundEvents.filter((event) => selectedMatch && event.details?.toLowerCase().includes(`match #${selectedMatch.matchNumber}`)),
     [roundEvents, selectedMatch, selectedReport]
   );
+  const fighterContext = useMemo(() => ({
+    red: athletes.find(a => a.id === selectedMatch?.redCornerId) ?? null,
+    blue: athletes.find(a => a.id === selectedMatch?.blueCornerId) ?? null,
+  }), [athletes, selectedMatch?.blueCornerId, selectedMatch?.redCornerId]);
+  const officialContext = useMemo(() => ({
+    centralReferee: referees.find(r => r.id === selectedMatch?.assignedRefereeId) ?? null,
+    cornerJudges: selectedMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) ?? [],
+    allReferees: referees,
+  }), [referees, selectedMatch?.assignedJudgeIds, selectedMatch?.assignedRefereeId]);
 
   const tournamentStats = useMemo(() => {
     const completed = matches.filter((match) => match.status === "completed");
@@ -187,12 +214,12 @@ export default function AIPage() {
         throw new Error("Puter AI SDK is not ready yet. Wait a moment and try again.");
       }
 
-      const prompt = buildPrompt(selectedMatch, selectedJudgeScores, selectedEvents, tournamentStats);
+      const prompt = buildPrompt(selectedMatch, selectedJudgeScores, selectedEvents, tournamentStats, fighterContext, officialContext);
       const response = await puter.ai.chat(prompt, { model: "gpt-4o-mini" });
       setAnalysis(normalizePuterResponse(response));
     } catch (err: any) {
       setError(err?.message ?? "AI provider failed. Showing local fallback analysis.");
-      setAnalysis(localFallbackAnalysis(selectedMatch, selectedJudgeScores, selectedEvents));
+      setAnalysis(localFallbackAnalysis(selectedMatch, selectedJudgeScores, selectedEvents, referees));
     } finally {
       setIsAnalyzing(false);
     }
@@ -208,9 +235,9 @@ export default function AIPage() {
 
   useEffect(() => {
     if (selectedMatch) {
-      setAnalysis(localFallbackAnalysis(selectedMatch, selectedJudgeScores, selectedEvents));
+      setAnalysis(localFallbackAnalysis(selectedMatch, selectedJudgeScores, selectedEvents, referees));
     }
-  }, [selectedMatchId, selectedJudgeScores, selectedEvents, selectedMatch]);
+  }, [selectedMatchId, selectedJudgeScores, selectedEvents, selectedMatch, referees]);
 
   return (
     <div className="relative min-h-screen">
@@ -308,7 +335,7 @@ export default function AIPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { icon: <Info size={20} />, label: "Fixed Logic", text: "Match selector now uses real store matches instead of fake IDs." },
-              { icon: <TrendingUp size={20} />, label: "Real Context", text: "Prompt includes match, scores, events, and tournament totals." },
+              { icon: <TrendingUp size={20} />, label: "Real Context", text: "Prompt includes fighters, assigned officials, every submitted judge decision, events, and tournament totals." },
               { icon: <Lightbulb size={20} />, label: "Safe Fallback", text: "Local analysis keeps the section usable if the provider is unavailable." },
             ].map((item) => <div key={item.label} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-xl p-6"><div className="text-[var(--ikf-gold)] mb-4">{item.icon}</div><p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">{item.label}</p><p className="text-sm font-semibold text-white leading-relaxed">{item.text}</p></div>)}
           </div>
