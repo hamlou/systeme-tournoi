@@ -171,8 +171,8 @@ export default function RoundManagementPage() {
       toast.error("Pause or stop the current match before switching matches.");
       return;
     }
-    const selected = { ...m, status: m.status === "scheduled" ? "in-progress" : m.status } as Match;
-    if (m.status === "scheduled") updateMatch(m.id, { status: "in-progress" });
+    const selected = { ...m, totalRounds: 3, status: m.status === "scheduled" ? "in-progress" : m.status } as Match;
+    updateMatch(m.id, { ...(m.status === "scheduled" ? { status: "in-progress" as const } : {}), totalRounds: 3 });
     setActiveMatch(selected);
     setTimerMode("idle");
     setRestTimeLeft(60);

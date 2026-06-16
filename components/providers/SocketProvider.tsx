@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { onValue, off, ref } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, TournamentReport, TournamentSettings } from "@/types/tournament";
+import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, RoundEvent, TournamentReport, TournamentSettings } from "@/types/tournament";
 
 interface SyncContextType {
   isConnected: boolean;
@@ -42,7 +42,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         store.setState({ weighinRecords: data.weighinRecords as WeighinRecord[] });
       }
       if (Array.isArray(data.matches)) {
-        store.setState({ matches: data.matches as Match[] });
+        store.setState({ matches: (data.matches as Match[]).map(match => ({ ...match, totalRounds: 3 })) });
       }
       if (Array.isArray(data.brackets)) {
         store.setState({ brackets: data.brackets as Bracket[] });
@@ -53,11 +53,17 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       if (Array.isArray(data.judgeScores)) {
         store.setState({ judgeScores: data.judgeScores as JudgeScore[] });
       }
+      if (data.events) {
+        const events = Array.isArray(data.events)
+          ? data.events
+          : Object.values(data.events as Record<string, RoundEvent>);
+        store.setState({ roundEvents: events as RoundEvent[] });
+      }
       if (Array.isArray(data.reports)) {
         store.setState({ reports: data.reports as TournamentReport[] });
       }
       if (data.activeMatch) {
-        store.setState({ activeMatch: data.activeMatch as Match });
+        store.setState({ activeMatch: { ...(data.activeMatch as Match), totalRounds: 3 } });
       }
     };
 

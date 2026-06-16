@@ -135,8 +135,63 @@ function summarizeEventCounts(events: any[]) {
   };
 }
 
+function buildInstantReportSnapshot(match: any, judgeScores: any[], events: any[], officials: any) {
+  const submitted = judgeScores.filter(score => score.submitted);
+  const redTotal = submitted.reduce((sum, score) => sum + score.redScore, 0);
+  const blueTotal = submitted.reduce((sum, score) => sum + score.blueScore, 0);
+  const judgeBreakdown = summarizeJudgeDecisions(submitted, officials?.allReferees ?? []);
+  const methodEvents = events.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+  const cardSummary = summarizeEventCounts(events);
+  const lastPriorityMethod = [...methodEvents].reverse().find(event => ["disqualification", "ko-tko", "ippon-result", "draw", "decision"].includes(event.type));
+
+  let recommendedWinner: "RED" | "BLUE" | "DRAW" | "CANNOT_DETERMINE" = "CANNOT_DETERMINE";
+  let recommendationReason = "Not enough submitted scorecards or decisive method events.";
+
+  if (lastPriorityMethod?.type === "draw") {
+    recommendedWinner = "DRAW";
+    recommendationReason = "Latest decisive method event is DRAW.";
+  } else if (lastPriorityMethod?.corner === "RED" || lastPriorityMethod?.corner === "BLUE") {
+    recommendedWinner = lastPriorityMethod.corner;
+    recommendationReason = `Latest decisive method event is ${lastPriorityMethod.type} for ${lastPriorityMethod.corner}.`;
+  } else if (redTotal !== blueTotal && submitted.length > 0) {
+    recommendedWinner = redTotal > blueTotal ? "RED" : "BLUE";
+    recommendationReason = `Submitted score total favors ${recommendedWinner}: ${redTotal}-${blueTotal}.`;
+  } else if (submitted.length > 0) {
+    recommendedWinner = "DRAW";
+    recommendationReason = `Submitted score total is level: ${redTotal}-${blueTotal}.`;
+  }
+
+  return {
+    matchNumber: match.matchNumber,
+    status: match.status,
+    officialStoredResult: match.result ?? null,
+    scoreTotals: { redTotal, blueTotal, submittedScorecards: submitted.length },
+    judgeBreakdown,
+    methodEvents,
+    cardSummary,
+    eventLog: events.map(event => ({
+      time: event.timestamp,
+      type: event.type,
+      corner: event.corner ?? null,
+      official: event.officialName ?? "Table / Round",
+      details: event.details,
+    })),
+    recommendedWinner,
+    recommendationReason,
+    integrity: {
+      expectedScorecards: (match.assignedJudgeIds?.length ?? 0) + (match.assignedRefereeId ? 1 : 0),
+      totalRounds: match.totalRounds ?? 3,
+      missingOfficials: [
+        ...(match.assignedRefereeId ? [] : ["central referee"]),
+        ...((match.assignedJudgeIds?.length ?? 0) === 0 ? ["corner judges"] : []),
+      ],
+    },
+  };
+}
+
 function localFallbackAnalysis(match: any, judgeScores: any[], events: any[], referees: any[] = []) {
   const result = match.result;
+  const snapshot = buildInstantReportSnapshot(match, judgeScores, events, { allReferees: referees });
   const winner = result?.winnerName ?? "No winner validated yet";
   const method = result?.method?.replace(/-/g, " ") ?? "pending decision";
   const scoreLine = result ? `${result.redTotalScore ?? 0}-${result.blueTotalScore ?? 0}` : "no official score yet";
@@ -148,9 +203,13 @@ function localFallbackAnalysis(match: any, judgeScores: any[], events: any[], re
 
 **Match Summary:** ${match.redCornerName} vs ${match.blueCornerName} is ${match.status}. Outcome: **${winner}** by ${method}, score ${scoreLine}.
 
-**Fighter Signals:** Red total ${result?.redTotalScore ?? 0}; Blue total ${result?.blueTotalScore ?? 0}. Review momentum by round before final validation.
+**Analytical Verdict:** Recommended winner from available instant-report data: **${snapshot.recommendedWinner}**. Reason: ${snapshot.recommendationReason}
+
+**Fighter Signals:** Red total ${snapshot.scoreTotals.redTotal}; Blue total ${snapshot.scoreTotals.blueTotal}. Review method calls and discipline before final validation.
 
 **Referee/Judge Decisions:** ${judgeLine}.
+
+**Discipline and Method Factors:** Red cards ${snapshot.cardSummary.red.redCards}, red yellow cards ${snapshot.cardSummary.red.yellowCards}; Blue red cards ${snapshot.cardSummary.blue.redCards}, blue yellow cards ${snapshot.cardSummary.blue.yellowCards}; Method calls: ${snapshot.methodEvents.map((event: any) => `${event.type} ${event.corner ?? "DRAW"}`).join(", ") || "none"}.
 
 **Integrity Checks:** Event pattern: ${eventTypes}. Confirm every submitted score belongs to this match and all assigned judges submitted each required round.
 
@@ -184,21 +243,25 @@ function localFighterFallbackAnalysis(match: any, corner: "RED" | "BLUE", fighte
 function buildPrompt(match: any, judgeScores: any[], events: any[], tournamentStats: any, fighters: any, officials: any) {
   const eventSummary = summarizeEventCounts(events);
   const decisionSummary = summarizeJudgeDecisions(judgeScores, officials?.allReferees ?? []);
+  const instantReportSnapshot = buildInstantReportSnapshot(match, judgeScores, events, officials);
   return `You are the IKF Kenshido Chief Fight Analyst. Your output must feel like serious "ta7lil": sharp, reasoned, and useful to a chief referee, not a boring copy of the instant report.
 
 Core mission:
-Analyze the match as if you are reviewing the fight desk data after the bout. Give a clear analytical verdict, explain why, expose contradictions, and state what the chief referee should verify before the result is validated.
+Analyze the match as if you are reviewing the official Instant Report after the bout. Give a clear analytical verdict, explain why, expose contradictions, and state what the chief referee should verify before the result is validated.
 
 Hard rules:
 - Do not copy the event log. Interpret it.
+- Do not paraphrase the instant report. Use it as evidence, then produce an expert opinion.
 - Aggregate repeated events: write "2 yellow cards", never "yellow card, yellow card".
 - Treat KO/TKO, Ippon (Kids), Disqualification, DRAW, red cards, yellow cards, deductions, warnings, and judge submissions as meaningful decision factors.
 - A disqualification or red-card pattern can outweigh points if the data supports it. Explain that explicitly.
 - If the official/stored result is missing, still recommend who appears to deserve the win based only on the provided data.
+- If the stored result conflicts with the data, say so clearly and explain which evidence is stronger.
 - If data is incomplete, do not invent missing rounds, strikes, dominance, or behavior. Say what is missing and how it affects confidence.
 - Use names, totals, card counts, judge names, and method calls. Avoid generic sports talk.
 - Give a confidence level: High, Medium, Low, or Cannot determine.
 - Be decisive when the data supports it; be transparent when it does not.
+- Every verdict must answer the direct question: who deserves the win, and why?
 
 Decision logic priority:
 1. Disqualification / red-card decisive events.
@@ -208,7 +271,7 @@ Decision logic priority:
 5. Missing officials or missing scorecards reduce confidence.
 
 Raw data:
-${JSON.stringify({ match, fighters, officials, judgeDecisionBreakdown: decisionSummary, eventSummary, judgeScores, events, tournamentStats }, null, 2)}
+${JSON.stringify({ instantReportSnapshot, match, fighters, officials, judgeDecisionBreakdown: decisionSummary, eventSummary, judgeScores, events, tournamentStats }, null, 2)}
 
 Required Markdown structure:
 
@@ -217,6 +280,7 @@ Required Markdown structure:
 - Confidence level.
 - One strong verdict sentence, like a chief analyst would say it.
 - Whether this agrees or conflicts with the stored official result.
+- Include the exact data reason from instantReportSnapshot.recommendationReason and then challenge it if other evidence is stronger.
 
 ### 2. Why This Verdict
 - Give the strongest 3 to 5 reasons in ranked order.
@@ -240,6 +304,7 @@ Required Markdown structure:
 
 ### 7. Final Chief Referee Note
 - One concise operational conclusion: validate, review, or hold result pending missing data.
+- Explicitly state the athlete/corner that deserves the win according to your analysis.
 
 Tone: professional, intense, analytical, and tournament-official serious.`;
 }
@@ -247,15 +312,16 @@ Tone: professional, intense, analytical, and tournament-official serious.`;
 function buildFighterPrompt(match: any, corner: "RED" | "BLUE", fighter: any, judgeScores: any[], events: any[], tournamentStats: any, officials: any) {
   const fighterName = corner === "RED" ? match.redCornerName : match.blueCornerName;
   const fighterEvents = events.filter(event => event.corner === corner);
+  const instantReportSnapshot = buildInstantReportSnapshot(match, judgeScores, events, officials);
   return `You are the IKF Kenshido athlete performance analyst. Produce a serious single-athlete "ta7lil" in Markdown.
 
-Do not copy the event log. Build an opinion. Aggregate repeated cards/events into counts and judge whether this athlete's data supports a win, loss, draw, or unclear outcome.
+Do not copy the event log. Build an opinion. Aggregate repeated cards/events into counts and judge whether this athlete's data supports a win, loss, draw, or unclear outcome. You must decide whether this athlete deserved the result from the Instant Report evidence.
 
 **Selected Athlete:** ${fighterName}
 **Corner:** ${corner}
 
 **Raw Data Provided:**
-${JSON.stringify({ match, fighter, corner, officials, judgeDecisionBreakdown: summarizeJudgeDecisions(judgeScores, officials?.allReferees ?? []), fighterEventSummary: summarizeEventCounts(fighterEvents), judgeScores, fighterEvents, allMatchEvents: events, tournamentStats }, null, 2)}
+${JSON.stringify({ instantReportSnapshot, match, fighter, corner, officials, judgeDecisionBreakdown: summarizeJudgeDecisions(judgeScores, officials?.allReferees ?? []), fighterEventSummary: summarizeEventCounts(fighterEvents), judgeScores, fighterEvents, allMatchEvents: events, tournamentStats }, null, 2)}
 
 Required structure:
 
@@ -279,7 +345,8 @@ Required structure:
 - Explain how referee/judge submissions and method calls affect this athlete.
 
 ### 6. Final Note
-- One practical note for the chief referee or coach.`;
+- One practical note for the chief referee or coach.
+- Explicitly say if the athlete deserved to win, lose, draw, or if the data cannot support a firm decision.`;
 }
 
 async function requestServerAnalysis(prompt: string) {

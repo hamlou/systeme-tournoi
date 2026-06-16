@@ -6,7 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { useTournamentStore, useLiveAggregateScore } from "@/store/tournamentStore";
 import { t } from "@/lib/i18n";
-import { deriveLiveMatchTimers, useFirebaseMatchState, FirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
+import { formatMatchCategory } from "@/lib/ageCategories";
+import { deriveLiveMatchTimers, useFirebaseLiveMatchStates, useFirebaseMatchState, FirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
 import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 import type { RoundEvent } from "@/types/tournament";
 
@@ -187,6 +188,8 @@ export default function TVDisplay() {
   const [databaseEvents, setDatabaseEvents] = useState<StoredJudgingEvent[]>([]);
   const [latestCard, setLatestCard] = useState<(RoundEvent | StoredJudgingEvent) | null>(null);
   const [latestMethod, setLatestMethod] = useState<(RoundEvent | StoredJudgingEvent) | null>(null);
+  const [selectedMatchId, setSelectedMatchId] = useState("");
+  const [liveMatchStates, setLiveMatchStates] = useState<Record<string, FirebaseMatchState>>({});
   const lastCardKeyRef = useRef("");
   const lastMethodKeyRef = useRef("");
   const tickerContentRef = useRef<HTMLDivElement>(null);
@@ -201,27 +204,45 @@ export default function TVDisplay() {
     // Reset after 10s of no update
     setTimeout(() => setFbConnected(false), 10000);
   });
-
-  // Determine which state to use: Firebase (cross-device) takes priority
-  const derivedTimers = deriveLiveMatchTimers(fbState);
-  const liveTimerMode = fbState?.timerMode ?? timerMode;
-  const liveRoundTimer = derivedTimers?.roundTimer ?? fbState?.roundTimer ?? roundTimer;
-  const liveCurrentRound = fbState?.currentRound ?? currentRound;
-  const liveRestTimer = derivedTimers?.restTimer ?? fbState?.restTimer ?? 60;
-  const liveWoskTimeLeft = derivedTimers?.woskTimeLeft ?? fbState?.woskTimeLeft ?? 10;
-  const liveWoskCorner = fbState?.woskCorner ?? null;
-  const liveMaxTime = fbState?.maxTime ?? 180;
-  const liveTotalRounds = fbState?.totalRounds ?? 3;
+  useFirebaseLiveMatchStates(setLiveMatchStates);
 
   const { red: activeAggRed, blue: activeAggBlue } = useLiveAggregateScore();
 
+  const availableMatches = useMemo(
+    () => matches
+      .filter(match =>
+        match.status !== "completed" &&
+        Boolean(match.redCornerId) &&
+        Boolean(match.blueCornerId) &&
+        !match.isBye
+      )
+      .sort((a, b) => {
+        const aLive = a.status === "in-progress" || Boolean(liveMatchStates[a.id]);
+        const bLive = b.status === "in-progress" || Boolean(liveMatchStates[b.id]);
+        if (aLive !== bLive) return aLive ? -1 : 1;
+        return a.matchNumber - b.matchNumber;
+      }),
+    [liveMatchStates, matches],
+  );
+
   const syncedActiveMatch = activeMatch ? matches.find(m => m.id === activeMatch.id) ?? activeMatch : null;
-  
-  // If Firebase has a match ID, prefer that match
-  const fbMatchId = fbState?.matchId;
-  const displayMatch = fbMatchId
-    ? (matches.find(m => m.id === fbMatchId) ?? syncedActiveMatch ?? matches.find(m => m.status === "in-progress") ?? matches.find(m => m.status === "scheduled") ?? matches[0])
-    : (syncedActiveMatch ?? matches.find(m => m.status === "in-progress") ?? matches.find(m => m.status === "scheduled") ?? matches[0]);
+  const displayMatch = selectedMatchId
+    ? (matches.find(m => m.id === selectedMatchId) ?? null)
+    : null;
+  const selectedFbState = displayMatch
+    ? (liveMatchStates[displayMatch.id] ?? (fbState?.matchId === displayMatch.id ? fbState : null))
+    : null;
+
+  // Determine which state to use: selected per-match Firebase state takes priority.
+  const derivedTimers = deriveLiveMatchTimers(selectedFbState);
+  const liveTimerMode = selectedFbState?.timerMode ?? (syncedActiveMatch?.id === displayMatch?.id ? timerMode : "idle");
+  const liveRoundTimer = derivedTimers?.roundTimer ?? selectedFbState?.roundTimer ?? (syncedActiveMatch?.id === displayMatch?.id ? roundTimer : displayMatch?.roundDurationSeconds ?? 180);
+  const liveCurrentRound = selectedFbState?.currentRound ?? (syncedActiveMatch?.id === displayMatch?.id ? currentRound : 1);
+  const liveRestTimer = derivedTimers?.restTimer ?? selectedFbState?.restTimer ?? 60;
+  const liveWoskTimeLeft = derivedTimers?.woskTimeLeft ?? selectedFbState?.woskTimeLeft ?? 10;
+  const liveWoskCorner = selectedFbState?.woskCorner ?? null;
+  const liveMaxTime = selectedFbState?.maxTime ?? displayMatch?.roundDurationSeconds ?? 180;
+  const liveTotalRounds = selectedFbState?.totalRounds ?? displayMatch?.totalRounds ?? 3;
 
   useFirebaseJudgingData(displayMatch?.id ?? null, ({ scores, events }) => {
     setDatabaseScores(scores);
@@ -260,11 +281,11 @@ export default function TVDisplay() {
       };
     }
     // If Firebase state has scores from the same match, use them
-    if (fbState?.matchId === displayMatch.id) return { red: fbState.redScore, blue: fbState.blueScore };
+    if (selectedFbState?.matchId === displayMatch.id) return { red: selectedFbState.redScore, blue: selectedFbState.blueScore };
     if (syncedActiveMatch?.id === displayMatch.id) return { red: activeAggRed, blue: activeAggBlue };
     if (displayMatch.result) return { red: displayMatch.result.redTotalScore, blue: displayMatch.result.blueTotalScore };
     return { red: 0, blue: 0 };
-  }, [activeAggBlue, activeAggRed, syncedActiveMatch?.id, displayMatch, combinedScores, fbState]);
+  }, [activeAggBlue, activeAggRed, syncedActiveMatch?.id, displayMatch, combinedScores, selectedFbState]);
 
   // Live clock
   useEffect(() => {
@@ -399,6 +420,72 @@ export default function TVDisplay() {
     : liveTimerMode === "passivity" ? "#f1c40f"
     : "var(--ikf-red)";
 
+  if (!displayMatch) {
+    return (
+      <div className="min-h-[100dvh] bg-[#050508] text-white p-6 sm:p-10 overflow-y-auto">
+        <HexBackground />
+        <div className="relative z-10 max-w-6xl mx-auto space-y-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">TV Output Display</div>
+              <h1 className="mt-3 font-display text-5xl sm:text-7xl leading-none tracking-wide">Choose Match</h1>
+              <p className="mt-3 max-w-2xl text-sm sm:text-base text-[rgba(255,255,255,0.55)]">
+                Select the mat/match to show on the public TV. The display will stay locked to that match until you choose another one.
+              </p>
+            </div>
+            <SyncBadge synced={fbConnected} />
+          </div>
+
+          {availableMatches.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-[rgba(255,255,255,0.14)] bg-white/[0.03] p-10 text-center text-[rgba(255,255,255,0.55)]">
+              No current scheduled or live matches are available for TV display.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {availableMatches.map(match => {
+                const liveState = liveMatchStates[match.id];
+                const isLive = match.status === "in-progress" || Boolean(liveState);
+                return (
+                  <button
+                    key={match.id}
+                    type="button"
+                    onClick={() => setSelectedMatchId(match.id)}
+                    className="group rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.045)] p-5 text-left shadow-2xl transition-all hover:-translate-y-0.5 hover:border-[var(--ikf-gold)] hover:bg-[rgba(212,160,23,0.08)]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--text-muted)]">Match #{match.matchNumber} - Mat {match.matNumber}</div>
+                        <div className="mt-2 font-display text-3xl leading-none text-white">{formatMatchCategory(match.ageGroup, match.weightCategory)}</div>
+                      </div>
+                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isLive ? "border-green-500/50 bg-green-500/10 text-green-300" : "border-[var(--ikf-gold)]/40 bg-[var(--ikf-gold)]/10 text-[var(--ikf-gold)]"}`}>
+                        {isLive ? "Live" : "Ready"}
+                      </span>
+                    </div>
+                    <div className="mt-5 grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-red)]">Red</div>
+                        <div className="truncate text-lg font-bold text-white">{match.redCornerName}</div>
+                      </div>
+                      <div className="font-display text-xl text-[rgba(255,255,255,0.35)]">vs</div>
+                      <div className="min-w-0 text-right">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-[var(--corner-blue)]">Blue</div>
+                        <div className="truncate text-lg font-bold text-white">{match.blueCornerName}</div>
+                      </div>
+                    </div>
+                    <div className="mt-5 flex items-center justify-between border-t border-[rgba(255,255,255,0.07)] pt-4 text-xs font-bold uppercase tracking-widest text-[rgba(255,255,255,0.45)]">
+                      <span>Round {liveState?.currentRound ?? 1} / {liveState?.totalRounds ?? match.totalRounds ?? 3}</span>
+                      <span>{liveState ? formatTime(deriveLiveMatchTimers(liveState)?.roundTimer ?? liveState.roundTimer) : "Standby"}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="w-screen h-screen overflow-hidden relative flex flex-col select-none"
@@ -417,7 +504,16 @@ export default function TVDisplay() {
 
       {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div className="relative z-10 flex items-center justify-between px-10 py-4 border-b border-[rgba(255,255,255,0.06)]">
-        <div className="font-display text-2xl text-white tracking-[0.2em]">IKF KENSHIDO</div>
+        <div className="flex items-center gap-4">
+          <div className="font-display text-2xl text-white tracking-[0.2em]">IKF KENSHIDO</div>
+          <button
+            type="button"
+            onClick={() => setSelectedMatchId("")}
+            className="rounded-full border border-[rgba(255,255,255,0.14)] bg-white/[0.04] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[rgba(255,255,255,0.62)] transition-colors hover:border-[var(--ikf-gold)] hover:text-[var(--ikf-gold)]"
+          >
+            Change Match
+          </button>
+        </div>
         <div className="flex flex-col items-center gap-1">
           <div
             className="font-display text-3xl tracking-[0.3em] text-center"
@@ -461,7 +557,7 @@ export default function TVDisplay() {
         {/* RED CORNER */}
         <CornerCard
           side="RED"
-          name={fbState?.matchId ? fbState.redCornerName : (displayMatch?.redCornerName ?? "RED CORNER")}
+          name={selectedFbState?.matchId ? selectedFbState.redCornerName : (displayMatch?.redCornerName ?? "RED CORNER")}
           club={redAthlete?.clubName ?? ""}
           country={redAthlete?.country ?? ""}
           score={displayScores.red}
@@ -522,7 +618,7 @@ export default function TVDisplay() {
         {/* BLUE CORNER */}
         <CornerCard
           side="BLUE"
-          name={fbState?.matchId ? fbState.blueCornerName : (displayMatch?.blueCornerName ?? "BLUE CORNER")}
+          name={selectedFbState?.matchId ? selectedFbState.blueCornerName : (displayMatch?.blueCornerName ?? "BLUE CORNER")}
           club={blueAthlete?.clubName ?? ""}
           country={blueAthlete?.country ?? ""}
           score={displayScores.blue}

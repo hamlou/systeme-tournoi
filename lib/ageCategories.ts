@@ -26,7 +26,8 @@ export function isYouthAgeGroup(value?: string | null) {
 }
 
 export function totalRoundsForAgeGroup(value?: string | null) {
-  return isYouthAgeGroup(value) ? 2 : 3;
+  normalizeAgeGroup(value);
+  return 3;
 }
 
 export function getRoundDuration(

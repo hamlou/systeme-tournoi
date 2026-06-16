@@ -72,7 +72,7 @@ function MatchReportDocument({
   databaseScores: StoredJudgeScore[];
   databaseEvents: StoredJudgingEvent[];
 }) {
-  const { matches, athletes, reports: storeReports, settings, referees } = useTournamentStore();
+  const { matches, athletes, reports: storeReports, settings, referees, roundEvents } = useTournamentStore();
   const storeReport = storeReports.find(r => r.id === report.id || r.matchId === report.matchId);
   const match = storeReport?.matchData ?? matches.find(m => m.id === report.matchId);
 
@@ -101,13 +101,14 @@ function MatchReportDocument({
   const allEventSources = [
     ...databaseEvents,
     ...((storeReport?.events ?? []).filter((event: any) => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`))),
+    ...roundEvents.filter((event: any) => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`)),
   ];
   const seenEvents = new Map<string, any>();
   for (const e of allEventSources) {
     const key = e.id ?? `${e.type}-${e.corner}-${e.timestamp}`;
     if (!seenEvents.has(key)) seenEvents.set(key, e);
   }
-  const matchEvents = Array.from(seenEvents.values());
+  const matchEvents = Array.from(seenEvents.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   const redAthlete = athletes.find(a => a.id === match.redCornerId);
   const blueAthlete = athletes.find(a => a.id === match.blueCornerId);
   const centralReferee = referees.find(r => r.id === match.assignedRefereeId);
@@ -137,11 +138,16 @@ function MatchReportDocument({
       blueTotal,
       yellowCards: officialEvents.filter(event => event.type === "yellow-card").length,
       redCards: officialEvents.filter(event => event.type === "red-card").length,
+      deductions: officialEvents.filter(event => event.type === "deduction").length,
+      warnings: officialEvents.filter(event => event.type === "yellow-card" || event.type === "wosk-stop").length,
+      specialEvents: officialEvents.filter(event => ["ippon", "waza-ari", "yuko", "doctor"].includes(event.type)).length,
+      actionCount: officialEvents.length,
       methodDecisions: methodEvents.map(formatMethodEvent).join(", ") || "None",
       decision: redTotal > blueTotal ? match.redCornerName : blueTotal > redTotal ? match.blueCornerName : scores.length ? "Draw" : "No score submitted",
       status: scores.length ? "Submitted" : "Pending",
     };
   });
+  const officialActionEvents = matchEvents.filter(event => (event as any).officialId || (event as any).officialName);
   
   return (
     <div className="bg-white text-black p-10 min-h-[1100px] font-sans text-[13px] leading-relaxed" style={{ fontFamily: "Arial, sans-serif" }}>
@@ -285,13 +291,16 @@ function MatchReportDocument({
               <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Blue Total</th>
               <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Decision</th>
               <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Method Clicks</th>
-              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Y/R Cards</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Cards</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Ded.</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Special</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Actions</th>
               <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Status</th>
             </tr>
           </thead>
           <tbody>
             {officialRows.length === 0 ? (
-              <tr><td colSpan={8} className="px-3 py-3 border border-gray-200 text-gray-500">No officials assigned for this match yet.</td></tr>
+              <tr><td colSpan={11} className="px-3 py-3 border border-gray-200 text-gray-500">No officials assigned for this match yet.</td></tr>
             ) : officialRows.map((row, i) => (
               <tr key={row.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-3 py-2 border border-gray-200 font-semibold">{row.name}</td>
@@ -301,7 +310,39 @@ function MatchReportDocument({
                 <td className="px-3 py-2 border border-gray-200">{row.decision}</td>
                 <td className="px-3 py-2 border border-gray-200">{row.methodDecisions}</td>
                 <td className="px-3 py-2 border border-gray-200 text-center font-bold">Y:{row.yellowCards} / R:{row.redCards}</td>
+                <td className="px-3 py-2 border border-gray-200 text-center font-bold">{row.deductions}</td>
+                <td className="px-3 py-2 border border-gray-200 text-center font-bold">{row.specialEvents}</td>
+                <td className="px-3 py-2 border border-gray-200 text-center font-bold">{row.actionCount}</td>
                 <td className="px-3 py-2 border border-gray-200 uppercase text-[11px] font-bold">{row.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* PER-OFFICIAL ACTION LOG */}
+      <div className="mb-6">
+        <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Per-Official Action Log</div>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-gray-800 text-white">
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Official</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Time</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Action</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Corner</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {officialActionEvents.length === 0 ? (
+              <tr><td colSpan={5} className="px-3 py-3 border border-gray-200 text-gray-500">No referee/judge actions recorded for this match yet.</td></tr>
+            ) : officialActionEvents.map((event, i) => (
+              <tr key={(event as any).id ?? i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-2 border border-gray-200 font-semibold">{(event as any).officialName ?? "Unknown official"}</td>
+                <td className="px-3 py-2 border border-gray-200 font-mono text-xs">{event.timestamp ? format(new Date(event.timestamp), "HH:mm:ss") : "Pending"}</td>
+                <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-[11px]">{formatMethodEvent(event).replace(` (${event.corner})`, "")}</td>
+                <td className="px-3 py-2 border border-gray-200">{event.corner ?? "—"}</td>
+                <td className="px-3 py-2 border border-gray-200">{event.details}</td>
               </tr>
             ))}
           </tbody>

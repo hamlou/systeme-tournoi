@@ -226,7 +226,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   matches: [],
   brackets: [],
   addMatch: (m) => {
-    set(s => ({ matches: [...s.matches, m] }));
+    set(s => ({ matches: [...s.matches, { ...m, totalRounds: 3 }] }));
     syncToFirebase('matches', get().matches);
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
@@ -237,10 +237,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       const completed = data.status === 'completed';
       const started = data.status === 'in-progress';
       const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
-      updatedMatch = current ? { ...current, ...data } as Match : undefined;
+      updatedMatch = current ? { ...current, ...data, totalRounds: 3 } as Match : undefined;
       return {
-        matches: s.matches.map(m => m.id === id ? { ...m, ...data } : m),
-        activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data } as Match : s.activeMatch,
+        matches: s.matches.map(m => m.id === id ? { ...m, ...data, totalRounds: 3 } : m),
+        activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data, totalRounds: 3 } as Match : s.activeMatch,
         referees: completed
           ? s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined } : r)
           : started
@@ -531,8 +531,9 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   // ── Active Match & Round State ──
   activeMatch: null,
   setActiveMatch: (m) => {
-    set({ activeMatch: m });
-    if (m) syncToFirebase('activeMatch', m);
+    const nextMatch = m ? { ...m, totalRounds: 3 } : null;
+    set({ activeMatch: nextMatch });
+    if (nextMatch) syncToFirebase('activeMatch', nextMatch);
   },
   currentRound: 1,
   setCurrentRound: (r) => {

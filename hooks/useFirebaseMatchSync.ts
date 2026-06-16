@@ -43,11 +43,15 @@ export function deriveLiveMatchTimers(state: FirebaseMatchState | null) {
 }
 
 const MATCH_STATE_PATH = "tournament/live/matchState";
+const MATCH_STATES_PATH = "tournament/live/matches";
 
 /** Push current match state to Firebase (call from Round Management) */
 export async function pushMatchState(state: FirebaseMatchState) {
   try {
     await set(ref(db, MATCH_STATE_PATH), state);
+    if (state.matchId) {
+      await set(ref(db, `${MATCH_STATES_PATH}/${state.matchId}`), state);
+    }
   } catch (e) {
     // Silently fail - firebase may not be configured
     console.warn("[FirebaseSync] push failed:", e);
@@ -66,6 +70,23 @@ export function useFirebaseMatchState(
     const handler = (snapshot: any) => {
       const data = snapshot.val();
       if (data) callbackRef.current(data as FirebaseMatchState);
+    };
+    onValue(dbRef, handler);
+    return () => off(dbRef, "value", handler);
+  }, []);
+}
+
+/** Subscribe to every live match state, keyed by match id. Used by TV match picker. */
+export function useFirebaseLiveMatchStates(
+  onUpdate: (states: Record<string, FirebaseMatchState>) => void
+) {
+  const callbackRef = useRef(onUpdate);
+  callbackRef.current = onUpdate;
+
+  useEffect(() => {
+    const dbRef = ref(db, MATCH_STATES_PATH);
+    const handler = (snapshot: any) => {
+      callbackRef.current((snapshot.val() ?? {}) as Record<string, FirebaseMatchState>);
     };
     onValue(dbRef, handler);
     return () => off(dbRef, "value", handler);
