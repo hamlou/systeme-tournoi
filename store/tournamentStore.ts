@@ -85,6 +85,7 @@ interface TournamentStore {
   deleteBracket: (bracketId: string) => void;
   updateMatchResult: (matchId: string, result: MatchResult) => void;
   advanceWinner: (matchId: string, winnerId: string, winnerName: string) => void;
+  confirmBracketWinner: (matchId: string, winnerCorner: 'RED' | 'BLUE') => void;
   updateRoundRobinStandings: (bracketId: string) => void;
   advancePoolWinners: (bracketId: string) => void;
   updateTeamScore: (teamMatchupId: string) => void;
@@ -392,21 +393,205 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
 
   advanceWinner: (matchId, winnerId, winnerName) => {
     const state = get();
+    const sourceMatch = state.matches.find(m => m.id === matchId);
     const bracket = state.brackets.find(b => b.matchIds.includes(matchId));
-    if (!bracket) return;
-    const nextMatch = state.matches.find(m =>
-      bracket.matchIds.includes(m.id) &&
-      (m.redCornerId === '' || m.blueCornerId === '') &&
-      m.id !== matchId
-    );
-    if (nextMatch) {
-      const slot = nextMatch.redCornerId === '' ? 'redCornerId' : 'blueCornerId';
-      const nameSlot = slot === 'redCornerId' ? 'redCornerName' : 'blueCornerName';
+    if (!sourceMatch || !bracket || !winnerId) return;
+
+    const fillTargetSlot = (targetMatchId: string, slot: 'RED' | 'BLUE') => {
+      const target = get().matches.find(m => m.id === targetMatchId);
+      if (!target) return;
+      if (target.status === 'completed') {
+        toast.error(`Match #${target.matchNumber} is already completed; advancement was not changed`);
+        return;
+      }
+
       set(s => ({
-        matches: s.matches.map(m => m.id === nextMatch.id ? { ...m, [slot]: winnerId, [nameSlot]: winnerName } : m),
+        matches: s.matches.map(m => {
+          if (m.id !== targetMatchId) return m;
+          return slot === 'RED'
+            ? { ...m, redCornerId: winnerId, redCornerName: winnerName, isBye: false }
+            : { ...m, blueCornerId: winnerId, blueCornerName: winnerName, isBye: false };
+        }),
       }));
       syncToFirebase('matches', get().matches);
+    };
+
+    const eventBelongsToMatch = (event: RoundEvent, match: Match) => {
+      const details = (event.details ?? '').toLowerCase();
+      const matchTag = `match #${match.matchNumber}`;
+      return (
+        details.includes(matchTag) ||
+        details.includes(`#${match.matchNumber} -`) ||
+        details.includes(`#${match.matchNumber} —`) ||
+        details.endsWith(`#${match.matchNumber}`)
+      );
+    };
+
+    const countWinnerProblems = (match: Match) => {
+      const result = match.result;
+      if (!result?.winnerId) {
+        return { redCards: 99, yellowCards: 99, deductions: 99, warnings: 99, totalProblems: 999 };
+      }
+      const cornerText = `${result.winnerCorner.toLowerCase()} corner`;
+      const winnerEvents = get().roundEvents.filter(event =>
+        eventBelongsToMatch(event, match) &&
+        (event.corner === result.winnerCorner || (event.details ?? '').toLowerCase().includes(cornerText))
+      );
+      const redCards = winnerEvents.filter(event => event.type === 'red-card').length;
+      const yellowCards = winnerEvents.filter(event => event.type === 'yellow-card').length;
+      const deductions = winnerEvents.filter(event => event.type === 'deduction').length;
+      const warnings = winnerEvents.filter(event =>
+        event.type !== 'yellow-card' && (event.details ?? '').toLowerCase().includes('warning')
+      ).length;
+
+      return {
+        redCards,
+        yellowCards,
+        deductions,
+        warnings,
+        totalProblems: redCards + yellowCards + deductions + warnings,
+      };
+    };
+
+    const handleSixPlayerPriority = () => {
+      const freshState = get();
+      const bracketMatches = freshState.matches.filter(m => bracket.matchIds.includes(m.id));
+      const openingMatches = bracketMatches
+        .filter(m => m.round === 'Round of 6')
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+      const semifinal = bracketMatches.find(m => m.round === 'Semifinal');
+      const finalMatch = bracketMatches.find(m => m.round === 'Final');
+      const sourceIsOpeningMatch = openingMatches.some(m => m.id === matchId);
+
+      if (!sourceIsOpeningMatch || openingMatches.length !== 3 || !semifinal || !finalMatch) return false;
+
+      const openingWinners = openingMatches
+        .filter(m => m.status === 'completed' && m.result?.winnerId)
+        .map(m => {
+          const problems = countWinnerProblems(m);
+          return {
+            match: m,
+            winnerId: m.result!.winnerId,
+            winnerName: m.result!.winnerName,
+            ...problems,
+          };
+        });
+
+      if (openingWinners.length < 3) {
+        toast.success('Winner recorded. Six-player priority pass will be calculated after all 3 opening matches finish.');
+        return true;
+      }
+
+      if (semifinal.status === 'completed' || finalMatch.status === 'completed') {
+        toast.error('The next six-player stage has already been completed, so the priority mapping was not changed.');
+        return true;
+      }
+
+      const [priorityWinner, ...semifinalists] = [...openingWinners].sort((a, b) =>
+        a.redCards - b.redCards ||
+        a.yellowCards - b.yellowCards ||
+        a.deductions - b.deductions ||
+        a.warnings - b.warnings ||
+        a.totalProblems - b.totalProblems ||
+        a.match.matchNumber - b.match.matchNumber ||
+        a.winnerName.localeCompare(b.winnerName)
+      );
+
+      if (!priorityWinner || semifinalists.length < 2) return true;
+
+      set(s => ({
+        matches: s.matches.map(m => {
+          if (m.id === semifinal.id) {
+            return {
+              ...m,
+              redCornerId: semifinalists[0].winnerId,
+              redCornerName: semifinalists[0].winnerName,
+              blueCornerId: semifinalists[1].winnerId,
+              blueCornerName: semifinalists[1].winnerName,
+              isBye: false,
+            };
+          }
+          if (m.id === finalMatch.id) {
+            return {
+              ...m,
+              redCornerId: priorityWinner.winnerId,
+              redCornerName: priorityWinner.winnerName,
+              blueCornerName: m.blueCornerId ? m.blueCornerName : 'Semifinal winner',
+              isBye: false,
+            };
+          }
+          return m;
+        }),
+      }));
+      syncToFirebase('matches', get().matches);
+
+      toast.success(`${priorityWinner.winnerName} advanced automatically by clean-card priority. The other two winners were mapped to the semifinal.`, {
+        duration: 6000,
+      });
+      return true;
+    };
+
+    if (sourceMatch.nextMatchId && sourceMatch.nextMatchSlot) {
+      fillTargetSlot(sourceMatch.nextMatchId, sourceMatch.nextMatchSlot);
+      return;
     }
+
+    if (handleSixPlayerPriority()) return;
+
+    const nextMatch = get().matches.find(m =>
+      bracket.matchIds.includes(m.id) &&
+      (m.redCornerId === '' || m.blueCornerId === '') &&
+      m.id !== matchId &&
+      m.status !== 'completed'
+    );
+    if (nextMatch) {
+      fillTargetSlot(nextMatch.id, nextMatch.redCornerId === '' ? 'RED' : 'BLUE');
+    }
+  },
+
+  confirmBracketWinner: (matchId, winnerCorner) => {
+    const match = get().matches.find(m => m.id === matchId);
+    if (!match) return;
+    if (match.status === 'completed') {
+      toast.error('This match already has a confirmed winner');
+      return;
+    }
+
+    const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
+    const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
+    const invalidNames = ['BYE', 'TBD', 'Priority winner', 'Semifinal winner', 'WB Champion', 'LB Champion'];
+    if (!winnerId || invalidNames.includes(winnerName)) {
+      toast.error('Both fighters must be known before confirming a bracket winner');
+      return;
+    }
+
+    const result: MatchResult = {
+      winnerId,
+      winnerName,
+      winnerCorner,
+      method: 'majority-decision',
+      redTotalScore: match.result?.redTotalScore ?? 0,
+      blueTotalScore: match.result?.blueTotalScore ?? 0,
+      roundScores: match.result?.roundScores ?? [],
+      validatedAt: new Date().toISOString(),
+    };
+
+    set({ currentResult: result });
+    get().addRoundEvent({
+      type: 'decision',
+      corner: winnerCorner,
+      details: `Match #${match.matchNumber} - Bracket winner confirmed for ${winnerName}`,
+    });
+    get().updateMatchResult(matchId, result);
+    get().generateReport(matchId);
+    get().advanceWinner(matchId, winnerId, winnerName);
+    get().addNotification('Bracket Winner Confirmed', `${winnerName} advanced from Match #${match.matchNumber}`);
+    syncToFirebase('results/' + matchId, result);
+
+    toast.success(`${winnerName} confirmed as winner and advanced in the bracket`, {
+      duration: 5000,
+      style: { background: 'var(--ikf-gold)', color: '#000', fontWeight: 'bold' },
+    });
   },
 
   updateRoundRobinStandings: (bracketId) => {
