@@ -1,7 +1,7 @@
 // Helper to upload an image to ImgBB and return the hosted URL.
 // https://api.imgbb.com/
 
-const IMGBB_API_KEY = "6a0d0dc865c29c4bf414f81371d602ad";
+const IMGBB_API_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY ?? "6a0d0dc865c29c4bf414f81371d602ad";
 const IMGBB_ENDPOINT = "https://api.imgbb.com/1/upload";
 
 export async function uploadImageToImgBB(file: File): Promise<string> {
