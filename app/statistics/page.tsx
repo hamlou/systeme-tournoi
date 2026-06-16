@@ -167,7 +167,7 @@ export default function StatisticsPage() {
   const CATEGORY_BARS = useMemo(() => {
     const counts: Record<string, number> = {};
     matches.forEach(m => {
-      const key = formatMatchCategory(m.ageGroup, m.weightCategory);
+      const key = formatMatchCategory(m.ageGroup, m.weightCategory, m.gender);
       counts[key] = (counts[key] || 0) + 1;
     });
     return Object.entries(counts).map(([cat, count]) => ({ cat, matches: count })).sort((a, b) => b.matches - a.matches);

@@ -180,7 +180,7 @@ function MatchReportDocument({
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('match_details', settings.language)}</div>
-          <div className="font-bold">{t('match_number', settings.language).replace('#', '')} #{match.matchNumber} · {formatMatchCategory(match.ageGroup, match.weightCategory)} · {t('mat_uc', settings.language)} {match.matNumber} · {match.round}</div>
+          <div className="font-bold">{t('match_number', settings.language).replace('#', '')} #{match.matchNumber} · {formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)} · {t('mat_uc', settings.language)} {match.matNumber} · {match.round}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('start_time', settings.language)}</div>
@@ -460,7 +460,7 @@ export default function ReportsPage() {
         status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? (m.result ? "Official" : "Draft")),
         matchId: m.id,
         matchNumber: m.matchNumber,
-        category: formatMatchCategory(m.ageGroup, m.weightCategory),
+        category: formatMatchCategory(m.ageGroup, m.weightCategory, m.gender),
         mat: `Mat ${m.matNumber}`
       };
     });

@@ -533,7 +533,7 @@ export default function AIPage() {
               <div className="mt-4 rounded-xl border border-[var(--border-default)] bg-black/20 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)] font-bold mb-2">Selected match</p>
                 <p className="font-display text-3xl text-white">{selectedMatch?.redCornerName} <span className="text-[var(--text-muted)]">vs</span> {selectedMatch?.blueCornerName}</p>
-                <p className="text-sm text-[var(--text-secondary)] mt-2">{selectedMatch ? formatMatchCategory(selectedMatch.ageGroup, selectedMatch.weightCategory) : ""} · Mat {selectedMatch?.matNumber} · {selectedMatch?.round}</p>
+                <p className="text-sm text-[var(--text-secondary)] mt-2">{selectedMatch ? formatMatchCategory(selectedMatch.ageGroup, selectedMatch.weightCategory, selectedMatch.gender) : ""} · Mat {selectedMatch?.matNumber} · {selectedMatch?.round}</p>
               </div>
             </IKFCard>
           </div>

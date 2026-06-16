@@ -113,7 +113,7 @@ export default function ChiefRefereeDashboard() {
           <div className="font-display text-3xl text-white">{t('match_number', settings.language).replace('#', '')} #{activeMatch.matchNumber}</div>
         </div>
         <div className="text-center">
-          <div className="text-sm text-[var(--text-muted)] mb-1">{formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory)} • Mat {activeMatch.matNumber}</div>
+          <div className="text-sm text-[var(--text-muted)] mb-1">{formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender)} • Mat {activeMatch.matNumber}</div>
           <div className="font-display text-5xl flex gap-16">
             <span className="text-[var(--ikf-red)]">{activeMatch.redCornerName}</span>
             <span className="text-[var(--text-muted)] text-3xl mt-3">vs</span>

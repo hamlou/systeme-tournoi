@@ -80,6 +80,7 @@ export interface Match {
   matchNumber: number;
   bracketId: string;
   category: string;
+  gender?: Gender;
   ageGroup: AgeGroup;
   weightCategory: string;
   round: string;
@@ -156,6 +157,7 @@ export interface Bracket {
   matchIds: string[];
   // New, richer descriptors.
   category?: string;
+  gender?: Gender;
   ageGroup?: string;
   weightCategory?: string;
   format: BracketFormat | string;
@@ -181,6 +183,7 @@ export interface Bracket {
 
 export interface BracketOptions {
   seeding?: boolean;
+  gender?: Gender;
   pointsForWin?: number;
   pointsForDraw?: number;
   athletesPerPool?: number;

@@ -13,7 +13,7 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import type { Club } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
 import { COUNTRIES } from "@/lib/countries";
-import { uploadImageToImgBB } from "@/lib/imgbb";
+import { uploadProfileImage } from "@/lib/imgbb";
 
 const clubSchema = z.object({
   name: z.string().min(2, "Club name is required"),
@@ -38,6 +38,10 @@ export default function RegisterClubPage() {
   const [logoUrl, setLogoUrl] = React.useState(editingClub?.logoUrl ?? "");
   const [isUploading, setIsUploading] = React.useState(false);
 
+  React.useEffect(() => {
+    if (editingClub?.logoUrl) setLogoUrl(editingClub.logoUrl);
+  }, [editingClub?.logoUrl]);
+
   const {
     register,
     handleSubmit,
@@ -60,9 +64,9 @@ export default function RegisterClubPage() {
     if (!file) return;
     setIsUploading(true);
     try {
-      const url = await uploadImageToImgBB(file);
+      const { url, storedRemotely } = await uploadProfileImage(file, { maxSize: 640 });
       setLogoUrl(url);
-      toast.success("Logo uploaded successfully");
+      toast.success(storedRemotely ? "Logo uploaded successfully" : "Logo saved directly to the database");
     } catch {
       toast.error("Logo upload failed. Please try again.");
     } finally {
@@ -71,6 +75,10 @@ export default function RegisterClubPage() {
   };
 
   const onSubmit = async (data: ClubFormValues) => {
+    if (isUploading) {
+      toast.error("Please wait for the logo upload to finish before saving.");
+      return;
+    }
     // Simulate network delay
     await new Promise(r => setTimeout(r, 800));
     
@@ -196,7 +204,7 @@ export default function RegisterClubPage() {
                   </div>
                 )}
                 <p className="text-sm font-medium text-[var(--text-secondary)]">{isUploading ? "Uploading..." : logoUrl ? "Click to replace logo" : "Click to upload a logo image"}</p>
-                <p className="text-xs text-[var(--text-muted)] mt-1.5">Images are hosted on ImgBB. PNG, JPG or SVG.</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1.5">PNG, JPG or SVG.</p>
               </label>
             </div>
 
@@ -219,9 +227,10 @@ export default function RegisterClubPage() {
             variant="gold"
             size="xl"
             className="text-lg tracking-widest shadow-[var(--shadow-gold-glow)]"
-            loading={isSubmitting}
+            loading={isSubmitting || isUploading}
+            disabled={isUploading}
           >
-            {isSubmitting ? (editingClub ? "SAVING CLUB..." : "REGISTERING CLUB...") : (editingClub ? "SAVE CLUB" : "REGISTER CLUB")}
+            {isUploading ? "UPLOADING LOGO..." : isSubmitting ? (editingClub ? "SAVING CLUB..." : "REGISTERING CLUB...") : (editingClub ? "SAVE CLUB" : "REGISTER CLUB")}
           </IKFButton>
         </div>
       </form>

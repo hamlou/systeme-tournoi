@@ -109,7 +109,7 @@ export default function RoundManagementPage() {
       woskTimeLeft: overrides?.woskTimeLeft ?? woskTimeLeft,
       woskCorner: overrides?.woskCorner !== undefined ? overrides.woskCorner : woskCorner,
       status: activeMatch.status,
-        category: formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory),
+        category: formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender),
       matNumber: activeMatch.matNumber,
       updatedAt: Date.now(),
     };
@@ -196,7 +196,7 @@ export default function RoundManagementPage() {
         woskTimeLeft: 10,
         woskCorner: null,
         status: "in-progress",
-        category: formatMatchCategory(m.ageGroup, m.weightCategory),
+        category: formatMatchCategory(m.ageGroup, m.weightCategory, m.gender),
         matNumber: m.matNumber,
         updatedAt: Date.now(),
       });
@@ -353,7 +353,7 @@ export default function RoundManagementPage() {
               <span className="font-bold text-white text-sm">{t('match_number', settings.language).replace('#', '')} #{m.matchNumber}</span>
               <IKFBadge variant="live" label={`${t('mat', settings.language).toUpperCase()} ${m.matNumber}`} size="sm" />
             </div>
-            <div className="text-xs text-[var(--text-muted)] font-mono mb-2">{formatMatchCategory(m.ageGroup, m.weightCategory)} • {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}</div>
+            <div className="text-xs text-[var(--text-muted)] font-mono mb-2">{formatMatchCategory(m.ageGroup, m.weightCategory, m.gender)} • {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}</div>
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className="text-[var(--ikf-red)] truncate flex-1">{m.redCornerName}</span>
               <span className="text-[var(--text-muted)]">vs</span>
@@ -388,7 +388,7 @@ export default function RoundManagementPage() {
                 </div>
               </div>
               <div className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider text-right w-48">
-                {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory)}
+                {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender)}
               </div>
             </div>
 

@@ -119,7 +119,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col items-center justify-center space-y-3 mt-4 mb-6">
                     <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[var(--text-secondary)]">
-                      {match.round} · {formatMatchCategory(match.ageGroup, match.weightCategory)}
+                      {match.round} · {formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}
                     </span>
                     {match.status === "in-progress" ? (
                       <LiveTimer initialSeconds={activeMatch?.id === match.id ? roundTimer : match.roundDurationSeconds} />
@@ -158,7 +158,7 @@ export default function DashboardPage() {
                     <span className="text-[10px] text-[var(--text-muted)] font-bold px-1">{t('vs', settings.language)}</span>
                     <span className="font-semibold text-[var(--corner-blue)] text-sm truncate">{m.blueCornerName}</span>
                   </div>
-                  <div className="text-[11px] text-[var(--text-secondary)] mt-1 truncate">{formatMatchCategory(m.ageGroup, m.weightCategory)}</div>
+                  <div className="text-[11px] text-[var(--text-secondary)] mt-1 truncate">{formatMatchCategory(m.ageGroup, m.weightCategory, m.gender)}</div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-bold text-[var(--text-muted)] tracking-widest bg-[var(--bg-primary)] px-2.5 py-1 rounded border border-[var(--border-default)]">{t('mat', settings.language)} {m.matNumber}</span>

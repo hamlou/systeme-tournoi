@@ -455,7 +455,7 @@ export default function TVDisplay() {
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--text-muted)]">Match #{match.matchNumber} - Mat {match.matNumber}</div>
-                        <div className="mt-2 font-display text-3xl leading-none text-white">{formatMatchCategory(match.ageGroup, match.weightCategory)}</div>
+                        <div className="mt-2 font-display text-3xl leading-none text-white">{formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}</div>
                       </div>
                       <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isLive ? "border-green-500/50 bg-green-500/10 text-green-300" : "border-[var(--ikf-gold)]/40 bg-[var(--ikf-gold)]/10 text-[var(--ikf-gold)]"}`}>
                         {isLive ? "Live" : "Ready"}

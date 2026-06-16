@@ -196,7 +196,7 @@ export default function JudgeTabletView() {
             <option value="">Choose assigned match...</option>
             {selectableMatches.map(match => (
               <option key={match.id} value={match.id}>
-                Match #{match.matchNumber} - {formatMatchCategory(match.ageGroup, match.weightCategory)} - {match.redCornerName} vs {match.blueCornerName}
+                Match #{match.matchNumber} - {formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)} - {match.redCornerName} vs {match.blueCornerName}
               </option>
             ))}
           </select>
@@ -363,7 +363,7 @@ export default function JudgeTabletView() {
         <div className="text-center">
           <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--ikf-gold)] mb-0.5">Electronic Judging · IKF Kenshido</div>
           <div className="text-base font-display tracking-widest text-white">
-            Match #{activeMatch.matchNumber} · {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory)}
+            Match #{activeMatch.matchNumber} · {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender)}
           </div>
         </div>
 

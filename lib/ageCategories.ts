@@ -1,4 +1,4 @@
-import type { AgeGroup } from "@/types/tournament";
+import type { AgeGroup, Gender } from "@/types/tournament";
 
 export const AGE_GROUPS: AgeGroup[] = ["Mini", "Cadet", "Junior", "Senior"];
 
@@ -38,13 +38,16 @@ export function getRoundDuration(
   return roundDurations?.[normalized] ?? (normalized === "Mini" ? 60 : normalized === "Cadet" ? 90 : normalized === "Junior" ? 120 : 180);
 }
 
-export function formatMatchCategory(ageGroup?: string | null, weightCategory?: string | null) {
-  return [normalizeAgeGroup(ageGroup), weightCategory].filter(Boolean).join(" ");
+export function formatMatchCategory(ageGroup?: string | null, weightCategory?: string | null, gender?: Gender | string | null) {
+  return [gender, normalizeAgeGroup(ageGroup), weightCategory].filter(Boolean).join(" ");
 }
 
 export function parseCategoryId(categoryId: string) {
   const parts = categoryId.trim().split(/\s+/);
-  const weightCategory = parts.find(part => /kg$/i.test(part)) ?? parts[parts.length - 1] ?? "";
-  const ageGroup = normalizeAgeGroup(parts.filter(part => part !== weightCategory).join(" "));
-  return { ageGroup, weightCategory, category: formatMatchCategory(ageGroup, weightCategory) };
+  const gender = parts[0] === "Male" || parts[0] === "Female" ? parts[0] as Gender : undefined;
+  const categoryParts = gender ? parts.slice(1) : parts;
+  const weightCategory = categoryParts.find(part => /kg$/i.test(part)) ?? categoryParts[categoryParts.length - 1] ?? "";
+  const ageGroup = normalizeAgeGroup(categoryParts.filter(part => part !== weightCategory).join(" "));
+  const baseCategory = formatMatchCategory(ageGroup, weightCategory);
+  return { ageGroup, weightCategory, gender, category: gender ? `${gender} ${baseCategory}` : baseCategory };
 }

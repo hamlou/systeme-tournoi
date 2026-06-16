@@ -42,7 +42,7 @@ export function MatchDetailModal({ match, onClose }: { match: Match; onClose: ()
         <div className="flex justify-between items-start mb-6">
           <div>
             <div className="text-xs font-bold text-[var(--text-muted)] tracking-widest uppercase mb-1">{match.round} • Match #{match.matchNumber}</div>
-            <h2 className="font-display text-3xl text-white">{formatMatchCategory(match.ageGroup, match.weightCategory)}</h2>
+            <h2 className="font-display text-3xl text-white">{formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}</h2>
           </div>
           <button onClick={onClose} className="text-[var(--text-muted)] hover:text-white transition-colors"><X size={20} /></button>
         </div>

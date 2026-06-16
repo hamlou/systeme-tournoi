@@ -4,7 +4,7 @@
 import React, { useState, useMemo } from "react";
 import { Printer, Shuffle, Settings2 } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { Match, Bracket, BracketFormat, BracketOptions, AgeGroup } from "@/types/tournament";
+import type { Match, Bracket, BracketFormat, BracketOptions, AgeGroup, Gender } from "@/types/tournament";
 import { useMatchNotifications } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
@@ -25,20 +25,26 @@ const FORMATS: { value: BracketFormat; label: string; desc: string }[] = [
   { value: "team", label: "Team Tournament", desc: "Clubs face off; fighters matched by weight category." },
 ];
 
+const GENDER_OPTIONS: Gender[] = ["Male", "Female"];
+
 export default function BracketsPage() {
   const { brackets, matches, athletes, generateBracket, generateFightOrder, deleteBracket } = useTournamentStore();
   const upcomingMatches = useMatchNotifications();
 
   const ageOptions: { value: AgeGroup; label: string }[] = AGE_GROUPS.map(value => ({ value, label: AGE_GROUP_LABELS[value] }));
   const confirmed = useMemo(() => athletes.filter(a => a.registrationStatus === "Active").map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })), [athletes]);
+  const [selectedGender, setSelectedGender] = useState<Gender>("Male");
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup | "">("Senior");
   const uniqueWeights = useMemo(() => {
-    const relevant = selectedAgeGroup ? confirmed.filter(a => normalizeAgeGroup(a.ageGroup) === selectedAgeGroup) : confirmed;
+    const relevant = confirmed.filter(a =>
+      a.gender === selectedGender &&
+      (!selectedAgeGroup || normalizeAgeGroup(a.ageGroup) === selectedAgeGroup)
+    );
     return Array.from(new Set(relevant.map(a => a.weightCategory))).sort();
-  }, [confirmed, selectedAgeGroup]);
+  }, [confirmed, selectedGender, selectedAgeGroup]);
 
   const [selectedWeightCategory, setSelectedWeightCategory] = useState(uniqueWeights[0] || "");
-  const selectedCategory = selectedAgeGroup && selectedWeightCategory ? formatMatchCategory(selectedAgeGroup, selectedWeightCategory) : "";
+  const selectedCategory = selectedGender && selectedAgeGroup && selectedWeightCategory ? `${selectedGender} ${formatMatchCategory(selectedAgeGroup, selectedWeightCategory)}` : "";
   const [selectedFormat, setSelectedFormat] = useState<BracketFormat>("single-elimination");
   const [printMode, setPrintMode] = useState(false);
   const [detailMatch, setDetailMatch] = useState<Match | null>(null);
@@ -70,21 +76,30 @@ export default function BracketsPage() {
     [matches, bracket]
   );
   const categoryAthletes = useMemo(
-    () => confirmed.filter(a => (!selectedAgeGroup || normalizeAgeGroup(a.ageGroup) === selectedAgeGroup) && (!selectedWeightCategory || a.weightCategory === selectedWeightCategory)),
-    [confirmed, selectedAgeGroup, selectedWeightCategory]
+    () => confirmed.filter(a =>
+      a.gender === selectedGender &&
+      (!selectedAgeGroup || normalizeAgeGroup(a.ageGroup) === selectedAgeGroup) &&
+      (!selectedWeightCategory || a.weightCategory === selectedWeightCategory)
+    ),
+    [confirmed, selectedGender, selectedAgeGroup, selectedWeightCategory]
   );
   const fightOrderMatches = useMemo(
-    () => matches.filter(m => m.round === "Fight Order" && normalizeAgeGroup(m.ageGroup) === selectedAgeGroup && m.weightCategory === selectedWeightCategory).sort((a, b) => a.matchNumber - b.matchNumber),
-    [matches, selectedAgeGroup, selectedWeightCategory]
+    () => matches.filter(m =>
+      m.round === "Fight Order" &&
+      normalizeAgeGroup(m.ageGroup) === selectedAgeGroup &&
+      m.weightCategory === selectedWeightCategory &&
+      (m.gender === selectedGender || m.category === selectedCategory)
+    ).sort((a, b) => a.matchNumber - b.matchNumber),
+    [matches, selectedGender, selectedAgeGroup, selectedWeightCategory, selectedCategory]
   );
 
   const buildOptions = (): BracketOptions => ({
-    seeding, pointsForWin, pointsForDraw, athletesPerPool, matchByWeight,
+    seeding, gender: selectedGender, pointsForWin, pointsForDraw, athletesPerPool, matchByWeight,
   });
 
   const doGenerate = (format: BracketFormat) => {
     if (categoryAthletes.length < 2) {
-      toast.error("Not enough athletes — need at least 2 athletes in this age and weight category");
+      toast.error("Not enough athletes - need at least 2 athletes in this gender, age, and weight category");
       return;
     }
     if (format === "pool-elimination" && categoryAthletes.length < 8) {
@@ -94,15 +109,16 @@ export default function BracketsPage() {
   };
 
   const handleFightOrder = () => {
-    if (!selectedAgeGroup || !selectedWeightCategory) {
-      toast.error("Select both age and weight category first");
+    if (!selectedGender || !selectedAgeGroup || !selectedWeightCategory) {
+      toast.error("Select gender, age, and weight category first");
       return;
     }
     if (fightOrderMatches.length > 0 && !window.confirm("This will delete existing matches for this category. Continue?")) return;
-    generateFightOrder(selectedAgeGroup, selectedWeightCategory);
+    generateFightOrder(selectedAgeGroup, selectedWeightCategory, selectedGender);
   };
 
   const clearFilters = () => {
+    setSelectedGender("Male");
     setSelectedAgeGroup("");
     setSelectedWeightCategory("");
   };
@@ -201,6 +217,13 @@ export default function BracketsPage() {
       <div className="bg-[var(--bg-card)] border border-[var(--border-default)] p-5 rounded-xl space-y-5 shadow-card no-print">
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[220px]">
+            <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Gender</label>
+            <select value={selectedGender} onChange={e => setSelectedGender(e.target.value as Gender)}
+              className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
+              {GENDER_OPTIONS.map(gender => <option key={gender} value={gender}>{gender}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[220px]">
             <label className="block text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">Age Category</label>
             <select value={selectedAgeGroup} onChange={e => setSelectedAgeGroup(e.target.value as AgeGroup | "")}
               className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-4 py-2.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--ikf-red)]">
@@ -215,7 +238,7 @@ export default function BracketsPage() {
               <option value="">All weights</option>
               {uniqueWeights.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
-            <p className="text-xs text-[var(--text-muted)] mt-1.5">{categoryAthletes.length} confirmed athletes{selectedAgeGroup || selectedWeightCategory ? ` in ${[selectedAgeGroup, selectedWeightCategory].filter(Boolean).join(" ")}` : ""}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-1.5">{categoryAthletes.length} confirmed athletes in {[selectedGender, selectedAgeGroup, selectedWeightCategory].filter(Boolean).join(" ")}</p>
           </div>
           <div className="flex-1 min-w-[220px]">
             <div className="flex justify-end mb-2"><button type="button" onClick={clearFilters} className="text-[10px] font-bold uppercase tracking-widest text-[var(--ikf-gold)] hover:text-white">Clear Filters</button></div>

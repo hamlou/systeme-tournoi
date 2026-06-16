@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Athlete, Match, Standing, AgeGroup } from '@/types/tournament';
+import type { Athlete, Match, Standing, AgeGroup, Gender } from '@/types/tournament';
 import { totalRoundsForAgeGroup } from '@/lib/ageCategories';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -33,6 +33,7 @@ export function roundNamesForSize(size: number): string[] {
 
 interface BaseMatchInput {
   category: string;
+  gender?: Gender;
   ageGroup: AgeGroup;
   weightCategory: string;
   roundDuration: number;
@@ -82,7 +83,7 @@ export function buildSingleElimination(athletes: Athlete[], base: BaseMatchInput
     const isBye = !red || !blue;
     const match: Match = {
       id, matchNumber: matchNumber++, bracketId: base.bracketId,
-      category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+      category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
       round: roundNames[0],
       redCornerId: red?.id ?? '', blueCornerId: blue?.id ?? '',
       redCornerName: red?.fullName ?? 'BYE', blueCornerName: blue?.fullName ?? 'BYE',
@@ -109,7 +110,7 @@ export function buildSingleElimination(athletes: Athlete[], base: BaseMatchInput
       ids.push(id);
       allMatches.push({
         id, matchNumber: matchNumber++, bracketId: base.bracketId,
-        category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+        category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
         round: roundNames[r],
         redCornerId: '', blueCornerId: '', redCornerName: 'TBD', blueCornerName: 'TBD',
         matNumber: (i % 3) + 1,
@@ -158,7 +159,7 @@ export function buildSixPlayerElimination(athletes: Athlete[], base: BaseMatchIn
     openingMatchIds.push(id);
     allMatches.push({
       id, matchNumber: matchNumber++, bracketId: base.bracketId,
-      category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+      category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
       round: 'Round of 6',
       redCornerId: red.id, blueCornerId: blue.id,
       redCornerName: red.fullName, blueCornerName: blue.fullName,
@@ -175,7 +176,7 @@ export function buildSixPlayerElimination(athletes: Athlete[], base: BaseMatchIn
 
   allMatches.push({
     id: semifinalId, matchNumber: matchNumber++, bracketId: base.bracketId,
-    category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+    category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
     round: 'Semifinal',
     redCornerId: '', blueCornerId: '',
     redCornerName: 'TBD', blueCornerName: 'TBD',
@@ -190,7 +191,7 @@ export function buildSixPlayerElimination(athletes: Athlete[], base: BaseMatchIn
 
   allMatches.push({
     id: finalId, matchNumber: matchNumber++, bracketId: base.bracketId,
-    category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+    category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
     round: 'Final',
     redCornerId: '', blueCornerId: '',
     redCornerName: 'Priority winner', blueCornerName: 'Semifinal winner',
@@ -248,7 +249,7 @@ export function buildDoubleElimination(athletes: Athlete[], base: BaseMatchInput
       roundIds.push(id);
       losersMatches.push({
         id, matchNumber: matchNumber++, bracketId: base.bracketId,
-        category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+        category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
         round: `Losers Round ${lbIndex}`,
         redCornerId: '', blueCornerId: '', redCornerName: 'TBD', blueCornerName: 'TBD',
         matNumber: (i % 3) + 1,
@@ -285,7 +286,7 @@ export function buildDoubleElimination(athletes: Athlete[], base: BaseMatchInput
   const wbFinal = winnersMatches.find(m => m.round === 'Final')!;
   const grandFinal: Match = {
     id: grandFinalId, matchNumber: matchNumber++, bracketId: base.bracketId,
-    category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+    category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
     round: 'Grand Final',
     redCornerId: '', blueCornerId: '', redCornerName: 'WB Champion', blueCornerName: 'LB Champion',
     matNumber: 1,
@@ -329,7 +330,7 @@ export function buildRoundRobin(athletes: Athlete[], base: BaseMatchInput, poolI
       if (!red || !blue) continue; // skip bye pairings
       matches.push({
         id: uuidv4(), matchNumber: matchNumber++, bracketId: base.bracketId,
-        category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+        category: base.category, gender: base.gender, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
         round: poolId ? `Pool Round ${r + 1}` : `Round ${r + 1}`,
         redCornerId: red.id, blueCornerId: blue.id,
         redCornerName: red.fullName, blueCornerName: blue.fullName,

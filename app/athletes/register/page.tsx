@@ -15,7 +15,7 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, AgeGroup } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
 import { COUNTRIES } from "@/lib/countries";
-import { uploadImageToImgBB } from "@/lib/imgbb";
+import { uploadProfileImage } from "@/lib/imgbb";
 import { normalizeAgeGroup } from "@/lib/ageCategories";
 
 const registerSchema = z.object({
@@ -66,14 +66,18 @@ export default function RegisterAthletePage() {
   const [photoUrl, setPhotoUrl] = React.useState(editingAthlete?.photoUrl ?? "");
   const [isUploading, setIsUploading] = React.useState(false);
 
+  React.useEffect(() => {
+    if (editingAthlete?.photoUrl) setPhotoUrl(editingAthlete.photoUrl);
+  }, [editingAthlete?.photoUrl]);
+
   const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setIsUploading(true);
     try {
-      const url = await uploadImageToImgBB(file);
+      const { url, storedRemotely } = await uploadProfileImage(file, { maxSize: 640 });
       setPhotoUrl(url);
-      toast.success("Photo uploaded successfully");
+      toast.success(storedRemotely ? "Photo uploaded successfully" : "Photo saved directly to the database");
     } catch (error) {
       toast.error("Photo upload failed. Please try again.");
     } finally {
@@ -103,6 +107,10 @@ export default function RegisterAthletePage() {
   }, [dobValue, setValue]);
 
   const onSubmit = async (data: FormValues) => {
+    if (isUploading) {
+      toast.error("Please wait for the photo upload to finish before saving.");
+      return;
+    }
     await new Promise(r => setTimeout(r, 600));
     const selectedClub = clubs.find(c => c.id === data.clubId);
     const duplicateNationalId = athletes.find(a => a.id !== editingAthlete?.id && a.nationalId.trim().toLowerCase() === data.nationalId.trim().toLowerCase());
@@ -210,7 +218,7 @@ export default function RegisterAthletePage() {
                 </div>
               )}
               <p className="text-sm font-medium text-[var(--text-secondary)]">{isUploading ? "Uploading..." : photoUrl ? "Click to replace photo" : "Click to upload a photo"}</p>
-              <p className="text-xs text-[var(--text-muted)] mt-1">Images are hosted on ImgBB. PNG or JPG.</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">PNG or JPG.</p>
             </label>
           </div>
         </IKFCard>
@@ -264,8 +272,8 @@ export default function RegisterAthletePage() {
         {/* SUBMIT */}
         <div className="flex gap-4 justify-end">
           <IKFButton variant="ghost" type="button" onClick={() => router.push("/athletes")}>Cancel</IKFButton>
-          <IKFButton variant="primary" type="submit" loading={isSubmitting} disabled={clubs.length === 0} size="lg">
-            {editingAthlete ? "Save Changes" : "Register Athlete"}
+          <IKFButton variant="primary" type="submit" loading={isSubmitting || isUploading} disabled={clubs.length === 0 || isUploading} size="lg">
+            {isUploading ? "Uploading Photo..." : editingAthlete ? "Save Changes" : "Register Athlete"}
           </IKFButton>
         </div>
       </form>

@@ -6,7 +6,7 @@ import { db } from '@/lib/firebase';
 import type {
   Athlete, Club, WeighinRecord, Match, Bracket, Referee,
   RoundEvent, JudgeScore, TournamentReport, MatchResult,
-  TournamentSettings, AgeGroup, TimerMode, WeighinStatus, AppNotification,
+  TournamentSettings, AgeGroup, Gender, TimerMode, WeighinStatus, AppNotification,
   BracketOptions, Pool, TeamMatchup, Standing, BracketFormat,
 } from '@/types/tournament';
 import {
@@ -81,7 +81,7 @@ interface TournamentStore {
   addMatch: (m: Match) => void;
   updateMatch: (id: string, data: Partial<Match>) => void;
   generateBracket: (categoryId: string, format: string, athletes: Athlete[], options?: BracketOptions) => void;
-  generateFightOrder: (ageGroup: AgeGroup, weightCategory: string) => void;
+  generateFightOrder: (ageGroup: AgeGroup, weightCategory: string, gender?: Gender) => void;
   deleteBracket: (bracketId: string) => void;
   updateMatchResult: (matchId: string, result: MatchResult) => void;
   advanceWinner: (matchId: string, winnerId: string, winnerName: string) => void;
@@ -265,12 +265,22 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     const parsedCategory = parseCategoryId(categoryId);
     const ageGroup = normalizeAgeGroup(eligibleAthletes[0]?.ageGroup ?? parsedCategory.ageGroup);
     const weightCategory = eligibleAthletes[0]?.weightCategory ?? parsedCategory.weightCategory;
-    const category = formatMatchCategory(ageGroup, weightCategory);
+    const gender = options?.gender ?? eligibleAthletes[0]?.gender ?? parsedCategory.gender;
+    if (!gender) {
+      toast.error('Select Male or Female before generating a bracket');
+      return;
+    }
+    if (eligibleAthletes.some(a => a.gender !== gender)) {
+      toast.error('Male and female athletes cannot be mixed in the same bracket');
+      return;
+    }
+    const baseCategory = formatMatchCategory(ageGroup, weightCategory);
+    const category = `${gender} ${baseCategory}`;
     const roundDuration = getRoundDuration(settings.roundDurations, ageGroup);
     const bracketId = uuid();
     const startMatchNumber = get().matches.length + 1;
     const base = {
-      category, ageGroup, weightCategory,
+      category, gender, ageGroup, weightCategory,
       roundDuration, startMatchNumber, startTime: Date.now(), bracketId,
     };
 
@@ -282,7 +292,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       const res = seeded.length === 6 ? buildSixPlayerElimination(seeded, base) : buildSingleElimination(seeded, base);
       newMatches = res.matches;
       bracket = {
-        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, gender, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
       };
@@ -291,7 +301,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       const res = buildDoubleElimination(seeded, base);
       newMatches = res.matches;
       bracket = {
-        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, gender, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
         winnersBracketMatches: res.winnersIds, losersBracketMatches: res.losersIds,
@@ -303,7 +313,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       const pointsForDraw = options?.pointsForDraw ?? 1;
       newMatches = buildRoundRobin(seeded, base);
       bracket = {
-        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, gender, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
         standings: computeStandings(seeded, newMatches, pointsForWin, pointsForDraw),
@@ -330,14 +340,14 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       });
       newMatches = poolMatches;
       bracket = {
-        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, gender, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
         pools: poolObjs,
       };
     } else if (fmt === 'team') {
       bracket = {
-        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, gender, ageGroup, weightCategory,
         format: fmt, status: 'pending',
         matchIds: [], matches: [], teamMatchups: [],
       };
@@ -356,14 +366,20 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     toast.success(`Bracket generated: ${category} (${fmt})`, { style: { background: '#27ae60', color: '#fff' } });
   },
 
-  generateFightOrder: (ageGroup, weightCategory) => {
-    const category = formatMatchCategory(normalizeAgeGroup(ageGroup), weightCategory);
-    const categoryMatches = get().matches.filter(m => m.category === category && m.status === 'scheduled');
+  generateFightOrder: (ageGroup, weightCategory, gender) => {
+    const normalizedAgeGroup = normalizeAgeGroup(ageGroup);
+    const baseCategory = formatMatchCategory(normalizedAgeGroup, weightCategory);
+    const category = gender ? `${gender} ${baseCategory}` : baseCategory;
+    const matchBelongsToCategory = (match: Match) =>
+      normalizeAgeGroup(match.ageGroup) === normalizedAgeGroup &&
+      match.weightCategory === weightCategory &&
+      (!gender || match.gender === gender || match.category === category);
+    const categoryMatches = get().matches.filter(m => matchBelongsToCategory(m) && m.status === 'scheduled');
     const shuffled = shuffle(categoryMatches);
     set(s => ({
       matches: s.matches.map(m => {
         const idx = shuffled.findIndex(sm => sm.id === m.id);
-        if (idx >= 0) return { ...m, matchNumber: s.matches.filter(x => x.category === category).length - idx };
+        if (idx >= 0) return { ...m, matchNumber: s.matches.filter(matchBelongsToCategory).length - idx };
         return m;
       }),
     }));
@@ -629,7 +645,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         if (!w1 || !w2) continue;
         const m: Match = {
           id: uuid(), matchNumber: startNum + i / 2, bracketId,
-          category: bracket.category ?? '', ageGroup: bracket.ageGroup as AgeGroup ?? 'Senior',
+          category: bracket.category ?? '', gender: bracket.gender as Gender | undefined, ageGroup: bracket.ageGroup as AgeGroup ?? 'Senior',
           weightCategory: bracket.weightCategory ?? '', round: 'Semifinal',
           redCornerId: w1.athleteId, blueCornerId: w2.athleteId,
           redCornerName: w1.athleteName, blueCornerName: w2.athleteName,

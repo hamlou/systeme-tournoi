@@ -198,7 +198,7 @@ export default function RefereesPage() {
                 return (
                   <tr key={match.id} className={`border-b border-[rgba(255,255,255,0.04)] ${startingSoon ? 'bg-[rgba(200,16,46,0.18)]' : assigned ? 'bg-[rgba(46,204,113,0.08)]' : ''}`}>
                     <td className="py-3 px-3 font-mono text-white">#{match.matchNumber}{startingSoon && <div className="mt-1 text-[9px] text-[var(--ikf-gold)] font-bold flex items-center gap-1"><Clock size={10} /> STARTING SOON</div>}</td>
-                    <td className="py-3 px-3 text-[var(--text-secondary)]">{formatMatchCategory(match.ageGroup, match.weightCategory)}</td>
+                    <td className="py-3 px-3 text-[var(--text-secondary)]">{formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}</td>
                     <td className="py-3 px-3"><span className="text-[var(--ikf-red)] font-bold">{match.redCornerName}</span><span className="text-[var(--text-muted)] mx-1">vs</span><span className="text-[var(--corner-blue)] font-bold">{match.blueCornerName}</span></td>
                     <td className="py-3 px-3 text-[var(--ikf-gold)] font-bold">{match.matNumber}</td>
                     <td className="py-3 px-3"><input type="datetime-local" value={timeByMatch[match.id] ?? toDateTimeLocal(match.scheduledTime)} onChange={e => setTimeByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white" /></td>
@@ -232,7 +232,7 @@ export default function RefereesPage() {
                     <span className="text-[var(--ikf-gold)] font-mono text-xs font-bold">{match.scheduledTime ? format(new Date(match.scheduledTime), "HH:mm") : "TBD"}</span>
                   </div>
                   <div className="text-xs text-[var(--text-muted)] font-bold mb-3 pb-3 border-b border-[rgba(255,255,255,0.06)]">
-                    {formatMatchCategory(match.ageGroup, match.weightCategory)} · Mat {match.matNumber}
+                    {formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)} · Mat {match.matNumber}
                   </div>
                   
                   <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center mb-4 text-center">
