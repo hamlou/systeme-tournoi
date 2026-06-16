@@ -1,15 +1,5 @@
-import { io, Socket } from "socket.io-client";
+// Socket.IO removed — replaced by Firebase Realtime Database sync.
+// This stub exists so existing imports don't break during migration.
 
-let socket: Socket | null = null;
-
-export const initSocket = async () => {
-  if (!socket) {
-    await fetch("/api/socket");
-    socket = io({
-      path: "/api/socket",
-    });
-  }
-  return socket;
-};
-
-export const getSocket = () => socket;
+export const initSocket = async () => null;
+export const getSocket = () => null;

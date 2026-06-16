@@ -12,6 +12,7 @@ import type { Athlete } from "@/types/tournament";
 import { PageHeader, IKFButton, IKFBadge, IKFEmptyState } from "@/components/ui";
 import toast from "react-hot-toast";
 import { t } from "@/lib/i18n";
+import { normalizeAgeGroup } from "@/lib/ageCategories";
 
 const columnHelper = createColumnHelper<Athlete>();
 
@@ -86,6 +87,8 @@ export default function AthletesPage() {
   const [viewAthlete, setViewAthlete] = useState<Athlete | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Athlete | null>(null);
 
+  const normalizedAthletes = useMemo(() => athletes.map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })), [athletes]);
+
   const handleDelete = useCallback((a: Athlete) => {
     deleteAthlete(a.id);
     toast.success(`${a.fullName} removed from registry`);
@@ -94,7 +97,7 @@ export default function AthletesPage() {
 
   const handleExportCSV = () => {
     const headers = ["License #", "Full Name", "DOB", "Gender", "Country", "Club", "Weight Category", "Age Group"];
-    const rows = athletes.map(a => [
+    const rows = normalizedAthletes.map(a => [
       a.licenseNumber, a.fullName, a.dob, a.gender, a.country,
       a.clubName, a.weightCategory, a.ageGroup,
     ]);
@@ -108,7 +111,7 @@ export default function AthletesPage() {
   };
 
   const filteredData = useMemo(() => {
-    return athletes.filter(a => {
+    return normalizedAthletes.filter(a => {
       const search = globalFilter.toLowerCase();
       const matchSearch = !search || a.fullName.toLowerCase().includes(search) ||
         a.licenseNumber.toLowerCase().includes(search) || a.clubName.toLowerCase().includes(search) ||
@@ -118,7 +121,7 @@ export default function AthletesPage() {
         (!weightFilter || a.weightCategory === weightFilter) &&
         (!ageFilter || a.ageGroup === ageFilter);
     });
-  }, [athletes, globalFilter, countryFilter, weightFilter, ageFilter]);
+  }, [normalizedAthletes, globalFilter, countryFilter, weightFilter, ageFilter]);
 
   const columns = useMemo(() => [
     columnHelper.accessor("licenseNumber", {
@@ -175,9 +178,9 @@ export default function AthletesPage() {
     initialState: { pagination: { pageSize: 15 } },
   });
 
-  const countries = Array.from(new Set(athletes.map(a => a.country))).sort();
-  const weightCats = Array.from(new Set(athletes.map(a => a.weightCategory))).sort();
-  const ageGroups = Array.from(new Set(athletes.map(a => a.ageGroup))).sort();
+  const countries = Array.from(new Set(normalizedAthletes.map(a => a.country))).sort();
+  const weightCats = Array.from(new Set(normalizedAthletes.map(a => a.weightCategory))).sort();
+  const ageGroups = Array.from(new Set(normalizedAthletes.map(a => a.ageGroup))).sort();
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in">

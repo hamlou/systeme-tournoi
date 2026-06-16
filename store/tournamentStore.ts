@@ -1,146 +1,44 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
+import { ref, set, update, push } from 'firebase/database';
+import { db } from '@/lib/firebase';
 import type {
   Athlete, Club, WeighinRecord, Match, Bracket, Referee,
   RoundEvent, JudgeScore, TournamentReport, MatchResult,
   TournamentSettings, AgeGroup, TimerMode, WeighinStatus, AppNotification,
   BracketOptions, Pool, TeamMatchup, Standing, BracketFormat,
 } from '@/types/tournament';
-import { getSocket } from "@/lib/socketClient";
 import {
-  buildSingleElimination, buildDoubleElimination, buildRoundRobin,
+  buildSingleElimination, buildSixPlayerElimination, buildDoubleElimination, buildRoundRobin,
   computeStandings, splitIntoPools, shuffle,
 } from "@/lib/bracketGenerators";
 import { v4 as uuid } from "uuid";
+import {
+  formatMatchCategory,
+  getRoundDuration,
+  normalizeAgeGroup,
+  parseCategoryId,
+  totalRoundsForAgeGroup,
+} from "@/lib/ageCategories";
 
-// ─── Seed Mock Data ──────────────────────────────────────────────────────────
+// ─── Firebase Sync Helpers ────────────────────────────────────────────────────
 
-const MOCK_CLUBS: Club[] = [
-  { id: 'c1', name: 'Tunis Fight Club', country: 'Tunisia 🇹🇳', presidentName: 'Ahmed Trabelsi', email: 'contact@tunisfightclub.tn', phone: '+216 20 123 456', affiliationNumber: 'IKF-TN-001', expectedAthletes: 15, status: 'Active' },
-  { id: 'c2', name: 'Algiers Strikers', country: 'Algeria 🇩🇿', presidentName: 'Karim Bouazizi', email: 'info@algiers-strikers.dz', phone: '+213 55 987 654', affiliationNumber: 'IKF-DZ-042', expectedAthletes: 10, status: 'Active' },
-  { id: 'c3', name: 'Paris Kenshido', country: 'France 🇫🇷', presidentName: 'Marc Laurent', email: 'bureau@pariskenshido.fr', phone: '+33 6 12 34 56 78', affiliationNumber: 'IKF-FR-105', expectedAthletes: 8, status: 'Active' },
-  { id: 'c4', name: 'Rabat Warriors', country: 'Morocco 🇲🇦', presidentName: 'Yassine Bounou', email: 'admin@rabatwarriors.ma', phone: '+212 6 00 11 22 33', affiliationNumber: 'IKF-MA-019', expectedAthletes: 20, status: 'Incomplete' },
-  { id: 'c5', name: 'Cairo Martial Arts', country: 'Egypt 🇪🇬', presidentName: 'Mahmoud Hassan', email: 'info@cairomartialarts.eg', phone: '+20 10 1234 5678', affiliationNumber: 'IKF-EG-088', expectedAthletes: 12, status: 'Active' },
-  { id: 'c6', name: 'Rio Kenshido', country: 'Brazil 🇧🇷', presidentName: 'Carlos Silva', email: 'contato@riokenshido.br', phone: '+55 21 98765-4321', affiliationNumber: 'IKF-BR-204', expectedAthletes: 5, status: 'Active' },
-  { id: 'c7', name: 'Dakar Strikers', country: 'Senegal 🇸🇳', presidentName: 'Mamadou Ndiaye', email: 'hello@dakarstrikers.sn', phone: '+221 77 123 45 67', affiliationNumber: 'IKF-SN-033', expectedAthletes: 6, status: 'Suspended' },
-  { id: 'c8', name: 'NY Martial Arts', country: 'USA 🇺🇸', presidentName: 'David Johnson', email: 'info@nymartialarts.com', phone: '+1 212-555-0198', affiliationNumber: 'IKF-US-551', expectedAthletes: 10, status: 'Active' },
-];
+const fbPath = (path: string) => ref(db, `tournament/${path}`);
 
-const MOCK_ATHLETES: Athlete[] = [
-  { id: 'a1', licenseNumber: 'IKF-26-0001', fullName: 'Youssef Ben Ali', dob: '1998-05-12', gender: 'Male', country: 'Tunisia 🇹🇳', nationalId: 'TN123456', clubId: 'c1', clubName: 'Tunis Fight Club', weightCategory: '-70kg', ageGroup: 'Senior', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a2', licenseNumber: 'IKF-26-0002', fullName: 'Amira Kaddour', dob: '2001-08-22', gender: 'Female', country: 'Algeria 🇩🇿', nationalId: 'DZ987654', clubId: 'c2', clubName: 'Algiers Strikers', weightCategory: '-60kg', ageGroup: 'Senior', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Pending', registrationStatus: 'Active' },
-  { id: 'a3', licenseNumber: 'IKF-26-0003', fullName: 'Jean Dupont', dob: '1995-11-03', gender: 'Male', country: 'France 🇫🇷', nationalId: 'FR456123', clubId: 'c3', clubName: 'Paris Kenshido', weightCategory: '-80kg', ageGroup: 'Senior', licenseType: 'Tournament', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a4', licenseNumber: 'IKF-26-0004', fullName: 'Karim Ziyech', dob: '2000-01-15', gender: 'Male', country: 'Morocco 🇲🇦', nationalId: 'MA789456', clubId: 'c4', clubName: 'Rabat Warriors', weightCategory: '-65kg', ageGroup: 'Senior', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Overweight', registrationStatus: 'Suspended' },
-  { id: 'a5', licenseNumber: 'IKF-26-0005', fullName: 'Ahmed Hassan', dob: '2005-04-09', gender: 'Male', country: 'Egypt 🇪🇬', nationalId: 'EG321654', clubId: 'c5', clubName: 'Cairo Martial Arts', weightCategory: '-75kg', ageGroup: 'Senior', licenseType: 'Tournament', medicalClearance: true, weighInStatus: 'Pending', registrationStatus: 'Active' },
-  { id: 'a6', licenseNumber: 'IKF-26-0006', fullName: 'Sophie Martin', dob: '2008-09-30', gender: 'Female', country: 'France 🇫🇷', nationalId: 'FR159357', clubId: 'c3', clubName: 'Paris Kenshido', weightCategory: '-55kg', ageGroup: 'Junior', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a7', licenseNumber: 'IKF-26-0007', fullName: 'Mehdi Taremi', dob: '1999-07-18', gender: 'Male', country: 'Tunisia 🇹🇳', nationalId: 'TN852963', clubId: 'c1', clubName: 'Tunis Fight Club', weightCategory: '-85kg', ageGroup: 'Senior B', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a8', licenseNumber: 'IKF-26-0008', fullName: 'Fatima Zahra', dob: '2003-12-05', gender: 'Female', country: 'Morocco 🇲🇦', nationalId: 'MA741852', clubId: 'c4', clubName: 'Rabat Warriors', weightCategory: '-50kg', ageGroup: 'Senior A', licenseType: 'Tournament', medicalClearance: true, weighInStatus: 'Pending', registrationStatus: 'Withdrawn' },
-  { id: 'a9', licenseNumber: 'IKF-26-0009', fullName: 'Tariq Aziz', dob: '2010-02-14', gender: 'Male', country: 'Algeria 🇩🇿', nationalId: 'DZ369258', clubId: 'c2', clubName: 'Algiers Strikers', weightCategory: '-45kg', ageGroup: 'Senior', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a10', licenseNumber: 'IKF-26-0010', fullName: 'Lucas Silva', dob: '1997-06-25', gender: 'Male', country: 'Brazil 🇧🇷', nationalId: 'BR147258', clubId: 'c6', clubName: 'Rio Kenshido', weightCategory: '-90kg', ageGroup: 'Senior A', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a11', licenseNumber: 'IKF-26-0011', fullName: 'Aya Mahmoud', dob: '2006-03-10', gender: 'Female', country: 'Egypt 🇪🇬', nationalId: 'EG258369', clubId: 'c5', clubName: 'Cairo Martial Arts', weightCategory: '-65kg', ageGroup: 'Junior', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Pending', registrationStatus: 'Active' },
-  { id: 'a12', licenseNumber: 'IKF-26-0012', fullName: 'David Kim', dob: '2002-10-19', gender: 'Male', country: 'USA 🇺🇸', nationalId: 'US963852', clubId: 'c8', clubName: 'NY Martial Arts', weightCategory: '-70kg', ageGroup: 'Senior', licenseType: 'Tournament', medicalClearance: true, weighInStatus: 'Overweight', registrationStatus: 'Active' },
-  { id: 'a13', licenseNumber: 'IKF-26-0013', fullName: 'Nadia Ali', dob: '1994-01-28', gender: 'Female', country: 'Tunisia 🇹🇳', nationalId: 'TN753159', clubId: 'c1', clubName: 'Tunis Fight Club', weightCategory: '+65kg', ageGroup: 'Senior A', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-  { id: 'a14', licenseNumber: 'IKF-26-0014', fullName: 'Omar Diallo', dob: '2000-08-08', gender: 'Male', country: 'Senegal 🇸🇳', nationalId: 'SN159487', clubId: 'c7', clubName: 'Dakar Strikers', weightCategory: '-75kg', ageGroup: 'Senior A', licenseType: 'Tournament', medicalClearance: true, weighInStatus: 'Pending', registrationStatus: 'Active' },
-  { id: 'a15', licenseNumber: 'IKF-26-0015', fullName: 'Elena Rossi', dob: '1996-05-04', gender: 'Female', country: 'Italy 🇮🇹', nationalId: 'IT456789', clubId: 'c8', clubName: 'NY Martial Arts', weightCategory: '-55kg', ageGroup: 'Senior A', licenseType: 'Annual', medicalClearance: true, weighInStatus: 'Confirmed', registrationStatus: 'Active' },
-];
+function syncToFirebase(path: string, data: unknown) {
+  try { set(fbPath(path), data); } catch (e) { console.warn('[FB sync]', path, e); }
+}
 
-const MOCK_REFEREES: Referee[] = [
-  { id: 'ref-1', name: 'Yoshiro Nakamura', role: 'Chief Referee', country: 'Japan 🇯🇵', grade: 'IKF Grade S', status: 'Available' },
-  { id: 'ref-2', name: 'Sarah Collins', role: 'Central Referee', country: 'USA 🇺🇸', grade: 'IKF Grade A', status: 'In Match', currentMatchId: 'm1', currentAssignment: 'Mat 01 — Match #1' },
-  { id: 'ref-3', name: 'Ahmed Mansour', role: 'Central Referee', country: 'Egypt 🇪🇬', grade: 'IKF Grade A', status: 'Available' },
-  { id: 'ref-4', name: 'Elena Volkov', role: 'Central Referee', country: 'Russia 🇷🇺', grade: 'IKF Grade B', status: 'On Break' },
-  { id: 'ref-5', name: 'Carlos Mendez', role: 'Corner Judge', country: 'Spain 🇪🇸', grade: 'IKF Grade B', status: 'In Match', currentMatchId: 'm1', currentAssignment: 'Mat 01 — Match #1' },
-  { id: 'ref-6', name: 'Lucas Costa', role: 'Corner Judge', country: 'Brazil 🇧🇷', grade: 'IKF Grade B', status: 'Available' },
-  { id: 'ref-7', name: 'Amina Diallo', role: 'Corner Judge', country: 'Senegal 🇸🇳', grade: 'IKF Grade C', status: 'Available' },
-  { id: 'ref-8', name: 'Chen Wei', role: 'Corner Judge', country: 'China 🇨🇳', grade: 'IKF Grade A', status: 'In Match', currentMatchId: 'm1', currentAssignment: 'Mat 01 — Match #1' },
-  { id: 'ref-9', name: 'David Smith', role: 'Corner Judge', country: 'UK 🇬🇧', grade: 'IKF Grade C', status: 'On Break' },
-  { id: 'ref-10', name: 'Maria Garcia', role: 'Corner Judge', country: 'Mexico 🇲🇽', grade: 'IKF Grade B', status: 'Available' },
-];
+function pushToFirebase(path: string, data: Record<string, unknown>) {
+  try { const r = push(fbPath(path)); set(r, { ...data, id: r.key ?? crypto.randomUUID() }); } catch (e) { console.warn('[FB push]', path, e); }
+}
 
-const MOCK_WEIGHIN_RECORDS: WeighinRecord[] = [
-  { id: 'w1', athleteId: 'a3', athleteName: 'Jean Dupont', recordedWeight: 78.5, registeredCategory: '-80kg', assignedCategory: '-80kg', status: 'Confirmed', timestamp: '2026-06-10T08:15:22Z' },
-  { id: 'w2', athleteId: 'a12', athleteName: 'David Kim', recordedWeight: 71.2, registeredCategory: '-70kg', assignedCategory: '-75kg', status: 'Overweight', timestamp: '2026-06-10T08:22:10Z' },
-  { id: 'w3', athleteId: 'a15', athleteName: 'Elena Rossi', recordedWeight: 54.8, registeredCategory: '-55kg', assignedCategory: '-55kg', status: 'Confirmed', timestamp: '2026-06-10T08:35:05Z' },
-  { id: 'w4', athleteId: 'a9', athleteName: 'Tariq Aziz', recordedWeight: 44.9, registeredCategory: '-45kg', assignedCategory: '-45kg', status: 'Confirmed', timestamp: '2026-06-10T08:42:50Z' },
-];
+function patchFirebase(path: string, data: Record<string, unknown>) {
+  try { update(fbPath(path), data); } catch (e) { console.warn('[FB patch]', path, e); }
+}
 
-// Seed 2 completed matches and a scheduled one for demo
-const SEED_MATCHES: Match[] = [
-  {
-    id: 'm1', matchNumber: 1, bracketId: 'br1', category: '-70kg Senior A', ageGroup: 'Senior A', weightCategory: '-70kg', round: 'Semifinal',
-    redCornerId: 'a1', blueCornerId: 'a12', redCornerName: 'Youssef Ben Ali', blueCornerName: 'David Kim',
-    matNumber: 1, scheduledTime: '2026-06-10T14:30:00Z', status: 'completed', roundDurationSeconds: 180, totalRounds: 3,
-    assignedRefereeId: 'ref-2', assignedJudgeIds: ['ref-5', 'ref-7', 'ref-8'],
-    result: {
-      winnerId: 'a1', winnerName: 'Youssef Ben Ali', winnerCorner: 'RED',
-      method: 'majority-decision', redTotalScore: 87, blueTotalScore: 84,
-      validatedAt: '2026-06-10T14:47:00Z',
-      roundScores: [
-        { round: 1, judgeId: 'ref-5', redScore: 10, blueScore: 9, submitted: true },
-        { round: 1, judgeId: 'ref-7', redScore: 10, blueScore: 9, submitted: true },
-        { round: 1, judgeId: 'ref-8', redScore: 9, blueScore: 10, submitted: true },
-        { round: 2, judgeId: 'ref-5', redScore: 9, blueScore: 10, submitted: true },
-        { round: 2, judgeId: 'ref-7', redScore: 10, blueScore: 9, submitted: true },
-        { round: 2, judgeId: 'ref-8', redScore: 10, blueScore: 9, submitted: true },
-        { round: 3, judgeId: 'ref-5', redScore: 10, blueScore: 9, submitted: true },
-        { round: 3, judgeId: 'ref-7', redScore: 9, blueScore: 10, submitted: true },
-        { round: 3, judgeId: 'ref-8', redScore: 10, blueScore: 9, submitted: true },
-      ]
-    }
-  },
-  {
-    id: 'm2', matchNumber: 2, bracketId: 'br1', category: '-70kg Senior A', ageGroup: 'Senior A', weightCategory: '-70kg', round: 'Semifinal',
-    redCornerId: 'a7', blueCornerId: 'a10', redCornerName: 'Mehdi Taremi', blueCornerName: 'Lucas Silva',
-    matNumber: 2, scheduledTime: '2026-06-10T15:00:00Z', status: 'scheduled', roundDurationSeconds: 180, totalRounds: 3,
-  },
-  {
-    id: 'm3', matchNumber: 3, bracketId: 'br1', category: '-70kg Senior A', ageGroup: 'Senior A', weightCategory: '-70kg', round: 'Final',
-    redCornerId: 'a1', blueCornerId: '', redCornerName: 'Youssef Ben Ali', blueCornerName: 'TBD',
-    matNumber: 1, scheduledTime: '2026-06-10T17:00:00Z', status: 'scheduled', roundDurationSeconds: 180, totalRounds: 3,
-  },
-];
-
-const MOCK_BRACKETS: Bracket[] = [
-  { id: 'br1', categoryId: '-70kg Senior A', format: 'Single Elimination', matchIds: ['m1', 'm2', 'm3'] },
-];
-
-// Seed judge scores for completed match
-const SEED_JUDGE_SCORES: JudgeScore[] = SEED_MATCHES[0].result?.roundScores.map(rs => ({
-  judgeId: rs.judgeId,
-  judgeName: MOCK_REFEREES.find(r => r.id === rs.judgeId)?.name ?? rs.judgeId,
-  matchId: 'm1',
-  round: rs.round,
-  redScore: rs.redScore,
-  blueScore: rs.blueScore,
-  submitted: true,
-})) ?? [];
-
-// Seed round events for completed match
-const SEED_EVENTS: RoundEvent[] = [
-  { id: 'e1', timestamp: '2026-06-10T14:30:00Z', type: 'match-start', details: 'Match #1 started' },
-  { id: 'e2', timestamp: '2026-06-10T14:30:05Z', type: 'round-start', details: 'Round 1 started' },
-  { id: 'e3', timestamp: '2026-06-10T14:32:41Z', type: 'yellow-card', corner: 'RED', details: 'Yellow card — passivity' },
-  { id: 'e4', timestamp: '2026-06-10T14:33:00Z', type: 'round-end', details: 'Round 1 ended' },
-  { id: 'e5', timestamp: '2026-06-10T14:34:00Z', type: 'round-start', details: 'Round 2 started' },
-  { id: 'e6', timestamp: '2026-06-10T14:36:22Z', type: 'doctor', corner: 'BLUE', details: 'Doctor timeout — cleared' },
-  { id: 'e7', timestamp: '2026-06-10T14:37:00Z', type: 'round-end', details: 'Round 2 ended' },
-  { id: 'e8', timestamp: '2026-06-10T14:38:00Z', type: 'round-start', details: 'Round 3 started' },
-  { id: 'e9', timestamp: '2026-06-10T14:40:05Z', type: 'round-end', details: 'Round 3 ended' },
-  { id: 'e10', timestamp: '2026-06-10T14:40:10Z', type: 'match-end', details: 'Majority Decision — Red Corner WINS' },
-];
-
-const SEED_REPORTS: TournamentReport[] = [
-  {
-    id: 'rep1', matchId: 'm1', type: 'Match Report',
-    title: 'Match #1 — Youssef Ben Ali vs David Kim — -70kg Senior A',
-    generatedAt: '2026-06-10T14:47:00Z', status: 'Official',
-    matchData: SEED_MATCHES[0],
-    judgeScores: SEED_JUDGE_SCORES,
-    events: SEED_EVENTS,
-  }
-];
+// ─── Default Settings ─────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: TournamentSettings = {
   tournamentName: 'IKF World Championship 2026',
@@ -149,9 +47,6 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   defaultJudgesCount: 3,
   roundDurations: {
     'Mini': 60, 'Cadet': 90, 'Junior': 120, 'Senior': 180,
-    'U8': 60, 'U10': 60, 'U12': 90, 'U14': 90,
-    'U16': 120, 'U18': 120,
-    'Senior A': 180, 'Senior B': 180, 'Senior C': 180,
   },
   language: 'en',
 };
@@ -219,7 +114,7 @@ interface TournamentStore {
   setJudgeScore: (score: JudgeScore) => void;
   submitJudgeScore: (judgeId: string, round: number, redScore: number, blueScore: number, matchId: string, judgeName: string) => void;
   currentResult: MatchResult | null;
-  validateResult: (matchId: string, judgeIds: string[]) => void;
+  validateResult: (matchId: string, judgeIds: string[], sourceScores?: JudgeScore[], sourceEvents?: RoundEvent[]) => void;
   overrideResult: (matchId: string, winnerId: string, winnerName: string, winnerCorner: 'RED' | 'BLUE', reason: string) => void;
   clearJudgeScores: (matchId: string) => void;
 
@@ -234,11 +129,14 @@ interface TournamentStore {
   markNotificationsRead: () => void;
 }
 
-// ─── Store Implementation ────────────────────────────────────────────────────
+// ─── Store Implementation (no localStorage, Firebase-backed) ─────────────────
 
-export const useTournamentStore = create<TournamentStore>()(persist((set, get) => ({
+export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   settings: DEFAULT_SETTINGS,
-  updateSettings: (data) => set(s => ({ settings: { ...s.settings, ...data } })),
+  updateSettings: (data) => {
+    set(s => ({ settings: { ...s.settings, ...data } }));
+    syncToFirebase('settings', get().settings);
+  },
   notifications: [
     { id: '1', title: 'Tournament Initialized', message: 'IKF Kenshido platform is online.', time: new Date().toISOString(), read: false }
   ],
@@ -250,64 +148,86 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
   })),
 
   // ── Athletes ──
-  athletes: MOCK_ATHLETES,
+  athletes: [],
   addAthlete: (a) => {
-    const readyAthlete: Athlete = { ...a, weighInStatus: 'Confirmed', registrationStatus: 'Active' };
+    const readyAthlete: Athlete = { ...a, ageGroup: normalizeAgeGroup(a.ageGroup), weighInStatus: 'Confirmed', registrationStatus: 'Active' };
     set(s => ({ athletes: [readyAthlete, ...s.athletes] }));
+    syncToFirebase('athletes', get().athletes);
     get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}`);
     toast.success(`Athlete ${readyAthlete.fullName} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
   },
-  updateAthlete: (id, data) => set(s => ({
-    athletes: s.athletes.map(a => a.id === id ? { ...a, ...data } : a)
-  })),
+  updateAthlete: (id, data) => {
+    set(s => ({
+      athletes: s.athletes.map(a => a.id === id ? { ...a, ...data } : a)
+    }));
+    syncToFirebase('athletes', get().athletes);
+  },
   deleteAthlete: (id) => set(s => {
     const matchIds = new Set(s.matches.filter(m => m.redCornerId === id || m.blueCornerId === id).map(m => m.id));
-    return {
+    const next = {
       athletes: s.athletes.filter(a => a.id !== id),
       weighinRecords: s.weighinRecords.filter(r => r.athleteId !== id),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
     };
+    syncToFirebase('athletes', next.athletes);
+    syncToFirebase('matches', next.matches);
+    return next;
   }),
 
   // ── Clubs ──
-  clubs: MOCK_CLUBS,
+  clubs: [],
   addClub: (c) => {
     set(s => ({ clubs: [c, ...s.clubs] }));
+    syncToFirebase('clubs', get().clubs);
     get().addNotification("New Club Registered", `${c.name} (${c.country}) joined the tournament.`);
     toast.success(`Club ${c.name} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
   },
-  updateClub: (id, data) => set(s => ({
-    clubs: s.clubs.map(c => c.id === id ? { ...c, ...data } : c)
-  })),
+  updateClub: (id, data) => {
+    set(s => ({
+      clubs: s.clubs.map(c => c.id === id ? { ...c, ...data } : c)
+    }));
+    syncToFirebase('clubs', get().clubs);
+  },
   deleteClub: (id) => set(s => {
     const athleteIds = new Set(s.athletes.filter(a => a.clubId === id).map(a => a.id));
     const matchIds = new Set(s.matches.filter(m => athleteIds.has(m.redCornerId) || athleteIds.has(m.blueCornerId)).map(m => m.id));
-    return {
+    const next = {
       clubs: s.clubs.filter(c => c.id !== id),
       athletes: s.athletes.filter(a => a.clubId !== id),
       weighinRecords: s.weighinRecords.filter(r => !athleteIds.has(r.athleteId)),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
     };
+    syncToFirebase('clubs', next.clubs);
+    syncToFirebase('athletes', next.athletes);
+    syncToFirebase('matches', next.matches);
+    return next;
   }),
 
   // ── Weigh-in ──
-  weighinRecords: MOCK_WEIGHIN_RECORDS,
-  addWeighinRecord: (r) => set(s => ({ weighinRecords: [r, ...s.weighinRecords] })),
-  updateAthleteWeighinStatus: (athleteId, status, newCategory) => set(s => ({
-    athletes: s.athletes.map(a =>
-      a.id === athleteId
-        ? { ...a, weighInStatus: status, ...(newCategory ? { weightCategory: newCategory } : {}) }
-        : a
-    )
-  })),
+  weighinRecords: [],
+  addWeighinRecord: (r) => {
+    set(s => ({ weighinRecords: [r, ...s.weighinRecords] }));
+    syncToFirebase('weighinRecords', get().weighinRecords);
+  },
+  updateAthleteWeighinStatus: (athleteId, status, newCategory) => {
+    set(s => ({
+      athletes: s.athletes.map(a =>
+        a.id === athleteId
+          ? { ...a, weighInStatus: status, ...(newCategory ? { weightCategory: newCategory } : {}) }
+          : a
+      )
+    }));
+    syncToFirebase('athletes', get().athletes);
+  },
 
   // ── Matches & Brackets ──
-  matches: SEED_MATCHES,
-  brackets: MOCK_BRACKETS,
+  matches: [],
+  brackets: [],
   addMatch: (m) => {
     set(s => ({ matches: [...s.matches, m] }));
+    syncToFirebase('matches', get().matches);
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
   updateMatch: (id, data) => {
@@ -315,6 +235,7 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     set(s => {
       const current = s.matches.find(m => m.id === id);
       const completed = data.status === 'completed';
+      const started = data.status === 'in-progress';
       const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
       updatedMatch = current ? { ...current, ...data } as Match : undefined;
       return {
@@ -322,10 +243,13 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
         activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data } as Match : s.activeMatch,
         referees: completed
           ? s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined } : r)
+          : started
+            ? s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'In Match', currentMatchId: id, currentAssignment: `Mat ${current?.matNumber ?? ''} - Match #${current?.matchNumber ?? ''}` } : r)
           : s.referees,
       };
     });
-    if (updatedMatch) getSocket()?.emit('send-event', { type: 'match_updated', data: { match: updatedMatch } });
+    if (updatedMatch) syncToFirebase(`matches`, get().matches);
+    syncToFirebase('referees', get().referees);
     toast.success("Match updated successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -337,13 +261,15 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     }
 
     const settings = get().settings;
-    const ageGroup = (eligibleAthletes[0]?.ageGroup ?? 'Senior') as AgeGroup;
-    const roundDuration = settings.roundDurations[ageGroup] ?? 180;
-    const weightCategory = categoryId.split(' ')[0];
+    const parsedCategory = parseCategoryId(categoryId);
+    const ageGroup = normalizeAgeGroup(eligibleAthletes[0]?.ageGroup ?? parsedCategory.ageGroup);
+    const weightCategory = eligibleAthletes[0]?.weightCategory ?? parsedCategory.weightCategory;
+    const category = formatMatchCategory(ageGroup, weightCategory);
+    const roundDuration = getRoundDuration(settings.roundDurations, ageGroup);
     const bracketId = uuid();
     const startMatchNumber = get().matches.length + 1;
     const base = {
-      category: categoryId, ageGroup, weightCategory,
+      category, ageGroup, weightCategory,
       roundDuration, startMatchNumber, startTime: Date.now(), bracketId,
     };
 
@@ -352,10 +278,10 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     let bracket: Bracket;
 
     if (fmt === 'single-elimination') {
-      const res = buildSingleElimination(seeded, base);
+      const res = seeded.length === 6 ? buildSixPlayerElimination(seeded, base) : buildSingleElimination(seeded, base);
       newMatches = res.matches;
       bracket = {
-        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
       };
@@ -364,7 +290,7 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
       const res = buildDoubleElimination(seeded, base);
       newMatches = res.matches;
       bracket = {
-        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
         winnersBracketMatches: res.winnersIds, losersBracketMatches: res.losersIds,
@@ -376,224 +302,110 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
       const pointsForDraw = options?.pointsForDraw ?? 1;
       newMatches = buildRoundRobin(seeded, base);
       bracket = {
-        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
-        pointsForWin, pointsForDraw,
         standings: computeStandings(seeded, newMatches, pointsForWin, pointsForDraw),
+        pointsForWin, pointsForDraw,
       };
     } else if (fmt === 'pool-elimination') {
-      const perPool = options?.athletesPerPool ?? 4;
-      const grouped = splitIntoPools(seeded, perPool);
-      const pools: Pool[] = [];
-      grouped.forEach((poolAthletes, idx) => {
-        const poolId = uuid();
-        const poolMatches = buildRoundRobin(poolAthletes, { ...base, startMatchNumber: startMatchNumber + newMatches.length }, poolId);
-        newMatches.push(...poolMatches);
-        pools.push({
-          id: poolId, name: `POOL ${String.fromCharCode(65 + idx)}`,
-          athleteIds: poolAthletes.map(a => a.id), matchIds: poolMatches.map(m => m.id),
-          standings: computeStandings(poolAthletes, poolMatches, 3, 1), complete: false,
-        });
+      const athletesPerPool = options?.athletesPerPool ?? 4;
+      const poolPointsForWin = options?.pointsForWin ?? 3;
+      const poolPointsForDraw = options?.pointsForDraw ?? 1;
+      const pools = splitIntoPools(seeded, athletesPerPool);
+      const poolMatches: Match[] = [];
+      const poolObjs: Pool[] = pools.map((pool, idx) => {
+        const poolId = `${bracketId}-pool-${idx}`;
+        const pm = buildRoundRobin(pool, { ...base, bracketId: poolId, startMatchNumber: startMatchNumber + poolMatches.length });
+        poolMatches.push(...pm);
+        return {
+          id: poolId,
+          name: `POOL ${String.fromCharCode(65 + idx)}`,
+          athleteIds: pool.map(a => a.id),
+          matchIds: pm.map(m => m.id),
+          standings: computeStandings(pool, pm, poolPointsForWin, poolPointsForDraw),
+          complete: false,
+        };
       });
+      newMatches = poolMatches;
       bracket = {
-        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
+        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
         format: fmt, status: 'in-progress',
         matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
-        pools, eliminationMatches: [], eliminationUnlocked: false,
+        pools: poolObjs,
       };
-      if (seeded.length < 8) toast('Minimum 8 athletes recommended for Pool + Elimination format.', { icon: 'ℹ️' });
     } else if (fmt === 'team') {
-      // Group athletes by club.
-      const clubsMap = new Map<string, Athlete[]>();
-      seeded.forEach(a => {
-        const list = clubsMap.get(a.clubId) ?? [];
-        list.push(a); clubsMap.set(a.clubId, list);
-      });
-      const teams = shuffle(Array.from(clubsMap.entries()).map(([clubId, members]) => ({
-        clubId, clubName: members[0]?.clubName ?? clubId, members,
-      })));
-      if (teams.length < 2) {
-        toast.error('Need at least 2 clubs represented to generate a team tournament');
-        return;
-      }
-      const teamMatchups: TeamMatchup[] = [];
-      const matchByWeight = options?.matchByWeight ?? true;
-      // Single-elimination at team level: pair sequentially for round 1.
-      for (let i = 0; i + 1 < teams.length; i += 2) {
-        const red = teams[i];
-        const blue = teams[i + 1];
-        const matchupId = uuid();
-        const individualMatchIds: string[] = [];
-        const redCats = new Set(red.members.map(m => m.weightCategory));
-        const blueByCat = new Map(blue.members.map(m => [m.weightCategory, m]));
-        const sharedCats = matchByWeight
-          ? Array.from(redCats).filter(c => blueByCat.has(c))
-          : Array.from(redCats);
-        sharedCats.forEach((cat, idx) => {
-          const redFighter = red.members.find(m => m.weightCategory === cat)!;
-          const blueFighter = matchByWeight ? blueByCat.get(cat)! : blue.members[idx];
-          if (!blueFighter) { toast(`${red.clubName} has no opponent for ${cat} — skipped`, { icon: '⚠️' }); return; }
-          const mId = uuid();
-          individualMatchIds.push(mId);
-          newMatches.push({
-            id: mId, matchNumber: startMatchNumber + newMatches.length, bracketId,
-            category: `${cat} — ${red.clubName} vs ${blue.clubName}`, ageGroup, weightCategory: cat,
-            round: 'Team Fight',
-            redCornerId: redFighter.id, blueCornerId: blueFighter.id,
-            redCornerName: redFighter.fullName, blueCornerName: blueFighter.fullName,
-            matNumber: (newMatches.length % 3) + 1,
-            scheduledTime: new Date(base.startTime + newMatches.length * 15 * 60000).toISOString(),
-            status: 'scheduled', roundDurationSeconds: roundDuration, totalRounds: ageGroup.startsWith('U') ? 2 : 3,
-            teamMatchupId: matchupId,
-          });
-        });
-        teamMatchups.push({
-          id: matchupId, redClubId: red.clubId, blueClubId: blue.clubId,
-          redClubName: red.clubName, blueClubName: blue.clubName,
-          individualMatchIds, redWins: 0, blueWins: 0, status: 'scheduled',
-        });
-      }
       bracket = {
-        id: bracketId, categoryId, category: categoryId, ageGroup, weightCategory,
-        format: fmt, status: 'in-progress',
-        matchIds: newMatches.map(m => m.id), matches: newMatches.map(m => m.id),
-        teamMatchups,
+        id: bracketId, categoryId: category, category, ageGroup, weightCategory,
+        format: fmt, status: 'pending',
+        matchIds: [], matches: [], teamMatchups: [],
       };
     } else {
       toast.error(`Unknown bracket format: ${format}`);
       return;
     }
 
-    set(s => ({ matches: [...s.matches, ...newMatches], brackets: [...s.brackets, bracket] }));
-    toast.success(`Bracket generated for ${categoryId} — ${eligibleAthletes.length} athletes, ${newMatches.length} matches`);
+    set(s => ({
+      matches: [...s.matches, ...newMatches],
+      brackets: [...s.brackets, bracket],
+    }));
+
+    syncToFirebase('matches', get().matches);
+    syncToFirebase('brackets', get().brackets);
+    toast.success(`Bracket generated: ${category} (${fmt})`, { style: { background: '#27ae60', color: '#fff' } });
   },
 
   generateFightOrder: (ageGroup, weightCategory) => {
-    const state = get();
-    const eligibleAthletes = state.athletes.filter(a =>
-      a.registrationStatus === 'Active' &&
-      a.ageGroup === ageGroup &&
-      a.weightCategory === weightCategory
-    );
-
-    if (eligibleAthletes.length < 2) {
-      toast.error('Need at least 2 athletes in this age and weight category');
-      return;
-    }
-
-    const category = `${ageGroup} ${weightCategory}`;
-    const fightOrderId = `fight-order-${ageGroup}-${weightCategory}`;
-    const previousMatches = state.matches.filter(m => m.bracketId === fightOrderId || (m.ageGroup === ageGroup && m.weightCategory === weightCategory && m.round === 'Fight Order'));
-    const previousIds = new Set(previousMatches.map(m => m.id));
-    const fighters = shuffle(eligibleAthletes);
-    const startMatchNumber = Math.max(0, ...state.matches.filter(m => !previousIds.has(m.id)).map(m => m.matchNumber)) + 1;
-    const roundDurationSeconds = state.settings.roundDurations[ageGroup] ?? 180;
-    const newMatches: Match[] = [];
-
-    for (let index = 0; index < fighters.length; index += 2) {
-      const red = fighters[index];
-      const blue = fighters[index + 1];
-      newMatches.push({
-        id: uuid(),
-        matchNumber: startMatchNumber + newMatches.length,
-        bracketId: fightOrderId,
-        category,
-        ageGroup,
-        weightCategory,
-        round: 'Fight Order',
-        redCornerId: red.id,
-        blueCornerId: blue?.id ?? '',
-        redCornerName: red.fullName,
-        blueCornerName: blue?.fullName ?? 'BYE',
-        matNumber: (newMatches.length % 3) + 1,
-        scheduledTime: null,
-        status: blue ? 'scheduled' : 'completed',
-        roundDurationSeconds,
-        totalRounds: ageGroup.startsWith('U') || ageGroup === 'Mini' || ageGroup === 'Cadet' || ageGroup === 'Junior' ? 2 : 3,
-        isBye: !blue,
-      });
-    }
-
+    const category = formatMatchCategory(normalizeAgeGroup(ageGroup), weightCategory);
+    const categoryMatches = get().matches.filter(m => m.category === category && m.status === 'scheduled');
+    const shuffled = shuffle(categoryMatches);
     set(s => ({
-      matches: [...s.matches.filter(m => !previousIds.has(m.id)), ...newMatches],
-      judgeScores: s.judgeScores.filter(j => !previousIds.has(j.matchId)),
-      referees: s.referees.map(r => previousMatches.some(m => m.assignedRefereeId === r.id || m.assignedJudgeIds?.includes(r.id))
-        ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined }
-        : r),
+      matches: s.matches.map(m => {
+        const idx = shuffled.findIndex(sm => sm.id === m.id);
+        if (idx >= 0) return { ...m, matchNumber: s.matches.filter(x => x.category === category).length - idx };
+        return m;
+      }),
     }));
-    toast.success(`Fight order generated for ${category} — ${newMatches.length} fights`);
+    syncToFirebase('matches', get().matches);
+    toast.success(`Fight order randomized for ${category}`, { style: { background: '#27ae60', color: '#fff' } });
   },
 
   deleteBracket: (bracketId) => set(s => {
     const bracket = s.brackets.find(b => b.id === bracketId);
     const matchIds = new Set(bracket?.matchIds ?? []);
-    return {
+    const next = {
       brackets: s.brackets.filter(b => b.id !== bracketId),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
-      judgeScores: s.judgeScores.filter(j => !matchIds.has(j.matchId)),
     };
+    syncToFirebase('brackets', next.brackets);
+    syncToFirebase('matches', next.matches);
+    return next;
   }),
 
   updateMatchResult: (matchId, result) => {
-    const match = get().matches.find(m => m.id === matchId);
-    const assignedIds = match ? [match.assignedRefereeId, ...(match.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
     set(s => ({
-      matches: s.matches.map(m =>
-        m.id === matchId ? { ...m, status: 'completed', result } : m
-      ),
-      activeMatch: s.activeMatch?.id === matchId ? { ...s.activeMatch, status: 'completed', result } as Match : s.activeMatch,
-      referees: s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined } : r),
+      matches: s.matches.map(m => m.id === matchId ? { ...m, status: 'completed', result } : m),
+      activeMatch: s.activeMatch?.id === matchId ? { ...s.activeMatch, status: 'completed', result } : s.activeMatch,
     }));
+    syncToFirebase('matches', get().matches);
   },
 
   advanceWinner: (matchId, winnerId, winnerName) => {
     const state = get();
-    const currentMatch = state.matches.find(m => m.id === matchId);
-    if (!currentMatch) return;
     const bracket = state.brackets.find(b => b.matchIds.includes(matchId));
-
-    // Determine the loser (for double elimination drop-down).
-    const loserId = currentMatch.redCornerId === winnerId ? currentMatch.blueCornerId : currentMatch.redCornerId;
-    const loserName = currentMatch.redCornerId === winnerId ? currentMatch.blueCornerName : currentMatch.redCornerName;
-
-    if (currentMatch.nextMatchId || currentMatch.loserNextMatchId) {
-      // Explicit wiring (new multi-format brackets).
+    if (!bracket) return;
+    const nextMatch = state.matches.find(m =>
+      bracket.matchIds.includes(m.id) &&
+      (m.redCornerId === '' || m.blueCornerId === '') &&
+      m.id !== matchId
+    );
+    if (nextMatch) {
+      const slot = nextMatch.redCornerId === '' ? 'redCornerId' : 'blueCornerId';
+      const nameSlot = slot === 'redCornerId' ? 'redCornerName' : 'blueCornerName';
       set(s => ({
-        matches: s.matches.map(m => {
-          if (m.id === currentMatch.nextMatchId) {
-            return currentMatch.nextMatchSlot === 'RED'
-              ? { ...m, redCornerId: winnerId, redCornerName: winnerName }
-              : { ...m, blueCornerId: winnerId, blueCornerName: winnerName };
-          }
-          if (m.id === currentMatch.loserNextMatchId && loserId) {
-            return currentMatch.loserNextMatchSlot === 'RED'
-              ? { ...m, redCornerId: loserId, redCornerName: loserName }
-              : { ...m, blueCornerId: loserId, blueCornerName: loserName };
-          }
-          return m;
-        }),
+        matches: s.matches.map(m => m.id === nextMatch.id ? { ...m, [slot]: winnerId, [nameSlot]: winnerName } : m),
       }));
-    } else if (bracket) {
-      // Legacy positional advancement (seed data / older brackets).
-      const currentIndex = bracket.matchIds.indexOf(matchId);
-      const nextMatchIndex = Math.floor(currentIndex / 2) + Math.floor(bracket.matchIds.length / 2);
-      const nextMatchId = bracket.matchIds[nextMatchIndex];
-      if (nextMatchId && nextMatchId !== matchId) {
-        const isEvenSlot = currentIndex % 2 === 0;
-        set(s => ({
-          matches: s.matches.map(m => m.id === nextMatchId
-            ? { ...m, ...(isEvenSlot ? { redCornerId: winnerId, redCornerName: winnerName } : { blueCornerId: winnerId, blueCornerName: winnerName }) }
-            : m),
-        }));
-      }
-    }
-
-    // Format-specific follow-ups.
-    if (bracket) {
-      if (bracket.format === 'round-robin') get().updateRoundRobinStandings(bracket.id);
-      if (bracket.format === 'pool-elimination') get().advancePoolWinners(bracket.id);
-      if (bracket.format === 'team' && currentMatch.teamMatchupId) get().updateTeamScore(currentMatch.teamMatchupId);
+      syncToFirebase('matches', get().matches);
     }
   },
 
@@ -602,206 +414,151 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     const bracket = state.brackets.find(b => b.id === bracketId);
     if (!bracket) return;
     const bracketMatches = state.matches.filter(m => bracket.matchIds.includes(m.id));
-    const athleteIds = new Set<string>();
-    bracketMatches.forEach(m => { athleteIds.add(m.redCornerId); athleteIds.add(m.blueCornerId); });
-    const athletes = state.athletes.filter(a => athleteIds.has(a.id));
-    const standings = computeStandings(athletes, bracketMatches, bracket.pointsForWin ?? 3, bracket.pointsForDraw ?? 1);
-    const complete = bracketMatches.every(m => m.status === 'completed');
+    const standings = computeStandings(
+      state.matches.filter(m => bracket.matchIds.includes(m.id)).flatMap(m => [m.redCornerId, m.blueCornerId]).filter(Boolean).map(id => ({ id } as any)),
+      bracketMatches,
+      bracket.pointsForWin ?? 3,
+      bracket.pointsForDraw ?? 1,
+    );
     set(s => ({
-      brackets: s.brackets.map(b => b.id === bracketId
-        ? { ...b, standings, status: complete ? 'complete' : 'in-progress' }
-        : b),
+      brackets: s.brackets.map(b => b.id === bracketId ? { ...b, standings } : b),
     }));
+    syncToFirebase('brackets', get().brackets);
   },
 
   advancePoolWinners: (bracketId) => {
     const state = get();
     const bracket = state.brackets.find(b => b.id === bracketId);
-    if (!bracket || !bracket.pools) return;
+    if (!bracket?.pools) return;
+    const eliminationMatches: Match[] = [];
+    const poolWinners = bracket.pools.map(pool => {
+      const sorted = [...(pool.standings ?? [])].sort((a, b) => b.points - a.points || b.wins - a.wins);
+      return sorted[0];
+    }).filter(Boolean);
 
-    // Recompute each pool's standings + completion.
-    const updatedPools: Pool[] = bracket.pools.map(pool => {
-      const poolMatches = state.matches.filter(m => pool.matchIds.includes(m.id));
-      const poolAthletes = state.athletes.filter(a => pool.athleteIds.includes(a.id));
-      const standings = computeStandings(poolAthletes, poolMatches, 3, 1);
-      const complete = poolMatches.length > 0 && poolMatches.every(m => m.status === 'completed');
-      return { ...pool, standings, complete };
-    });
-
-    const allPoolsComplete = updatedPools.every(p => p.complete);
-    let eliminationMatches = bracket.eliminationMatches ?? [];
-    let newMatches: Match[] = [];
-    let eliminationUnlocked = bracket.eliminationUnlocked ?? false;
-
-    if (allPoolsComplete && !eliminationUnlocked) {
-      // Top 2 from each pool advance.
-      const qualifiers: Athlete[] = [];
-      updatedPools.forEach(pool => {
-        pool.standings.slice(0, 2).forEach(st => {
-          const ath = state.athletes.find(a => a.id === st.athleteId);
-          if (ath) qualifiers.push(ath);
-        });
-      });
-      if (qualifiers.length >= 2) {
-        const ageGroup = (qualifiers[0]?.ageGroup ?? 'Senior') as AgeGroup;
-        const roundDuration = state.settings.roundDurations[ageGroup] ?? 180;
-        const res = buildSingleElimination(qualifiers, {
-          category: `${bracket.category} — Finals`, ageGroup,
-          weightCategory: bracket.weightCategory ?? '', roundDuration,
-          startMatchNumber: state.matches.length + 1, startTime: Date.now(), bracketId: bracket.id,
-        });
-        newMatches = res.matches;
-        eliminationMatches = newMatches.map(m => m.id);
-        eliminationUnlocked = true;
-        toast.success('Pool stage complete — elimination bracket unlocked');
+    if (poolWinners.length >= 2) {
+      const startNum = state.matches.length + 1;
+      for (let i = 0; i < poolWinners.length - 1; i += 2) {
+        const w1 = poolWinners[i];
+        const w2 = poolWinners[i + 1];
+        if (!w1 || !w2) continue;
+        const m: Match = {
+          id: uuid(), matchNumber: startNum + i / 2, bracketId,
+          category: bracket.category ?? '', ageGroup: bracket.ageGroup as AgeGroup ?? 'Senior',
+          weightCategory: bracket.weightCategory ?? '', round: 'Semifinal',
+          redCornerId: w1.athleteId, blueCornerId: w2.athleteId,
+          redCornerName: w1.athleteName, blueCornerName: w2.athleteName,
+          matNumber: 1, scheduledTime: null, status: 'scheduled',
+          roundDurationSeconds: getRoundDuration(state.settings.roundDurations, bracket.ageGroup as AgeGroup ?? 'Senior'),
+          totalRounds: totalRoundsForAgeGroup(bracket.ageGroup as AgeGroup ?? 'Senior'),
+        };
+        eliminationMatches.push(m);
       }
     }
 
     set(s => ({
-      matches: [...s.matches, ...newMatches],
-      brackets: s.brackets.map(b => b.id === bracketId
-        ? {
-            ...b, pools: updatedPools, eliminationMatches, eliminationUnlocked,
-            matchIds: [...b.matchIds, ...newMatches.map(m => m.id)],
-            matches: [...(b.matches ?? b.matchIds), ...newMatches.map(m => m.id)],
-          }
-        : b),
+      matches: [...s.matches, ...eliminationMatches],
+      brackets: s.brackets.map(b => b.id === bracketId ? {
+        ...b,
+        eliminationMatches: [...(b.eliminationMatches ?? []), ...eliminationMatches.map(m => m.id)],
+        eliminationUnlocked: true,
+      } : b),
     }));
+    syncToFirebase('matches', get().matches);
+    syncToFirebase('brackets', get().brackets);
+    toast.success('Pool winners advanced to elimination stage');
   },
 
   updateTeamScore: (teamMatchupId) => {
     const state = get();
-    const bracket = state.brackets.find(b => b.teamMatchups?.some(tm => tm.id === teamMatchupId));
-    if (!bracket || !bracket.teamMatchups) return;
-    const updated = bracket.teamMatchups.map(tm => {
-      if (tm.id !== teamMatchupId) return tm;
-      const fights = state.matches.filter(m => tm.individualMatchIds.includes(m.id));
-      let redWins = 0, blueWins = 0;
-      fights.forEach(f => {
-        if (f.status === 'completed' && f.result) {
-          if (f.result.winnerId === f.redCornerId) redWins++;
-          else if (f.result.winnerId === f.blueCornerId) blueWins++;
-        }
-      });
-      const allDone = fights.length > 0 && fights.every(f => f.status === 'completed');
-      const winnerId = redWins > blueWins ? tm.redClubId : blueWins > redWins ? tm.blueClubId : undefined;
-      return {
-        ...tm, redWins, blueWins,
-        status: allDone ? 'complete' as const : (redWins + blueWins > 0 ? 'in-progress' as const : 'scheduled' as const),
-        winnerId: allDone ? winnerId : undefined,
-      };
-    });
+    const matchup = state.brackets.flatMap(b => b.teamMatchups ?? []).find(t => t.id === teamMatchupId);
+    if (!matchup) return;
+    const individualResults = matchup.individualMatchIds.map(mid => state.matches.find(m => m.id === mid)?.result).filter(Boolean);
+    const redWins = individualResults.filter(r => r!.winnerCorner === 'RED').length;
+    const blueWins = individualResults.filter(r => r!.winnerCorner === 'BLUE').length;
     set(s => ({
-      brackets: s.brackets.map(b => b.id === bracket.id ? { ...b, teamMatchups: updated } : b),
+      brackets: s.brackets.map(b => ({
+        ...b,
+        teamMatchups: (b.teamMatchups ?? []).map(t => t.id === teamMatchupId ? {
+          ...t,
+          redWins, blueWins,
+          status: individualResults.length === matchup.individualMatchIds.length ? 'complete' : 'in-progress',
+          winnerId: individualResults.length === matchup.individualMatchIds.length
+            ? (redWins > blueWins ? t.redClubId : blueWins > redWins ? t.blueClubId : undefined)
+            : undefined,
+        } : t),
+      })),
     }));
+    syncToFirebase('brackets', get().brackets);
   },
 
   // ── Referees ──
-  referees: MOCK_REFEREES,
+  referees: [],
   addReferee: (r) => {
-    const referee: Referee = { ...r, status: r.status ?? 'Available', grade: r.grade || 'IKF Official' };
-    set(s => ({ referees: [referee, ...s.referees] }));
-    toast.success(`${referee.name} added as ${referee.role}`);
+    set(s => ({ referees: [r, ...s.referees] }));
+    syncToFirebase('referees', get().referees);
+    toast.success(`Referee ${r.name} added`, { style: { background: '#27ae60', color: '#fff' } });
   },
-  updateReferee: (id, data) => set(s => ({
-    referees: s.referees.map(r => r.id === id ? { ...r, ...data } : r)
-  })),
-  deleteReferee: (id) => {
-    const state = get();
-    const referee = state.referees.find(r => r.id === id);
-    if (!referee) return;
-    const activeAssignment = state.matches.find(m => m.status !== 'completed' && (m.assignedRefereeId === id || m.assignedJudgeIds?.includes(id)));
-    if (activeAssignment) {
-      toast.error(`${referee.name} is assigned to Match #${activeAssignment.matchNumber}. Reassign or complete the match first.`);
-      return;
-    }
+  updateReferee: (id, data) => {
     set(s => ({
-      referees: s.referees.filter(r => r.id !== id),
-      matches: s.matches.map(m => ({
-        ...m,
-        assignedRefereeId: m.assignedRefereeId === id ? undefined : m.assignedRefereeId,
-        assignedJudgeIds: m.assignedJudgeIds?.filter(judgeId => judgeId !== id),
-      })),
-      judgeScores: s.judgeScores.filter(score => score.judgeId !== id),
+      referees: s.referees.map(r => r.id === id ? { ...r, ...data } : r)
     }));
-    toast.success(`${referee.name} removed from referee roster`);
+    syncToFirebase('referees', get().referees);
+  },
+  deleteReferee: (id) => {
+    set(s => ({ referees: s.referees.filter(r => r.id !== id) }));
+    syncToFirebase('referees', get().referees);
   },
   assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
-    const match = get().matches.find(m => m.id === matchId);
-    if (!match) return;
-    if (judgeIds.includes(refereeId)) {
-      toast.error('Central referee cannot also be selected as a corner judge');
-      return;
-    }
-    const unavailable = get().referees.filter(r => [refereeId, ...judgeIds].includes(r.id) && r.status !== 'Available' && r.currentMatchId !== matchId);
-    if (unavailable.length > 0) {
-      toast.error(`${unavailable[0].name} is not available for assignment`);
-      return;
-    }
-    const ref = get().referees.find(r => r.id === refereeId);
-    const assignment = `Mat ${match.matNumber} — Match #${match.matchNumber}`;
-
-    const previousAssignedIds = [match.assignedRefereeId, ...(match.assignedJudgeIds ?? [])].filter(Boolean) as string[];
-
     set(s => ({
-      matches: s.matches.map(m =>
-        m.id === matchId ? { ...m, scheduledTime: scheduledTime ?? m.scheduledTime, assignedRefereeId: refereeId, assignedJudgeIds: judgeIds } : m
+      matches: s.matches.map(m => m.id === matchId ? {
+        ...m,
+        assignedRefereeId: refereeId,
+        assignedJudgeIds: judgeIds,
+        ...(scheduledTime ? { scheduledTime } : {}),
+      } : m),
+      referees: s.referees.map(r =>
+        r.id === refereeId || judgeIds.includes(r.id)
+          ? { ...r, currentMatchId: matchId, currentAssignment: `Match #${s.matches.find(m => m.id === matchId)?.matchNumber ?? '?'}` }
+          : r
       ),
-      referees: s.referees.map(r => {
-        if (previousAssignedIds.includes(r.id) && r.id !== refereeId && !judgeIds.includes(r.id)) return { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined };
-        if (r.id === refereeId) return { ...r, status: 'In Match', currentMatchId: matchId, currentAssignment: assignment };
-        if (judgeIds.includes(r.id)) return { ...r, status: 'In Match', currentMatchId: matchId, currentAssignment: assignment };
-        return r;
-      }),
     }));
-
-    toast.success(`${ref?.name ?? 'Referee'} assigned to ${assignment}`);
+    syncToFirebase('matches', get().matches);
+    syncToFirebase('referees', get().referees);
+    toast.success('Officials assigned to match');
   },
 
-  // ── Active Match & Round ──
+  // ── Active Match & Round State ──
   activeMatch: null,
   setActiveMatch: (m) => {
-    const state = get();
-    const duration = m ? (state.settings.roundDurations[m.ageGroup] ?? 180) : 0;
-    const nextState = {
-      activeMatch: m,
-      currentRound: 1,
-      roundTimer: duration,
-      timerMode: 'idle' as TimerMode,
-      roundEvents: [],
-      currentResult: null,
-    };
-    set(nextState);
-    getSocket()?.emit('send-event', { type: 'match_state', data: nextState });
-    if (m) get().clearJudgeScores(m.id);
+    set({ activeMatch: m });
+    if (m) syncToFirebase('activeMatch', m);
   },
   currentRound: 1,
   setCurrentRound: (r) => {
     set({ currentRound: r });
-    getSocket()?.emit('send-event', { type: 'match_state', data: { currentRound: r, activeMatch: get().activeMatch } });
+    patchFirebase('live/matchState', { currentRound: r, activeMatch: get().activeMatch, updatedAt: Date.now() });
   },
   roundTimer: 180,
   setRoundTimer: (t) => {
     set({ roundTimer: t });
-    getSocket()?.emit('send-event', { type: 'timer_update', data: { roundTimer: t, activeMatch: get().activeMatch, currentRound: get().currentRound } });
+    patchFirebase('live/matchState', { roundTimer: t, activeMatch: get().activeMatch, currentRound: get().currentRound, updatedAt: Date.now() });
   },
   timerMode: 'idle',
   setTimerMode: (mode) => {
     set({ timerMode: mode });
-    getSocket()?.emit('send-event', { type: 'timer_update', data: { timerMode: mode, activeMatch: get().activeMatch, currentRound: get().currentRound, roundTimer: get().roundTimer } });
+    patchFirebase('live/matchState', { timerMode: mode, activeMatch: get().activeMatch, currentRound: get().currentRound, roundTimer: get().roundTimer, updatedAt: Date.now() });
   },
   roundEvents: [],
   addRoundEvent: (e) => {
-    const newEvent = { ...e, id: uuidv4(), timestamp: new Date().toISOString() };
-    set(s => ({
-      roundEvents: [...s.roundEvents, newEvent]
-    }));
-    getSocket()?.emit('send-event', { type: 'round_event_added', data: { event: newEvent } });
+    const newEvent = { ...e, id: uuidv4(), timestamp: new Date().toISOString() } as RoundEvent;
+    set(s => ({ roundEvents: [...s.roundEvents, newEvent] }));
+    pushToFirebase('events', newEvent as unknown as Record<string, unknown>);
   },
   clearRoundEvents: () => set({ roundEvents: [] }),
 
   // ── Judging ──
-  judgeScores: SEED_JUDGE_SCORES,
+  judgeScores: [],
   setJudgeScore: (score) => set(s => {
     const existing = s.judgeScores.findIndex(
       js => js.judgeId === score.judgeId && js.matchId === score.matchId && js.round === score.round
@@ -817,56 +574,112 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
   submitJudgeScore: (judgeId, round, redScore, blueScore, matchId, judgeName) => {
     const score: JudgeScore = { judgeId, judgeName, matchId, round, redScore, blueScore, submitted: true };
     get().setJudgeScore(score);
-    getSocket()?.emit('send-event', { type: 'judge_score_submitted', data: { score } });
-    toast.success(`${judgeName} — Round ${round} score submitted ✅`, { duration: 3000 });
+    syncToFirebase(`judging/${matchId}/scores/${judgeId}/rounds/${round}`, { ...score, updatedAt: new Date().toISOString(), validationStatus: 'submitted' });
+    toast.success(`${judgeName} — Round ${round} score submitted`, { duration: 3000 });
   },
 
   currentResult: null,
 
-  validateResult: (matchId, judgeIds) => {
+  validateResult: (matchId, judgeIds, sourceScores, sourceEvents) => {
     const state = get();
-    const scores = state.judgeScores.filter(s => s.matchId === matchId && s.submitted);
+    const scores = (sourceScores ?? state.judgeScores).filter(s => s.matchId === matchId && s.submitted);
     const match = state.matches.find(m => m.id === matchId);
     if (!match) return;
 
-    // Aggregate per judge
-    const judgeAgg = judgeIds.map(jid => {
-      const js = scores.filter(s => s.judgeId === jid);
-      const red = js.reduce((a, s) => a + s.redScore, 0);
-      const blue = js.reduce((a, s) => a + s.blueScore, 0);
-      return { judgeId: jid, redWins: red > blue, redTotal: red, blueTotal: blue };
-    });
+    // Check for live method events first (Decision, KO/TKO, Ippon, Disqualification, Draw).
+    const matchEvents = (sourceEvents ?? state.roundEvents).filter(e =>
+      e.details?.includes(`#${match.matchNumber}`) || e.details?.toLowerCase().includes(`match #${match.matchNumber}`)
+    );
+    const decisiveEvents = matchEvents.filter(e =>
+      ['decision', 'ko-tko', 'ippon-result', 'disqualification', 'draw'].includes(e.type)
+    );
+    const lastDecisive = decisiveEvents.length > 0 ? decisiveEvents[decisiveEvents.length - 1] : null;
 
-    const redWins = judgeAgg.filter(j => j.redWins).length;
-    const blueWins = judgeAgg.filter(j => !j.redWins).length;
-    const totalRed = judgeAgg.reduce((a, j) => a + j.redTotal, 0);
-    const totalBlue = judgeAgg.reduce((a, j) => a + j.blueTotal, 0);
+    let result: MatchResult;
 
-    const winnerCorner: 'RED' | 'BLUE' = redWins >= blueWins ? 'RED' : 'BLUE';
-    const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
-    const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
-    const method = redWins === blueWins ? 'split-decision' :
-      (redWins === judgeIds.length || blueWins === judgeIds.length) ? 'unanimous-decision' : 'majority-decision';
+    if (lastDecisive) {
+      // Use the decisive event as the authoritative result
+      const method = lastDecisive.type === 'decision' ? 'majority-decision' :
+                     lastDecisive.type === 'ko-tko' ? 'KO' :
+                     lastDecisive.type === 'ippon-result' ? 'ippon' :
+                     lastDecisive.type === 'disqualification' ? 'disqualification' : 'draw';
 
-    const result: MatchResult = {
-      winnerId, winnerName, winnerCorner, method,
-      redTotalScore: totalRed, blueTotalScore: totalBlue,
-      roundScores: scores,
-      validatedAt: new Date().toISOString(),
-    };
+      const totalRed = scores.reduce((a, s) => a + s.redScore, 0);
+      const totalBlue = scores.reduce((a, s) => a + s.blueScore, 0);
+
+      if (method === 'draw') {
+        result = {
+          winnerId: '', winnerName: 'Draw', winnerCorner: 'RED', method: 'draw',
+          redTotalScore: totalRed, blueTotalScore: totalBlue,
+          roundScores: scores, validatedAt: new Date().toISOString(),
+        };
+      } else {
+        const winnerCorner = lastDecisive.corner ?? (totalRed >= totalBlue ? 'RED' : 'BLUE');
+        const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
+        const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
+        result = {
+          winnerId, winnerName, winnerCorner, method,
+          redTotalScore: totalRed, blueTotalScore: totalBlue,
+          roundScores: scores, validatedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      // Fallback: score-based majority/unanimous/split decision
+      const judgeAgg = judgeIds.map(jid => {
+        const js = scores.filter(s => s.judgeId === jid);
+        const red = js.reduce((a, s) => a + s.redScore, 0);
+        const blue = js.reduce((a, s) => a + s.blueScore, 0);
+        return { judgeId: jid, redWins: red > blue, redTotal: red, blueTotal: blue };
+      });
+
+      const redWins = judgeAgg.filter(j => j.redWins).length;
+      const blueWins = judgeAgg.filter(j => !j.redWins).length;
+      const totalRed = judgeAgg.reduce((a, j) => a + j.redTotal, 0);
+      const totalBlue = judgeAgg.reduce((a, j) => a + j.blueTotal, 0);
+
+      const winnerCorner: 'RED' | 'BLUE' = redWins >= blueWins ? 'RED' : 'BLUE';
+      const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
+      const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
+      const method = redWins === blueWins ? 'split-decision' :
+        (redWins === judgeIds.length || blueWins === judgeIds.length) ? 'unanimous-decision' : 'majority-decision';
+
+      result = {
+        winnerId, winnerName, winnerCorner, method,
+        redTotalScore: totalRed, blueTotalScore: totalBlue,
+        roundScores: scores, validatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (sourceScores || sourceEvents) {
+      set(s => {
+        const scoreMap = new Map<string, JudgeScore>();
+        s.judgeScores.forEach(score => scoreMap.set(`${score.matchId}-${score.judgeId}-${score.round}`, score));
+        (sourceScores ?? []).forEach(score => scoreMap.set(`${score.matchId}-${score.judgeId}-${score.round}`, score));
+
+        const eventMap = new Map<string, RoundEvent>();
+        s.roundEvents.forEach(event => eventMap.set(event.id || `${event.timestamp}-${event.type}-${event.details}`, event));
+        (sourceEvents ?? []).forEach(event => eventMap.set(event.id || `${event.timestamp}-${event.type}-${event.details}`, event));
+
+        return {
+          judgeScores: Array.from(scoreMap.values()),
+          roundEvents: Array.from(eventMap.values()),
+        };
+      });
+    }
 
     set({ currentResult: result });
     get().updateMatchResult(matchId, result);
-    get().advanceWinner(matchId, winnerId, winnerName);
     get().generateReport(matchId);
-    get().addRoundEvent({ type: 'match-end', details: `${winnerName} wins by ${method}` });
-    get().addNotification("Match Result Validated", `${winnerName} won by ${method}`);
+    if (result.winnerId) get().advanceWinner(matchId, result.winnerId, result.winnerName);
+    get().addRoundEvent({ type: 'match-end', details: `${result.winnerName} wins by ${result.method}` });
+    get().addNotification("Match Result Validated", `${result.winnerName} won by ${result.method}`);
 
-    toast.success(`✅ Result VALIDATED — ${winnerName} (${winnerCorner}) wins by ${method}`, { 
-      duration: 6000, 
-      style: { background: 'var(--ikf-gold)', color: '#000', fontWeight: 'bold' } 
+    syncToFirebase('results/' + matchId, result);
+
+    toast.success(`Result VALIDATED — ${result.winnerName} (${result.winnerCorner}) wins by ${result.method}`, {
+      duration: 6000,
+      style: { background: 'var(--ikf-gold)', color: '#000', fontWeight: 'bold' }
     });
-    getSocket()?.emit('send-event', { type: 'result_validated', data: { result } });
   },
 
   overrideResult: (matchId, winnerId, winnerName, winnerCorner, reason) => {
@@ -881,16 +694,17 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
 
     set({ currentResult: result });
     get().updateMatchResult(matchId, result);
-    get().advanceWinner(matchId, winnerId, winnerName);
     get().generateReport(matchId);
+    get().advanceWinner(matchId, winnerId, winnerName);
     get().addRoundEvent({ type: 'match-end', corner: winnerCorner, details: `OVERRIDE — ${winnerName} wins. Reason: ${reason}` });
 
-    toast(`⚖️ RESULT OVERRIDDEN — ${winnerName} declared winner`, { 
-      duration: 6000, 
+    syncToFirebase('results/' + matchId, result);
+
+    toast(`Result OVERRIDDEN — ${winnerName} declared winner`, {
+      duration: 6000,
       icon: '⚖️',
-      style: { background: 'var(--ikf-gold)', color: '#000', fontWeight: 'bold' } 
+      style: { background: 'var(--ikf-gold)', color: '#000', fontWeight: 'bold' }
     });
-    getSocket()?.emit('send-event', { type: 'result_overridden', data: { result } });
   },
 
   clearJudgeScores: (matchId) => set(s => ({
@@ -899,7 +713,7 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
   })),
 
   // ── Reports ──
-  reports: SEED_REPORTS,
+  reports: [],
   generateReport: (matchId) => {
     const state = get();
     const match = state.matches.find(m => m.id === matchId);
@@ -925,27 +739,15 @@ export const useTournamentStore = create<TournamentStore>()(persist((set, get) =
     } else {
       set(s => ({ reports: [report, ...s.reports] }));
     }
+    syncToFirebase('reports', get().reports);
   },
 
-  updateReportStatus: (reportId, status) => set(s => ({
-    reports: s.reports.map(r => r.id === reportId ? { ...r, status } : r)
-  })),
-}), {
-  name: 'ikf-tournament-store',
-  storage: createJSONStorage(() => localStorage),
-  // Only persist domain data; keep transient match/round/timer state in memory.
-  partialize: (state) => ({
-    settings: state.settings,
-    athletes: state.athletes,
-    clubs: state.clubs,
-    weighinRecords: state.weighinRecords,
-    matches: state.matches,
-    brackets: state.brackets,
-    referees: state.referees,
-    judgeScores: state.judgeScores,
-    reports: state.reports,
-    notifications: state.notifications,
-  }),
+  updateReportStatus: (reportId, status) => {
+    set(s => ({
+      reports: s.reports.map(r => r.id === reportId ? { ...r, status } : r)
+    }));
+    syncToFirebase('reports', get().reports);
+  },
 }));
 
 // ─── Selector helpers ────────────────────────────────────────────────────────

@@ -1,11 +1,17 @@
 /* eslint-disable */
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { AlertCircle, CheckCircle2, User } from "lucide-react";
+import React, { useState, useEffect, useMemo } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, CheckCircle2, ShieldAlert, Swords, Trophy, Minus, ClipboardList } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { IKFBadge } from "@/components/ui";
 import { t } from "@/lib/i18n";
+import { formatMatchCategory, isYouthAgeGroup } from "@/lib/ageCategories";
+import { deriveLiveMatchTimers, FirebaseMatchState, useFirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
+import { saveJudgeScoreToDatabase, saveJudgingEventToDatabase, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
+
+type MethodEventType = "decision" | "ko-tko" | "ippon-result" | "disqualification" | "draw";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -13,53 +19,218 @@ function formatTime(seconds: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function MethodButton({
+  label,
+  corner,
+  disabled,
+  active,
+  onClick,
+}: {
+  label: string;
+  corner?: "RED" | "BLUE";
+  disabled: boolean;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const color = corner === "RED" ? "var(--ikf-red)" : corner === "BLUE" ? "var(--corner-blue)" : "var(--ikf-gold)";
+  const bg = corner === "RED" ? "rgba(200,16,46,0.08)" : corner === "BLUE" ? "rgba(0,102,204,0.08)" : "rgba(212,160,23,0.1)";
+  return (
+    <motion.button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      whileTap={{ scale: disabled ? 1 : 0.94 }}
+      animate={active ? { scale: [1, 1.06, 1], boxShadow: [`0 0 0 ${color}`, `0 0 24px ${color}`, `0 0 0 ${color}`] } : { scale: 1 }}
+      transition={{ duration: 0.45 }}
+      className="relative h-10 rounded-lg border text-[10px] font-black uppercase tracking-widest disabled:opacity-35 disabled:cursor-not-allowed overflow-hidden"
+      style={{ color, borderColor: active ? color : corner === "BLUE" ? "rgba(0,102,204,0.35)" : corner === "RED" ? "rgba(200,16,46,0.35)" : "rgba(212,160,23,0.45)", background: active ? "rgba(255,255,255,0.12)" : bg }}
+    >
+      {active && <motion.span className="absolute inset-0 bg-white/20" initial={{ x: "-100%" }} animate={{ x: "120%" }} transition={{ duration: 0.55 }} />}
+      <span className="relative z-10">{label}</span>
+    </motion.button>
+  );
+}
+
+function ScoreButton({
+  label, sublabel, onClick, disabled, active, color = "red", size = "lg"
+}: {
+  label: string; sublabel?: string; onClick: () => void; disabled: boolean;
+  active?: boolean; color?: "red" | "blue" | "gold" | "green"; size?: "lg" | "sm";
+}) {
+  const colorMap = {
+    red:   { bg: "rgba(200,16,46,0.12)",   border: "var(--ikf-red)",    activeBg: "var(--ikf-red)",    text: "var(--ikf-red)",    shadow: "rgba(200,16,46,0.5)" },
+    blue:  { bg: "rgba(0,102,204,0.12)",   border: "var(--corner-blue)", activeBg: "var(--corner-blue)", text: "var(--corner-blue)", shadow: "rgba(0,102,204,0.5)" },
+    gold:  { bg: "rgba(212,160,23,0.12)",  border: "var(--ikf-gold)",   activeBg: "var(--ikf-gold)",   text: "var(--ikf-gold)",   shadow: "rgba(212,160,23,0.5)" },
+    green: { bg: "rgba(46,204,113,0.12)",  border: "var(--status-win)", activeBg: "var(--status-win)", text: "var(--status-win)", shadow: "rgba(46,204,113,0.5)" },
+  };
+  const c = colorMap[color];
+  const h = size === "lg" ? "h-24" : "h-16";
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${h} rounded-2xl font-display tracking-wider transition-all border-2 flex flex-col items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed`}
+      style={{
+        background: active ? c.activeBg : c.bg,
+        borderColor: c.border,
+        color: active ? "#fff" : c.text,
+        boxShadow: active ? `0 0 24px ${c.shadow}` : "none",
+      }}
+    >
+      <span className={size === "lg" ? "text-2xl" : "text-base"}>{label}</span>
+      {sublabel && <span className="text-[10px] font-bold tracking-widest opacity-70">{sublabel}</span>}
+    </button>
+  );
+}
+
 export default function JudgeTabletView() {
   const { 
-    activeMatch, matches, currentRound, roundTimer, timerMode, 
-    judgeScores, setJudgeScore, submitJudgeScore, referees, settings, setActiveMatch
+    matches, currentRound, roundTimer, timerMode, roundEvents,
+    judgeScores, setJudgeScore, submitJudgeScore, referees, settings, addRoundEvent
   } = useTournamentStore();
 
+  const [selectedMatchId, setSelectedMatchId] = useState<string>("");
   const [selectedJudgeId, setSelectedJudgeId] = useState<string>("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [methodFeedback, setMethodFeedback] = useState<{
+    id: string;
+    label: string;
+    corner?: "RED" | "BLUE";
+    officialName: string;
+    type: MethodEventType;
+  } | null>(null);
+  const [fallbackAnchor, setFallbackAnchor] = useState({ mode: "idle", source: 0, startedAt: Date.now() });
+
+  const selectableMatches = useMemo(() => matches
+    .filter(match =>
+      match.status !== "completed" &&
+      !match.isBye &&
+      Boolean(match.redCornerId) &&
+      Boolean(match.blueCornerId) &&
+      Boolean(match.assignedRefereeId) &&
+      (match.assignedJudgeIds?.length ?? 0) > 0
+    )
+    .sort((a, b) => a.matchNumber - b.matchNumber),
+  [matches]);
+
+  const activeMatch = useMemo(
+    () => matches.find(match => match.id === selectedMatchId) ?? null,
+    [matches, selectedMatchId],
+  );
+
+  const assignedOfficials = useMemo(() => {
+    if (!activeMatch) return [];
+    const ids = [activeMatch.assignedRefereeId, ...(activeMatch.assignedJudgeIds ?? [])].filter(Boolean) as string[];
+    return ids.map(id => referees.find(referee => referee.id === id)).filter(Boolean);
+  }, [activeMatch, referees]);
+
+  // Firebase sync for timer (cross-device)
+  const [fbState, setFbState] = useState<FirebaseMatchState | null>(null);
+  const [databaseEvents, setDatabaseEvents] = useState<StoredJudgingEvent[]>([]);
+  const [timerTick, setTimerTick] = useState(0);
+  useFirebaseMatchState((state) => {
+    if (selectedMatchId && state.matchId === selectedMatchId) {
+      setFbState(state);
+    }
+  });
+  const rawLiveMode = fbState?.timerMode ?? timerMode;
+  const fallbackSourceTimer = rawLiveMode === "rest" ? (fbState?.restTimer ?? 60) : rawLiveMode === "passivity" ? (fbState?.woskTimeLeft ?? 10) : (fbState?.roundTimer ?? roundTimer);
+  const forceRunningFromIdle = rawLiveMode === "idle"
+    && activeMatch?.status === "in-progress"
+    && fallbackSourceTimer > 0
+    && fallbackSourceTimer < (fbState?.maxTime ?? activeMatch.roundDurationSeconds ?? roundTimer);
+  const liveMode = forceRunningFromIdle ? "round" : rawLiveMode;
+  const derivedTimers = useMemo(() => deriveLiveMatchTimers(fbState), [fbState, timerTick]);
+  useEffect(() => {
+    setFallbackAnchor({ mode: liveMode, source: fallbackSourceTimer, startedAt: Date.now() });
+  }, [fallbackSourceTimer, liveMode, selectedMatchId]);
+  const fallbackDerivedTimer = useMemo(() => {
+    const elapsed = ["round", "rest", "passivity"].includes(fallbackAnchor.mode)
+      ? Math.floor((Date.now() - fallbackAnchor.startedAt) / 1000)
+      : 0;
+    return Math.max(0, fallbackAnchor.source - elapsed);
+  }, [fallbackAnchor, timerTick]);
+  const liveTimer = liveMode === "rest"
+    ? (forceRunningFromIdle ? fallbackDerivedTimer : derivedTimers?.restTimer ?? fallbackDerivedTimer)
+    : liveMode === "passivity"
+      ? (forceRunningFromIdle ? fallbackDerivedTimer : derivedTimers?.woskTimeLeft ?? fallbackDerivedTimer)
+      : (forceRunningFromIdle ? fallbackDerivedTimer : derivedTimers?.roundTimer ?? fallbackDerivedTimer);
+  const liveRound = fbState?.currentRound ?? currentRound;
 
   useEffect(() => {
-    if (!activeMatch) {
-      const nextMatch = matches.find(m => m.status === "in-progress") ?? matches.find(m => m.status === "scheduled");
-      if (nextMatch) setActiveMatch({ ...nextMatch, status: nextMatch.status === "scheduled" ? "in-progress" : nextMatch.status });
-      return;
-    }
+    setSelectedJudgeId("");
+    setFbState(null);
+    setDatabaseEvents([]);
+  }, [selectedMatchId]);
 
-    if (activeMatch.assignedJudgeIds && !selectedJudgeId) {
-      setSelectedJudgeId(activeMatch.assignedJudgeIds[0] || "");
-    }
-  }, [activeMatch, matches, selectedJudgeId, setActiveMatch]);
+  useEffect(() => {
+    const id = window.setInterval(() => setTimerTick(tick => tick + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useFirebaseJudgingData(selectedMatchId || null, ({ scores, events }) => {
+    scores.forEach(score => setJudgeScore(score));
+    setDatabaseEvents(events);
+  });
 
   if (!activeMatch) {
     return (
-      <div className="h-screen bg-[#050508] flex items-center justify-center text-[var(--text-muted)] flex-col gap-4">
-        <AlertCircle size={48} className="text-[var(--text-muted)] opacity-50" />
-        <p className="text-xl font-medium tracking-widest uppercase">{t('waiting_for_match_assignment', settings.language)}</p>
+      <div className="min-h-screen flex items-center justify-center p-8" style={{ background: "linear-gradient(135deg, #050508 0%, #0a0015 100%)" }}>
+        <div className="w-full max-w-3xl rounded-3xl border border-[rgba(212,160,23,0.3)] bg-[rgba(255,255,255,0.04)] p-8 shadow-2xl">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-16 h-16 rounded-full bg-[rgba(212,160,23,0.1)] border border-[rgba(212,160,23,0.3)] flex items-center justify-center">
+              <ClipboardList size={30} className="text-[var(--ikf-gold)]" />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--ikf-gold)] mb-1">Electronic Judging</div>
+              <h1 className="font-display text-4xl text-white">Select Match First</h1>
+            </div>
+          </div>
+
+          <label className="block text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">Match</label>
+          <select
+            value={selectedMatchId}
+            onChange={event => setSelectedMatchId(event.target.value)}
+            className="w-full bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.12)] rounded-2xl px-5 py-4 text-white text-base font-bold outline-none focus:border-[var(--ikf-gold)]"
+          >
+            <option value="">Choose assigned match...</option>
+            {selectableMatches.map(match => (
+              <option key={match.id} value={match.id}>
+                Match #{match.matchNumber} - {formatMatchCategory(match.ageGroup, match.weightCategory)} - {match.redCornerName} vs {match.blueCornerName}
+              </option>
+            ))}
+          </select>
+
+          {selectableMatches.length === 0 && (
+            <div className="mt-6 rounded-2xl border border-[rgba(200,16,46,0.35)] bg-[rgba(200,16,46,0.08)] p-4 flex items-center gap-3 text-[var(--ikf-red)]">
+              <AlertCircle size={18} />
+              <span className="text-sm font-bold">No assigned matches found. Assign officials in Referee Management first.</span>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
   const judge = referees.find(r => r.id === selectedJudgeId);
-  const isChildren = activeMatch.ageGroup.startsWith("U");
+  const isChildren = isYouthAgeGroup(activeMatch.ageGroup);
 
-  const currentScore = judgeScores.find(s => s.matchId === activeMatch.id && s.round === currentRound && s.judgeId === selectedJudgeId) 
+  const currentScore = judgeScores.find(s => s.matchId === activeMatch.id && s.round === liveRound && s.judgeId === selectedJudgeId) 
     || { redScore: 0, blueScore: 0, submitted: false };
 
   const handleSetScore = (red: number, blue: number) => {
     if (currentScore.submitted || !judge) return;
-    setJudgeScore({
+    const score = {
       matchId: activeMatch.id,
       judgeId: judge.id,
       judgeName: judge.name,
-      round: currentRound,
+      round: liveRound,
       redScore: red,
       blueScore: blue,
       submitted: false,
-    });
+    };
+    setJudgeScore(score);
+    saveJudgeScoreToDatabase(score);
   };
 
   const handleWinRound = (winner: "RED" | "BLUE") => {
@@ -72,19 +243,52 @@ export default function JudgeTabletView() {
     const currentBlue = currentScore.blueScore || 10;
     if (corner === "RED") handleSetScore(Math.max(0, currentRed - points), currentBlue);
     else handleSetScore(currentRed, Math.max(0, currentBlue - points));
+    recordJudgingEvent("deduction", corner, `${points} point deduction`);
   };
 
   const handleSpecial = (type: "IPPON" | "WAZA_ARI" | "YUKO", corner: "RED" | "BLUE") => {
-    // In a real system, Ippon might instantly submit and flag for chief referee.
-    // For demo, we just give points.
     const pts = type === "IPPON" ? 10 : type === "WAZA_ARI" ? 2 : 1;
     const currentRed = currentScore.redScore || 10;
     const currentBlue = currentScore.blueScore || 10;
     if (corner === "RED") handleSetScore(currentRed + pts, currentBlue);
     else handleSetScore(currentRed, currentBlue + pts);
+    recordJudgingEvent(type === "IPPON" ? "ippon" : type === "WAZA_ARI" ? "waza-ari" : "yuko", corner, type.replace("_", " "));
   };
 
   const handleDraw = () => handleSetScore(10, 10);
+
+  const recordJudgingEvent = (
+    type: "yellow-card" | "red-card" | "deduction" | "ippon" | "waza-ari" | "yuko" | "decision" | "ko-tko" | "ippon-result" | "disqualification" | "draw",
+    corner: "RED" | "BLUE" | undefined,
+    label: string,
+  ) => {
+    if (!judge) return;
+    const details = `Match #${activeMatch.matchNumber} - ${label}${corner ? ` for ${corner} corner` : ""} by ${judge.name}`;
+    addRoundEvent({ type, corner, details });
+    saveJudgingEventToDatabase({
+      matchId: activeMatch.id,
+      type,
+      corner,
+      details,
+      officialId: judge.id,
+      officialName: judge.name,
+    });
+  };
+
+  const recordMatchDecision = (
+    type: MethodEventType,
+    corner: "RED" | "BLUE" | undefined,
+    label: string,
+  ) => {
+    if (!judge) return;
+    const winnerName = corner === "RED" ? activeMatch.redCornerName : corner === "BLUE" ? activeMatch.blueCornerName : "No winner";
+    recordJudgingEvent(type, corner, type === "draw" ? "DRAW declared" : `${winnerName} - ${label}`);
+    const id = `${type}-${corner ?? "DRAW"}-${Date.now()}`;
+    setMethodFeedback({ id, label, corner, officialName: judge.name, type });
+    window.setTimeout(() => {
+      setMethodFeedback(current => current?.id === id ? null : current);
+    }, 2200);
+  };
 
   const attemptSubmit = () => {
     if (currentScore.redScore === 0 && currentScore.blueScore === 0) return;
@@ -93,7 +297,16 @@ export default function JudgeTabletView() {
 
   const confirmSubmit = () => {
     if (judge) {
-      submitJudgeScore(judge.id, currentRound, currentScore.redScore, currentScore.blueScore, activeMatch.id, judge.name);
+      saveJudgeScoreToDatabase({
+        matchId: activeMatch.id,
+        judgeId: judge.id,
+        judgeName: judge.name,
+        round: liveRound,
+        redScore: currentScore.redScore,
+        blueScore: currentScore.blueScore,
+        submitted: true,
+      });
+      submitJudgeScore(judge.id, liveRound, currentScore.redScore, currentScore.blueScore, activeMatch.id, judge.name);
     }
     setShowConfirm(false);
   };
@@ -104,298 +317,391 @@ export default function JudgeTabletView() {
       .reduce((acc, s) => acc + (corner === "RED" ? s.redScore : s.blueScore), 0);
   };
 
-  const isRedWinner = currentScore.redScore > currentScore.blueScore;
+  const isRedWinner  = currentScore.redScore  > currentScore.blueScore;
   const isBlueWinner = currentScore.blueScore > currentScore.redScore;
+  const isDraw       = currentScore.redScore === currentScore.blueScore && currentScore.redScore > 0;
+
+  const timerColor = liveMode === "round" ? "#2ecc71" : liveMode === "rest" ? "var(--ikf-gold)" : liveMode === "passivity" ? "#f1c40f" : "rgba(255,255,255,0.3)";
+  const visibleEvents = Array.from(new Map([
+    ...roundEvents.filter(event => event.details?.toLowerCase().includes(`match #${activeMatch.matchNumber}`)),
+    ...databaseEvents.filter(event => event.matchId === activeMatch.id),
+  ].map((event: any) => [`${event.id}-${event.type}-${event.corner}-${event.details}`, event])).values());
+  const countCards = (corner: "RED" | "BLUE", type: "yellow-card" | "red-card") =>
+    visibleEvents.filter(event => event.corner === corner && event.type === type).length;
+  const redYellowCards = countCards("RED", "yellow-card");
+  const redRedCards = countCards("RED", "red-card");
+  const blueYellowCards = countCards("BLUE", "yellow-card");
+  const blueRedCards = countCards("BLUE", "red-card");
+  const isActiveMethod = (type: string, corner?: "RED" | "BLUE") => methodFeedback?.type === type && methodFeedback?.corner === corner;
 
   return (
-    <div className="flex flex-col h-screen text-white select-none bg-[#050508]">
-      
-      {/* TOP BAR */}
-      <div className="bg-gradient-to-r from-[#15050a] via-[var(--bg-elevated)] to-[#031229] min-h-20 flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-[var(--border-default)] shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
-        <div className="flex items-center gap-4">
+    <div className="flex flex-col h-screen text-white select-none overflow-hidden"
+      style={{ background: "linear-gradient(160deg, #08020c 0%, #05080f 50%, #020508 100%)" }}>
+
+      {/* ── TOP BAR ── */}
+      <div className="flex items-center justify-between px-6 py-3 border-b border-[rgba(255,255,255,0.07)]"
+        style={{ background: "linear-gradient(90deg, rgba(200,16,46,0.08) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0) 60%, rgba(0,102,204,0.08) 100%)" }}>
+        
+        {/* Judge selector */}
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-[rgba(212,160,23,0.15)] border border-[rgba(212,160,23,0.4)] flex items-center justify-center">
+            <span className="text-[var(--ikf-gold)] text-xs font-bold">J</span>
+          </div>
           <select 
             value={selectedJudgeId}
             onChange={e => setSelectedJudgeId(e.target.value)}
-            className="bg-black/40 border border-[var(--border-default)] rounded-xl px-4 py-3 text-sm font-bold text-white tracking-widest outline-none focus:border-[var(--ikf-gold)] transition-colors min-w-[260px]"
+            className="bg-[rgba(255,255,255,0.06)] border border-[rgba(255,255,255,0.1)] rounded-xl px-4 py-2.5 text-sm font-bold text-white tracking-wider outline-none focus:border-[var(--ikf-gold)] transition-colors min-w-[220px]"
           >
             <option value="" disabled>{t('select_judge_profile', settings.language)}</option>
-            {activeMatch.assignedJudgeIds?.map(id => {
-              const r = referees.find(x => x.id === id);
-              return <option key={id} value={id}>{r?.name || id}</option>;
-            })}
+            {assignedOfficials.map(official => (
+              <option key={official!.id} value={official!.id}>{official!.name} - {official!.role}</option>
+            ))}
           </select>
         </div>
+
+        {/* Match info center */}
         <div className="text-center">
-          <div className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Electronic Judging</div>
-          <div className="text-lg font-display tracking-wider text-white">
-            Match #{activeMatch.matchNumber} · {activeMatch.category} · Round {currentRound}
+          <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--ikf-gold)] mb-0.5">Electronic Judging · IKF Kenshido</div>
+          <div className="text-base font-display tracking-widest text-white">
+            Match #{activeMatch.matchNumber} · {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory)}
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <IKFBadge variant={timerMode === "round" ? "live" : "pending"} label={timerMode.toUpperCase()} size="sm" />
-          <div className={`font-mono text-xl font-bold ${timerMode === "round" ? "text-[var(--status-win)] animate-pulse" : "text-white"}`}>
-            {formatTime(roundTimer)}
+
+        {/* Live timer */}
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-[10px] font-bold tracking-widest uppercase mb-0.5" style={{ color: timerColor }}>
+              Round {liveRound} / {activeMatch.totalRounds}
+            </div>
+            <div className="font-mono text-2xl font-bold transition-all" style={{ color: timerColor }}>
+              {formatTime(liveTimer)}
+            </div>
           </div>
+          <div className={`w-3 h-3 rounded-full ${liveMode === "round" ? "bg-green-400 animate-pulse" : "bg-[rgba(255,255,255,0.2)]"}`} />
         </div>
       </div>
 
       {!judge && (
-        <div className="bg-[rgba(212,160,23,0.12)] border-b border-[rgba(212,160,23,0.35)] px-6 py-3 text-center text-[var(--ikf-gold)] text-sm font-bold uppercase tracking-widest">
-          Select your judge profile before scoring this match
+        <div className="bg-[rgba(212,160,23,0.1)] border-b border-[rgba(212,160,23,0.3)] px-6 py-2.5 text-center text-[var(--ikf-gold)] text-xs font-bold uppercase tracking-widest">
+          ⚠ Select your judge profile to enable scoring
         </div>
       )}
 
-      {/* MAIN SCORING PANELS */}
-      <div className="flex-1 flex gap-3 p-3 bg-[radial-gradient(circle_at_center,rgba(212,160,23,0.08),transparent_45%)]">
-        
-        {/* RED CORNER */}
-        <div className="flex-1 rounded-3xl border border-[rgba(200,16,46,0.35)] bg-[linear-gradient(180deg,rgba(200,16,46,0.16),rgba(200,16,46,0.04))] flex flex-col relative overflow-hidden shadow-[0_0_45px_rgba(200,16,46,0.12)]">
-          <div className="p-8 border-b-2 border-[rgba(200,16,46,0.2)] text-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-b from-[rgba(200,16,46,0.1)] to-transparent pointer-events-none" />
-            <h2 className="font-display text-6xl text-[var(--ikf-red)] leading-none relative z-10">{activeMatch.redCornerName}</h2>
-            <div className="mt-4 flex items-center justify-center gap-12 relative z-10">
-              <div className="text-center">
-                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">{t('round', settings.language)} {currentRound}</div>
-                <div className="font-display text-[100px] leading-none text-white drop-shadow-[0_0_15px_rgba(200,16,46,0.5)]">
-                  {currentScore.redScore || "-"}
+      {/* ── MAIN SCORING AREA ── */}
+      <div className="px-4 py-2 border-b border-[rgba(255,255,255,0.06)] bg-black/25">
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              ["Decision", "decision"],
+              ["KO / TKO", "ko-tko"],
+              ["Ippon (Kids)", "ippon-result"],
+              ["Disqualification", "disqualification"],
+            ].map(([label, type]) => (
+              <MethodButton
+                key={`red-${type}`}
+                label={label}
+                corner="RED"
+                disabled={!judge}
+                onClick={() => recordMatchDecision(type as any, "RED", label)}
+                active={isActiveMethod(type, "RED")}
+              />
+            ))}
+          </div>
+          <MethodButton
+            label="DRAW"
+            disabled={!judge}
+            onClick={() => recordMatchDecision("draw", undefined, "DRAW")}
+            active={isActiveMethod("draw")}
+          />
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              ["Decision", "decision"],
+              ["KO / TKO", "ko-tko"],
+              ["Ippon (Kids)", "ippon-result"],
+              ["Disqualification", "disqualification"],
+            ].map(([label, type]) => (
+              <MethodButton
+                key={`blue-${type}`}
+                label={label}
+                corner="BLUE"
+                disabled={!judge}
+                onClick={() => recordMatchDecision(type as any, "BLUE", label)}
+                active={isActiveMethod(type, "BLUE")}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {methodFeedback && (
+          <motion.div
+            key={methodFeedback.id}
+            initial={{ opacity: 0, y: -18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.98 }}
+            className="mx-4 mt-2 rounded-2xl border px-4 py-3 flex items-center justify-between shadow-2xl"
+            style={{
+              borderColor: methodFeedback.corner === "RED" ? "rgba(200,16,46,0.7)" : methodFeedback.corner === "BLUE" ? "rgba(0,102,204,0.7)" : "rgba(212,160,23,0.75)",
+              background: methodFeedback.corner === "RED" ? "rgba(200,16,46,0.16)" : methodFeedback.corner === "BLUE" ? "rgba(0,102,204,0.16)" : "rgba(212,160,23,0.16)",
+            }}
+          >
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--ikf-gold)]">Saved live method decision</div>
+              <div className="mt-1 text-sm font-bold text-white">
+                {methodFeedback.label} {methodFeedback.corner ? `for ${methodFeedback.corner} corner` : ""} by {methodFeedback.officialName}
+              </div>
+            </div>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: [0, 1.25, 1] }}
+              className="w-8 h-8 rounded-full bg-[var(--status-win)] text-black flex items-center justify-center font-black"
+            >
+              OK
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex-1 flex gap-3 p-3 overflow-hidden">
+
+        {/* RED CORNER PANEL */}
+        <div className="flex-1 rounded-3xl flex flex-col overflow-hidden relative"
+          style={{ 
+            background: "linear-gradient(180deg, rgba(200,16,46,0.14) 0%, rgba(200,16,46,0.04) 100%)",
+            border: "1.5px solid rgba(200,16,46,0.3)",
+            boxShadow: isRedWinner ? "0 0 40px rgba(200,16,46,0.2)" : "none"
+          }}>
+
+          {/* Red header */}
+          <div className="p-6 border-b border-[rgba(200,16,46,0.2)]"
+            style={{ background: "linear-gradient(180deg, rgba(200,16,46,0.15) 0%, transparent 100%)" }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold tracking-[0.4em] uppercase text-[var(--ikf-red)] border border-[rgba(200,16,46,0.4)] px-2 py-0.5 rounded bg-[rgba(200,16,46,0.1)]">🔴 RED CORNER</span>
+              {isRedWinner && <span className="text-[10px] font-black tracking-widest text-[var(--ikf-gold)]">▲ LEADING</span>}
+            </div>
+            <h2 className="font-display text-4xl text-white leading-tight mt-2">{activeMatch.redCornerName}</h2>
+            <div className="flex items-center gap-2 mt-3">
+              <span className="w-5 h-7 rounded-sm bg-[#f1c40f] shadow-[0_0_10px_rgba(241,196,15,0.55)]" />
+              <span className="text-xs font-black text-white">{redYellowCards}</span>
+              <span className="w-5 h-7 rounded-sm bg-[var(--ikf-red)] shadow-[0_0_10px_rgba(200,16,46,0.65)] ml-2" />
+              <span className="text-xs font-black text-white">{redRedCards}</span>
+            </div>
+            <div className="flex items-end gap-6 mt-4">
+              <div>
+                <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Round {liveRound}</div>
+                <div className="font-display text-[80px] leading-none" style={{ color: isRedWinner ? "var(--ikf-red)" : "rgba(255,255,255,0.85)", textShadow: isRedWinner ? "0 0 20px rgba(200,16,46,0.5)" : "none" }}>
+                  {currentScore.redScore || "—"}
                 </div>
               </div>
-              <div className="text-center">
-                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">Total</div>
-                <div className="font-display text-[60px] leading-none text-[var(--text-secondary)]">
-                  {getCornerTotal("RED")}
-                </div>
+              <div className="pb-3">
+                <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Total</div>
+                <div className="font-display text-5xl text-[var(--text-secondary)]">{getCornerTotal("RED")}</div>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 p-8 flex flex-col gap-4 justify-center">
-            <button 
+          {/* Red action buttons */}
+          <div className="flex-1 p-5 flex flex-col gap-3">
+            <ScoreButton
+              label={t('red_wins_round_10', settings.language)}
+              sublabel="10 — 9"
               onClick={() => handleWinRound("RED")}
               disabled={currentScore.submitted || !judge}
-              className={`h-32 text-3xl font-display tracking-widest rounded-2xl transition-all border-4 ${
-                isRedWinner 
-                  ? "bg-[var(--ikf-red)] border-[var(--ikf-red)] text-white shadow-[0_0_30px_rgba(200,16,46,0.6)]" 
-                  : "bg-[rgba(200,16,46,0.1)] border-[var(--ikf-red)] text-[var(--ikf-red)] hover:bg-[rgba(200,16,46,0.2)]"
-              } disabled:opacity-50`}
-            >
-              {t('red_wins_round_10', settings.language)}
-            </button>
+              active={isRedWinner}
+              color="red"
+            />
 
-            <div className="grid grid-cols-2 gap-4 mt-8">
-              <div className="text-center col-span-2 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">{t('deductions', settings.language)}</div>
-              <button 
-                onClick={() => handleDeduction(1, "RED")}
-                disabled={currentScore.submitted || currentScore.redScore === 0 || !judge}
-                className="h-16 bg-[var(--bg-elevated)] border-2 border-[var(--border-default)] hover:border-white rounded-xl text-lg font-bold text-white disabled:opacity-50 transition-colors"
-              >
-                {t('knockdown_1', settings.language)}
-              </button>
-              <button 
-                onClick={() => handleDeduction(2, "RED")}
-                disabled={currentScore.submitted || currentScore.redScore === 0 || !judge}
-                className="h-16 bg-[var(--bg-elevated)] border-2 border-[var(--border-default)] hover:border-white rounded-xl text-lg font-bold text-white disabled:opacity-50 transition-colors"
-              >
-                {t('double_kd_2', settings.language)}
-              </button>
+            <div className="grid grid-cols-2 gap-3 mt-auto">
+              <div className="col-span-2 text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest text-center border-t border-[rgba(255,255,255,0.06)] pt-3">
+                Deductions
+              </div>
+              <ScoreButton label={t('knockdown_1', settings.language)} sublabel="-1 pt" onClick={() => handleDeduction(1, "RED")} disabled={currentScore.submitted || !judge} color="red" size="sm" />
+              <ScoreButton label={t('double_kd_2', settings.language)} sublabel="-2 pts" onClick={() => handleDeduction(2, "RED")} disabled={currentScore.submitted || !judge} color="red" size="sm" />
+              <ScoreButton label="Yellow Card" sublabel="warning" onClick={() => recordJudgingEvent("yellow-card", "RED", "yellow card")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
+              <ScoreButton label="Red Card" sublabel="serious" onClick={() => recordJudgingEvent("red-card", "RED", "red card")} disabled={currentScore.submitted || !judge} color="red" size="sm" />
             </div>
 
             {isChildren && (
-              <div className="grid grid-cols-3 gap-4 mt-8">
-                <div className="text-center col-span-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">Special Results (Kids)</div>
-                <button 
-                  onClick={() => handleSpecial("IPPON", "RED")}
-                  disabled={currentScore.submitted || !judge}
-                  className="h-16 bg-[rgba(212,160,23,0.1)] border-2 border-[var(--ikf-gold)] hover:bg-[var(--ikf-gold)] hover:text-black rounded-xl text-sm font-bold text-[var(--ikf-gold)] transition-colors disabled:opacity-50"
-                >
-                  {t('ippon', settings.language)}
-                </button>
-                <button 
-                  onClick={() => handleSpecial("WAZA_ARI", "RED")}
-                  disabled={currentScore.submitted || !judge}
-                  className="h-16 bg-[var(--bg-card)] border border-[var(--border-default)] hover:border-white rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50"
-                >
-                  {t('waza_ari', settings.language)}
-                </button>
-                <button 
-                  onClick={() => handleSpecial("YUKO", "RED")}
-                  disabled={currentScore.submitted || !judge}
-                  className="h-16 bg-[var(--bg-card)] border border-[var(--border-default)] hover:border-white rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50"
-                >
-                  {t('yuko', settings.language)}
-                </button>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <div className="col-span-3 text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest text-center">Special Results</div>
+                <ScoreButton label={t('ippon', settings.language)} sublabel="+10" onClick={() => handleSpecial("IPPON", "RED")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
+                <ScoreButton label={t('waza_ari', settings.language)} sublabel="+2" onClick={() => handleSpecial("WAZA_ARI", "RED")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
+                <ScoreButton label={t('yuko', settings.language)} sublabel="+1" onClick={() => handleSpecial("YUKO", "RED")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
               </div>
             )}
           </div>
         </div>
 
-        {/* BLUE CORNER */}
-        <div className="flex-1 rounded-3xl border border-[rgba(0,102,204,0.35)] bg-[linear-gradient(180deg,rgba(0,102,204,0.16),rgba(0,102,204,0.04))] flex flex-col relative overflow-hidden shadow-[0_0_45px_rgba(0,102,204,0.12)]">
-          <div className="p-8 border-b-2 border-[rgba(0,102,204,0.2)] text-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-b from-[rgba(0,102,204,0.1)] to-transparent pointer-events-none" />
-            <h2 className="font-display text-6xl text-[var(--corner-blue)] leading-none relative z-10">{activeMatch.blueCornerName}</h2>
-            <div className="mt-4 flex items-center justify-center gap-12 relative z-10">
-              <div className="text-center">
-                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">{t('total_rounds', settings.language)}</div>
-                <div className="font-display text-[60px] leading-none text-[var(--text-secondary)]">
-                  {getCornerTotal("BLUE")}
+        {/* CENTER COLUMN */}
+        <div className="w-[140px] flex flex-col items-center justify-between py-4 gap-3">
+          {/* Draw button */}
+          <button
+            onClick={handleDraw}
+            disabled={currentScore.submitted || !judge}
+            className="w-24 h-24 rounded-full font-display text-xl flex items-center justify-center gap-1 flex-col transition-all disabled:opacity-40 border-2"
+            style={{
+              background: isDraw ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+              borderColor: isDraw ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.15)",
+              boxShadow: isDraw ? "0 0 20px rgba(255,255,255,0.1)" : "none"
+            }}
+          >
+            <Minus size={18} />
+            <span className="text-xs">{t('draw', settings.language)}</span>
+          </button>
+
+          {/* Round scorecard mini */}
+          <div className="flex-1 w-full flex flex-col justify-center gap-2">
+            {Array.from({ length: activeMatch.totalRounds }, (_, idx) => idx + 1).map(round => {
+              const s = judgeScores.find(x => x.matchId === activeMatch.id && x.round === round && x.judgeId === selectedJudgeId);
+              const isCurrentRound = round === liveRound;
+              return (
+                <div key={round} className={`rounded-xl p-2 text-center border transition-all ${isCurrentRound ? "border-[rgba(212,160,23,0.5)] bg-[rgba(212,160,23,0.05)]" : "border-[rgba(255,255,255,0.06)] bg-transparent"}`}>
+                  <div className="text-[9px] font-bold text-[var(--text-muted)] tracking-widest mb-1">R{round}</div>
+                  {s?.submitted ? (
+                    <div className="flex items-center justify-center gap-1">
+                      <span className="font-bold text-xs" style={{ color: s.redScore > s.blueScore ? "var(--ikf-red)" : "rgba(255,255,255,0.5)" }}>{s.redScore}</span>
+                      <span className="text-[var(--text-muted)] text-[10px]">-</span>
+                      <span className="font-bold text-xs" style={{ color: s.blueScore > s.redScore ? "var(--corner-blue)" : "rgba(255,255,255,0.5)" }}>{s.blueScore}</span>
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-[var(--text-muted)]">—</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Submit button */}
+          <button
+            onClick={attemptSubmit}
+            disabled={currentScore.submitted || (currentScore.redScore === 0 && currentScore.blueScore === 0) || !judge}
+            className="w-full py-4 rounded-2xl font-display text-sm tracking-widest transition-all disabled:opacity-30 disabled:cursor-not-allowed border-2 flex flex-col items-center gap-1"
+            style={{
+              background: currentScore.submitted ? "rgba(46,204,113,0.15)" : "rgba(46,204,113,0.2)",
+              borderColor: currentScore.submitted ? "var(--status-win)" : "var(--status-win)",
+              color: "var(--status-win)",
+              boxShadow: currentScore.submitted ? "none" : "0 0 20px rgba(46,204,113,0.2)"
+            }}
+          >
+            {currentScore.submitted ? (
+              <><CheckCircle2 size={20} /><span className="text-[10px]">SUBMITTED</span></>
+            ) : (
+              <><Trophy size={18} /><span className="text-[10px]">SUBMIT</span></>
+            )}
+          </button>
+        </div>
+
+        {/* BLUE CORNER PANEL */}
+        <div className="flex-1 rounded-3xl flex flex-col overflow-hidden relative"
+          style={{
+            background: "linear-gradient(180deg, rgba(0,102,204,0.14) 0%, rgba(0,102,204,0.04) 100%)",
+            border: "1.5px solid rgba(0,102,204,0.3)",
+            boxShadow: isBlueWinner ? "0 0 40px rgba(0,102,204,0.2)" : "none"
+          }}>
+
+          {/* Blue header */}
+          <div className="p-6 border-b border-[rgba(0,102,204,0.2)]"
+            style={{ background: "linear-gradient(180deg, rgba(0,102,204,0.15) 0%, transparent 100%)" }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold tracking-[0.4em] uppercase text-[var(--corner-blue)] border border-[rgba(0,102,204,0.4)] px-2 py-0.5 rounded bg-[rgba(0,102,204,0.1)]">🔵 BLUE CORNER</span>
+              {isBlueWinner && <span className="text-[10px] font-black tracking-widest text-[var(--ikf-gold)]">▲ LEADING</span>}
+            </div>
+            <h2 className="font-display text-4xl text-white leading-tight mt-2">{activeMatch.blueCornerName}</h2>
+            <div className="flex items-center justify-end gap-2 mt-3">
+              <span className="text-xs font-black text-white">{blueYellowCards}</span>
+              <span className="w-5 h-7 rounded-sm bg-[#f1c40f] shadow-[0_0_10px_rgba(241,196,15,0.55)]" />
+              <span className="text-xs font-black text-white ml-2">{blueRedCards}</span>
+              <span className="w-5 h-7 rounded-sm bg-[var(--ikf-red)] shadow-[0_0_10px_rgba(200,16,46,0.65)]" />
+            </div>
+            <div className="flex items-end gap-6 mt-4">
+              <div>
+                <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Round {liveRound}</div>
+                <div className="font-display text-[80px] leading-none" style={{ color: isBlueWinner ? "var(--corner-blue)" : "rgba(255,255,255,0.85)", textShadow: isBlueWinner ? "0 0 20px rgba(0,102,204,0.5)" : "none" }}>
+                  {currentScore.blueScore || "—"}
                 </div>
               </div>
-              <div className="text-center">
-                <div className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-1">{t('round', settings.language)} {currentRound}</div>
-                <div className="font-display text-[100px] leading-none text-white drop-shadow-[0_0_15px_rgba(0,102,204,0.5)]">
-                  {currentScore.blueScore || "-"}
-                </div>
+              <div className="pb-3">
+                <div className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Total</div>
+                <div className="font-display text-5xl text-[var(--text-secondary)]">{getCornerTotal("BLUE")}</div>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 p-8 flex flex-col gap-4 justify-center">
-            <button 
+          {/* Blue action buttons */}
+          <div className="flex-1 p-5 flex flex-col gap-3">
+            <ScoreButton
+              label={t('blue_wins_round_10', settings.language)}
+              sublabel="9 — 10"
               onClick={() => handleWinRound("BLUE")}
               disabled={currentScore.submitted || !judge}
-              className={`h-32 text-3xl font-display tracking-widest rounded-2xl transition-all border-4 ${
-                isBlueWinner 
-                  ? "bg-[var(--corner-blue)] border-[var(--corner-blue)] text-white shadow-[0_0_30px_rgba(0,102,204,0.6)]" 
-                  : "bg-[rgba(0,102,204,0.1)] border-[var(--corner-blue)] text-[var(--corner-blue)] hover:bg-[rgba(0,102,204,0.2)]"
-              } disabled:opacity-50`}
-            >
-              {t('blue_wins_round_10', settings.language)}
-            </button>
+              active={isBlueWinner}
+              color="blue"
+            />
 
-            <div className="grid grid-cols-2 gap-4 mt-8">
-              <div className="text-center col-span-2 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">{t('deductions', settings.language)}</div>
-              <button 
-                onClick={() => handleDeduction(1, "BLUE")}
-                disabled={currentScore.submitted || currentScore.blueScore === 0 || !judge}
-                className="h-16 bg-[var(--bg-elevated)] border-2 border-[var(--border-default)] hover:border-white rounded-xl text-lg font-bold text-white disabled:opacity-50 transition-colors"
-              >
-                {t('knockdown_1', settings.language)}
-              </button>
-              <button 
-                onClick={() => handleDeduction(2, "BLUE")}
-                disabled={currentScore.submitted || currentScore.blueScore === 0 || !judge}
-                className="h-16 bg-[var(--bg-elevated)] border-2 border-[var(--border-default)] hover:border-white rounded-xl text-lg font-bold text-white disabled:opacity-50 transition-colors"
-              >
-                {t('double_kd_2', settings.language)}
-              </button>
+            <div className="grid grid-cols-2 gap-3 mt-auto">
+              <div className="col-span-2 text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest text-center border-t border-[rgba(255,255,255,0.06)] pt-3">
+                Deductions
+              </div>
+              <ScoreButton label={t('knockdown_1', settings.language)} sublabel="-1 pt" onClick={() => handleDeduction(1, "BLUE")} disabled={currentScore.submitted || !judge} color="blue" size="sm" />
+              <ScoreButton label={t('double_kd_2', settings.language)} sublabel="-2 pts" onClick={() => handleDeduction(2, "BLUE")} disabled={currentScore.submitted || !judge} color="blue" size="sm" />
+              <ScoreButton label="Yellow Card" sublabel="warning" onClick={() => recordJudgingEvent("yellow-card", "BLUE", "yellow card")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
+              <ScoreButton label="Red Card" sublabel="serious" onClick={() => recordJudgingEvent("red-card", "BLUE", "red card")} disabled={currentScore.submitted || !judge} color="blue" size="sm" />
             </div>
 
             {isChildren && (
-              <div className="grid grid-cols-3 gap-4 mt-8">
-                <div className="text-center col-span-3 text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">Special Results (Kids)</div>
-                <button 
-                  onClick={() => handleSpecial("IPPON", "BLUE")}
-                  disabled={currentScore.submitted || !judge}
-                  className="h-16 bg-[rgba(212,160,23,0.1)] border-2 border-[var(--ikf-gold)] hover:bg-[var(--ikf-gold)] hover:text-black rounded-xl text-sm font-bold text-[var(--ikf-gold)] transition-colors disabled:opacity-50"
-                >
-                  {t('ippon', settings.language)}
-                </button>
-                <button 
-                  onClick={() => handleSpecial("WAZA_ARI", "BLUE")}
-                  disabled={currentScore.submitted || !judge}
-                  className="h-16 bg-[var(--bg-card)] border border-[var(--border-default)] hover:border-white rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50"
-                >
-                  {t('waza_ari', settings.language)}
-                </button>
-                <button 
-                  onClick={() => handleSpecial("YUKO", "BLUE")}
-                  disabled={currentScore.submitted || !judge}
-                  className="h-16 bg-[var(--bg-card)] border border-[var(--border-default)] hover:border-white rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50"
-                >
-                  {t('yuko', settings.language)}
-                </button>
+              <div className="grid grid-cols-3 gap-2 mt-1">
+                <div className="col-span-3 text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-widest text-center">Special Results</div>
+                <ScoreButton label={t('ippon', settings.language)} sublabel="+10" onClick={() => handleSpecial("IPPON", "BLUE")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
+                <ScoreButton label={t('waza_ari', settings.language)} sublabel="+2" onClick={() => handleSpecial("WAZA_ARI", "BLUE")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
+                <ScoreButton label={t('yuko', settings.language)} sublabel="+1" onClick={() => handleSpecial("YUKO", "BLUE")} disabled={currentScore.submitted || !judge} color="gold" size="sm" />
               </div>
             )}
           </div>
-        </div>
-
-      </div>
-
-      {/* CENTER ACTIONS */}
-      <div className="absolute left-1/2 top-[55%] -translate-x-1/2 -translate-y-1/2 flex flex-col gap-4 z-20">
-        <button 
-          onClick={handleDraw}
-          disabled={currentScore.submitted || !judge}
-          className="w-24 h-24 rounded-full bg-[var(--bg-elevated)] border-4 border-[var(--border-default)] text-white font-display text-xl hover:border-white transition-all disabled:opacity-50 flex items-center justify-center shadow-xl"
-        >
-          {t('draw', settings.language)}
-        </button>
-      </div>
-
-      <div className="absolute left-1/2 bottom-[150px] -translate-x-1/2 z-20">
-        <button 
-          onClick={attemptSubmit}
-          disabled={currentScore.submitted || (currentScore.redScore === 0 && currentScore.blueScore === 0) || !judge}
-          className="px-16 h-20 rounded-full font-display text-3xl tracking-widest bg-[var(--status-win)] text-black hover:bg-[#27ae60] shadow-[0_0_30px_rgba(46,204,113,0.4)] disabled:opacity-30 transition-all disabled:shadow-none flex items-center gap-4"
-        >
-          {currentScore.submitted ? <><CheckCircle2 /> {t('submitted', settings.language)}</> : t('submit_score', settings.language)}
-        </button>
-      </div>
-
-      {/* ROUND SCORECARD */}
-      <div className="h-[100px] bg-[var(--bg-card)] border-t border-[var(--border-default)] flex px-8 relative z-10">
-        <div className="flex-1 flex flex-col justify-center gap-2 border-r border-[var(--border-default)] pr-8">
-          <div className="flex justify-between items-center text-xs font-bold">
-            <span className="text-[var(--ikf-red)]">RED ({activeMatch.redCornerName})</span>
-            <span className="text-white text-lg">{getCornerTotal("RED")}</span>
-          </div>
-          <div className="flex justify-between items-center text-xs font-bold">
-            <span className="text-[var(--corner-blue)]">BLUE ({activeMatch.blueCornerName})</span>
-            <span className="text-white text-lg">{getCornerTotal("BLUE")}</span>
-          </div>
-        </div>
-        
-        <div className="flex-1 flex px-8 gap-8 items-center justify-around">
-          {Array.from({ length: activeMatch.totalRounds }, (_, idx) => idx + 1).map(round => {
-            const s = judgeScores.find(x => x.matchId === activeMatch.id && x.round === round && x.judgeId === selectedJudgeId);
-            return (
-              <div key={round} className="flex flex-col gap-1 items-center">
-                <div className="text-[10px] font-bold text-[var(--text-muted)] tracking-widest mb-1">R{round}</div>
-                <div className={`w-12 h-8 flex items-center justify-center font-bold text-sm rounded ${s?.submitted && s.redScore > s.blueScore ? 'bg-[var(--ikf-red)] text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'}`}>
-                  {s?.submitted ? s.redScore : "-"}
-                </div>
-                <div className={`w-12 h-8 flex items-center justify-center font-bold text-sm rounded ${s?.submitted && s.blueScore > s.redScore ? 'bg-[var(--corner-blue)] text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'}`}>
-                  {s?.submitted ? s.blueScore : "-"}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </div>
 
       {/* CONFIRMATION OVERLAY */}
       {showConfirm && currentScore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md animate-fade-in">
-          <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-3xl p-10 max-w-2xl w-full text-center shadow-2xl">
-            <AlertCircle size={64} className="text-[var(--ikf-gold)] mx-auto mb-6" />
-            <h2 className="font-display text-5xl mb-4 text-white">{t('confirm_round_score', settings.language).replace('{round}', String(currentRound))}</h2>
+          <div className="rounded-3xl p-10 max-w-2xl w-full text-center shadow-2xl border"
+            style={{ background: "linear-gradient(160deg, #0a050f 0%, #050a0f 100%)", borderColor: "rgba(212,160,23,0.3)" }}>
+            <div className="w-20 h-20 rounded-full mx-auto mb-6 flex items-center justify-center bg-[rgba(212,160,23,0.1)] border border-[rgba(212,160,23,0.4)]">
+              <AlertCircle size={40} className="text-[var(--ikf-gold)]" />
+            </div>
+            <h2 className="font-display text-4xl mb-2 text-white">{t('confirm_round_score', settings.language).replace('{round}', String(liveRound))}</h2>
+            <p className="text-[var(--text-muted)] text-sm mb-8">Judge: <strong className="text-white">{judge?.name}</strong></p>
             
-            <div className="flex justify-center items-center gap-12 my-10">
+            <div className="flex justify-center items-center gap-16 my-8">
               <div className="text-center">
-                <div className="text-sm font-bold text-[var(--ikf-red)] tracking-widest uppercase mb-2">{t('red_corner', settings.language)}</div>
-                <div className="font-display text-[80px] leading-none text-white">{currentScore.redScore}</div>
+                <div className="text-xs font-bold text-[var(--ikf-red)] tracking-widest uppercase mb-2">{activeMatch.redCornerName}</div>
+                <div className="font-display text-[80px] leading-none" style={{ color: currentScore.redScore > currentScore.blueScore ? "var(--ikf-red)" : "white" }}>
+                  {currentScore.redScore}
+                </div>
               </div>
-              <div className="text-[var(--text-muted)] font-bold text-2xl">{t('vs', settings.language)}</div>
+              <div className="text-[var(--text-muted)] font-bold text-3xl">vs</div>
               <div className="text-center">
-                <div className="text-sm font-bold text-[var(--corner-blue)] tracking-widest uppercase mb-2">{t('blue_corner', settings.language)}</div>
-                <div className="font-display text-[80px] leading-none text-white">{currentScore.blueScore}</div>
+                <div className="text-xs font-bold text-[var(--corner-blue)] tracking-widest uppercase mb-2">{activeMatch.blueCornerName}</div>
+                <div className="font-display text-[80px] leading-none" style={{ color: currentScore.blueScore > currentScore.redScore ? "var(--corner-blue)" : "white" }}>
+                  {currentScore.blueScore}
+                </div>
               </div>
             </div>
 
-            <p className="text-xl font-bold text-[var(--text-secondary)] mb-10">
+            <p className="text-lg font-bold mb-8" style={{ color: currentScore.redScore > currentScore.blueScore ? "var(--ikf-red)" : currentScore.blueScore > currentScore.redScore ? "var(--corner-blue)" : "rgba(255,255,255,0.6)" }}>
               {currentScore.redScore > currentScore.blueScore 
-                ? t('red_corner_wins_round', settings.language)
+                ? `🔴 ${activeMatch.redCornerName} wins Round ${liveRound}`
                 : currentScore.blueScore > currentScore.redScore 
-                  ? t('blue_corner_wins_round', settings.language) 
-                  : t('round_is_draw', settings.language)}
+                  ? `🔵 ${activeMatch.blueCornerName} wins Round ${liveRound}`
+                  : "Round is a DRAW (10-10)"}
             </p>
 
             <div className="flex gap-4">
-              <button onClick={() => setShowConfirm(false)} className="flex-1 h-16 rounded-xl font-bold text-lg border-2 border-[var(--border-default)] text-white hover:bg-[rgba(255,255,255,0.05)] transition-all">
+              <button onClick={() => setShowConfirm(false)} className="flex-1 h-14 rounded-xl font-bold text-base border border-[rgba(255,255,255,0.15)] text-white hover:bg-[rgba(255,255,255,0.05)] transition-all">
                 {t('cancel', settings.language)}
               </button>
-              <button onClick={confirmSubmit} className="flex-1 h-16 rounded-xl font-bold text-lg bg-[var(--status-win)] text-black hover:bg-[#27ae60] shadow-[0_0_20px_rgba(46,204,113,0.3)] transition-all">
+              <button onClick={confirmSubmit} className="flex-1 h-14 rounded-xl font-display text-base tracking-widest text-black transition-all"
+                style={{ background: "var(--status-win)", boxShadow: "0 0 20px rgba(46,204,113,0.3)" }}>
                 {t('confirm_and_submit', settings.language)}
               </button>
             </div>
@@ -406,4 +712,3 @@ export default function JudgeTabletView() {
     </div>
   );
 }
-

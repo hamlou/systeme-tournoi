@@ -1,22 +1,16 @@
 "use client";
 
 import React from "react";
-import { Bell, Settings, Search, Wifi, WifiOff } from "lucide-react";
+import { Settings, Search, Wifi, WifiOff } from "lucide-react";
 import { useNavigationStore } from "@/store/navigationStore";
 import { IKFBadge } from "@/components/ui/IKFBadge";
 import { useSocket } from "@/components/providers/SocketProvider";
 import { useRouter } from "next/navigation";
 
-import { useTournamentStore } from "@/store/tournamentStore";
-
 export function Topbar() {
   const { activePage } = useNavigationStore();
   const { isConnected } = useSocket();
-  const { notifications, markNotificationsRead } = useTournamentStore();
-  const [showNotifications, setShowNotifications] = React.useState(false);
   const router = useRouter();
-
-  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
     <header className="h-[64px] bg-[var(--bg-secondary)]/95 backdrop-blur-md border-b border-[var(--border-default)] z-40 flex items-center justify-between px-6 flex-shrink-0">

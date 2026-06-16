@@ -1,103 +1,73 @@
-/* eslint-disable */
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { io, Socket } from "socket.io-client";
+import { onValue, off, ref } from "firebase/database";
+import { db } from "@/lib/firebase";
 import { useTournamentStore } from "@/store/tournamentStore";
-import { initSocket } from "@/lib/socketClient";
+import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, TournamentReport, TournamentSettings } from "@/types/tournament";
 
-interface SocketContextType {
-  socket: Socket | null;
+interface SyncContextType {
   isConnected: boolean;
 }
 
-const SocketContext = createContext<SocketContextType>({
-  socket: null,
-  isConnected: false,
-});
+const SyncContext = createContext<SyncContextType>({ isConnected: false });
 
-export const useSocket = () => useContext(SocketContext);
+export const useSocket = () => useContext(SyncContext);
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    initSocket().then((socketInstance) => {
-      setSocket(socketInstance);
-      
-      if (socketInstance.connected) setIsConnected(true);
+    const rootRef = ref(db, "tournament");
+    let connected = false;
 
-      socketInstance.on("connect", () => {
-        setIsConnected(true);
-      });
+    const handler = (snapshot: { val: () => Record<string, unknown> | null }) => {
+      const data = snapshot.val();
+      if (!data) return;
+      if (!connected) { connected = true; setIsConnected(true); }
 
-      socketInstance.on("disconnect", () => {
-        setIsConnected(false);
-      });
+      const store = useTournamentStore;
 
-      socketInstance.on("connect_error", () => {
-        setIsConnected(false);
-      });
+      // Sync each collection into the Zustand store
+      if (data.settings) {
+        store.setState({ settings: data.settings as TournamentSettings });
+      }
+      if (Array.isArray(data.athletes)) {
+        store.setState({ athletes: data.athletes as Athlete[] });
+      }
+      if (Array.isArray(data.clubs)) {
+        store.setState({ clubs: data.clubs as Club[] });
+      }
+      if (Array.isArray(data.weighinRecords)) {
+        store.setState({ weighinRecords: data.weighinRecords as WeighinRecord[] });
+      }
+      if (Array.isArray(data.matches)) {
+        store.setState({ matches: data.matches as Match[] });
+      }
+      if (Array.isArray(data.brackets)) {
+        store.setState({ brackets: data.brackets as Bracket[] });
+      }
+      if (Array.isArray(data.referees)) {
+        store.setState({ referees: data.referees as Referee[] });
+      }
+      if (Array.isArray(data.judgeScores)) {
+        store.setState({ judgeScores: data.judgeScores as JudgeScore[] });
+      }
+      if (Array.isArray(data.reports)) {
+        store.setState({ reports: data.reports as TournamentReport[] });
+      }
+      if (data.activeMatch) {
+        store.setState({ activeMatch: data.activeMatch as Match });
+      }
+    };
 
-      socketInstance.on("receive-event", (obj: any) => {
-        if (!obj || !obj.type || !obj.data) return;
-
-        const store = useTournamentStore.getState();
-
-        switch (obj.type) {
-          case "judge_score_submitted":
-            store.setJudgeScore(obj.data.score);
-            break;
-          case "match_state":
-            useTournamentStore.setState((s) => ({
-              activeMatch: obj.data.activeMatch ?? s.activeMatch,
-              currentRound: obj.data.currentRound ?? s.currentRound,
-              roundTimer: obj.data.roundTimer ?? s.roundTimer,
-              timerMode: obj.data.timerMode ?? s.timerMode,
-              roundEvents: obj.data.roundEvents ?? s.roundEvents,
-              currentResult: obj.data.currentResult ?? s.currentResult,
-            }));
-            break;
-          case "match_updated":
-            if (obj.data.match) {
-              useTournamentStore.setState((s) => ({
-                matches: s.matches.map(m => m.id === obj.data.match.id ? obj.data.match : m),
-                activeMatch: s.activeMatch?.id === obj.data.match.id ? obj.data.match : s.activeMatch,
-              }));
-            }
-            break;
-          case "timer_update":
-            if (obj.data.activeMatch) useTournamentStore.setState({ activeMatch: obj.data.activeMatch });
-            if (obj.data.currentRound !== undefined) useTournamentStore.setState({ currentRound: obj.data.currentRound });
-            if (obj.data.roundTimer !== undefined) {
-              useTournamentStore.setState({ roundTimer: obj.data.roundTimer });
-            }
-            if (obj.data.timerMode !== undefined) {
-              useTournamentStore.setState({ timerMode: obj.data.timerMode });
-            }
-            break;
-          case "round_event_added":
-            useTournamentStore.setState((s) => ({
-              roundEvents: [...s.roundEvents, obj.data.event]
-            }));
-            break;
-          case "result_validated":
-          case "result_overridden":
-            useTournamentStore.setState({ currentResult: obj.data.result });
-            if (obj.data.result && store.activeMatch) {
-              store.updateMatchResult(store.activeMatch.id, obj.data.result);
-            }
-            break;
-        }
-      });
-    });
+    onValue(rootRef, handler);
+    return () => { off(rootRef, "value", handler); };
   }, []);
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SyncContext.Provider value={{ isConnected }}>
       {children}
-    </SocketContext.Provider>
+    </SyncContext.Provider>
   );
 };
-

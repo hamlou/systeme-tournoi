@@ -1,13 +1,13 @@
 // ─── IKF Kenshido — Shared Types ─────────────────────────────────────────────
 
-export type AgeGroup = 'Mini' | 'Cadet' | 'Junior' | 'Senior' | 'U8' | 'U10' | 'U12' | 'U14' | 'U16' | 'U18' | 'Senior A' | 'Senior B' | 'Senior C';
+export type AgeGroup = 'Mini' | 'Cadet' | 'Junior' | 'Senior';
 export type Gender = 'Male' | 'Female';
 export type WeighinStatus = 'Pending' | 'Confirmed' | 'Overweight';
 export type RegistrationStatus = 'Active' | 'Withdrawn' | 'Suspended';
 export type MatchStatus = 'scheduled' | 'in-progress' | 'completed';
 export type TimerMode = 'idle' | 'round' | 'rest' | 'passivity' | 'medical';
 export type WinMethod = 'majority-decision' | 'unanimous-decision' | 'split-decision' | 'KO' | 'TKO' | 'ippon' | 'disqualification' | 'draw' | 'withdrawal';
-export type RoundEventType = 'round-start' | 'round-end' | 'wosk-stop' | 'doctor' | 'yellow-card' | 'red-card' | 'deduction' | 'ippon' | 'waza-ari' | 'yuko' | 'match-end' | 'match-start';
+export type RoundEventType = 'round-start' | 'round-end' | 'wosk-stop' | 'doctor' | 'yellow-card' | 'red-card' | 'deduction' | 'ippon' | 'waza-ari' | 'yuko' | 'decision' | 'ko-tko' | 'ippon-result' | 'disqualification' | 'draw' | 'match-end' | 'match-start';
 export type ReportStatus = 'Draft' | 'Official' | 'Exported';
 export type RefRole = 'Chief Referee' | 'Central Referee' | 'Corner Judge';
 export type RefStatus = 'Available' | 'In Match' | 'On Break';

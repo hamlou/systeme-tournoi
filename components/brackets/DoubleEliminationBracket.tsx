@@ -30,7 +30,10 @@ export function DoubleEliminationBracket({ bracket, matches, onMatchClick }: { b
   return (
     <div className="p-8 space-y-10 overflow-x-auto">
       <div>
-        <div className="font-display text-2xl text-[var(--ikf-gold)] tracking-widest mb-4">WINNERS BRACKET</div>
+        <div className="font-display text-2xl text-[var(--ikf-gold)] tracking-widest mb-1">WINNERS BRACKET</div>
+        <div className="mb-4 text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">
+          {bracket.ageGroup ?? bracket.category} {bracket.weightCategory ? `- ${bracket.weightCategory}` : ""}
+        </div>
         <RoundColumns matches={winners} onMatchClick={onMatchClick} />
       </div>
 

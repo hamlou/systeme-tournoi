@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Athlete, Match, Standing, AgeGroup } from '@/types/tournament';
+import { totalRoundsForAgeGroup } from '@/lib/ageCategories';
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -28,10 +29,6 @@ export function roundNamesForSize(size: number): string[] {
     remaining = remaining / 2;
   }
   return names;
-}
-
-function totalRoundsFor(ageGroup: string): number {
-  return ageGroup.startsWith('U') || ageGroup === 'Mini' || ageGroup === 'Cadet' ? 2 : 3;
 }
 
 interface BaseMatchInput {
@@ -63,7 +60,7 @@ export function buildSingleElimination(athletes: Athlete[], base: BaseMatchInput
   const size = nextPowerOfTwo(athletes.length);
   const byes = size - athletes.length;
   const roundNames = roundNamesForSize(size);
-  const totalRounds = totalRoundsFor(base.ageGroup);
+  const totalRounds = totalRoundsForAgeGroup(base.ageGroup);
 
   // Athletes with byes are placed at the bottom: real athletes first, then nulls.
   const slots: (Athlete | null)[] = [...athletes, ...Array.from({ length: byes }, () => null)];
@@ -147,6 +144,66 @@ export function buildSingleElimination(athletes: Athlete[], base: BaseMatchInput
   return { matches: allMatches, byes };
 }
 
+export function buildSixPlayerElimination(athletes: Athlete[], base: BaseMatchInput): SingleElimResult {
+  const totalRounds = totalRoundsForAgeGroup(base.ageGroup);
+  const allMatches: Match[] = [];
+  let matchNumber = base.startMatchNumber;
+  const now = base.startTime;
+
+  const openingMatchIds: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const red = athletes[i * 2];
+    const blue = athletes[i * 2 + 1];
+    const id = uuidv4();
+    openingMatchIds.push(id);
+    allMatches.push({
+      id, matchNumber: matchNumber++, bracketId: base.bracketId,
+      category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+      round: 'Round of 6',
+      redCornerId: red.id, blueCornerId: blue.id,
+      redCornerName: red.fullName, blueCornerName: blue.fullName,
+      matNumber: (i % 3) + 1,
+      scheduledTime: new Date(now + i * 20 * 60000).toISOString(),
+      status: 'scheduled',
+      roundDurationSeconds: base.roundDuration, totalRounds,
+      bracketType: 'winners',
+    });
+  }
+
+  const semifinalId = uuidv4();
+  const finalId = uuidv4();
+
+  allMatches.push({
+    id: semifinalId, matchNumber: matchNumber++, bracketId: base.bracketId,
+    category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+    round: 'Semifinal',
+    redCornerId: '', blueCornerId: '',
+    redCornerName: 'TBD', blueCornerName: 'TBD',
+    matNumber: 1,
+    scheduledTime: new Date(now + 3 * 20 * 60000).toISOString(),
+    status: 'scheduled',
+    roundDurationSeconds: base.roundDuration, totalRounds,
+    bracketType: 'winners',
+    nextMatchId: finalId,
+    nextMatchSlot: 'BLUE',
+  });
+
+  allMatches.push({
+    id: finalId, matchNumber: matchNumber++, bracketId: base.bracketId,
+    category: base.category, ageGroup: base.ageGroup, weightCategory: base.weightCategory,
+    round: 'Final',
+    redCornerId: '', blueCornerId: '',
+    redCornerName: 'Priority winner', blueCornerName: 'Semifinal winner',
+    matNumber: 1,
+    scheduledTime: new Date(now + 4 * 20 * 60000).toISOString(),
+    status: 'scheduled',
+    roundDurationSeconds: base.roundDuration, totalRounds,
+    bracketType: 'winners',
+  });
+
+  return { matches: allMatches, byes: 0 };
+}
+
 // ─── Double Elimination ──────────────────────────────────────────────────────
 
 export interface DoubleElimResult {
@@ -161,7 +218,7 @@ export function buildDoubleElimination(athletes: Athlete[], base: BaseMatchInput
   // Winners bracket = single elimination.
   const winners = buildSingleElimination(athletes, base);
   const winnersMatches = winners.matches;
-  const totalRounds = totalRoundsFor(base.ageGroup);
+  const totalRounds = totalRoundsForAgeGroup(base.ageGroup);
   const size = nextPowerOfTwo(athletes.length);
   const wbRounds = roundNamesForSize(size);
 
@@ -259,7 +316,7 @@ export function buildRoundRobin(athletes: Athlete[], base: BaseMatchInput, poolI
   const n = players.length;
   const rounds = n - 1;
   const half = n / 2;
-  const totalRounds = totalRoundsFor(base.ageGroup);
+  const totalRounds = totalRoundsForAgeGroup(base.ageGroup);
 
   const matches: Match[] = [];
   let matchNumber = base.startMatchNumber;

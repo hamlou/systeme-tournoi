@@ -5,9 +5,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock, AlertTriangle, Zap, ClipboardList } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTournamentStore } from "@/store/tournamentStore";
+import { useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 import { IKFButton } from "@/components/ui";
 import toast from "react-hot-toast";
 import { t } from "@/lib/i18n";
+import { formatMatchCategory } from "@/lib/ageCategories";
 
 export default function ChiefRefereeDashboard() {
   const { 
@@ -20,6 +22,14 @@ export default function ChiefRefereeDashboard() {
   const [showResult, setShowResult] = useState(false);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
 
+  // Firebase live judge scores — source of truth
+  const [firebaseScores, setFirebaseScores] = useState<any[]>([]);
+  const [firebaseEvents, setFirebaseEvents] = useState<any[]>([]);
+  useFirebaseJudgingData(activeMatch?.id ?? null, (data) => {
+    setFirebaseScores(data.scores);
+    setFirebaseEvents(data.events);
+  });
+
   useEffect(() => {
     if (!activeMatch) {
       const nextMatch = matches.find(m => m.status === "in-progress") ?? matches.find(m => m.status === "scheduled");
@@ -29,8 +39,11 @@ export default function ChiefRefereeDashboard() {
 
   const activeJudgeScores = useMemo(() => {
     if (!activeMatch) return [];
+    // Prefer Firebase scores, fall back to local store
+    const fbForMatch = firebaseScores.filter((s: any) => s.matchId === activeMatch.id);
+    if (fbForMatch.length > 0) return fbForMatch;
     return judgeScores.filter(s => s.matchId === activeMatch.id);
-  }, [judgeScores, activeMatch]);
+  }, [firebaseScores, judgeScores, activeMatch]);
 
   const aggregateTotals = useMemo(() => {
     let red = 0, blue = 0;
@@ -51,7 +64,7 @@ export default function ChiefRefereeDashboard() {
     aggregateTotals.blue > aggregateTotals.red ? "BLUE" : null
   );
 
-  const assignedJudgeIds = activeMatch?.assignedJudgeIds || [];
+  const assignedJudgeIds = activeMatch ? [activeMatch.assignedRefereeId, ...(activeMatch.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
   const expectedScores = assignedJudgeIds.length * (activeMatch?.totalRounds ?? 0);
   const submittedScores = activeJudgeScores.filter(s => s.submitted).length;
   const canValidate = Boolean(activeMatch) && activeMatch?.status !== "completed" && assignedJudgeIds.length > 0 && submittedScores >= expectedScores;
@@ -63,7 +76,7 @@ export default function ChiefRefereeDashboard() {
       setShowReviewPanel(true);
       return;
     }
-    validateResult(activeMatch.id, assignedJudgeIds);
+    validateResult(activeMatch.id, assignedJudgeIds, activeJudgeScores, firebaseEvents);
     setShowResult(true);
   };
 
@@ -100,7 +113,7 @@ export default function ChiefRefereeDashboard() {
           <div className="font-display text-3xl text-white">{t('match_number', settings.language).replace('#', '')} #{activeMatch.matchNumber}</div>
         </div>
         <div className="text-center">
-          <div className="text-sm text-[var(--text-muted)] mb-1">{activeMatch.category} • Mat {activeMatch.matNumber}</div>
+          <div className="text-sm text-[var(--text-muted)] mb-1">{formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory)} • Mat {activeMatch.matNumber}</div>
           <div className="font-display text-5xl flex gap-16">
             <span className="text-[var(--ikf-red)]">{activeMatch.redCornerName}</span>
             <span className="text-[var(--text-muted)] text-3xl mt-3">vs</span>

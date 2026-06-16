@@ -10,6 +10,7 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, WeighinRecord, WeighinStatus } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFButton, IKFBadge, SectionDivider } from "@/components/ui";
 import { t } from "@/lib/i18n";
+import { normalizeAgeGroup } from "@/lib/ageCategories";
 
 const WEIGHT_CATEGORIES = ["-40kg", "-45kg", "-50kg", "-55kg", "-60kg", "-65kg", "-70kg", "-75kg", "-80kg", "-85kg", "-90kg", "+90kg"];
 
@@ -260,7 +261,7 @@ export default function WeighInPage() {
                   <div className="text-right flex-shrink-0">
                     <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('registered_category', settings.language)}</div>
                     <div className="font-mono text-2xl text-[var(--ikf-red)] font-bold">{currentAthlete.weightCategory}</div>
-                    <div className="text-xs text-[var(--text-secondary)]">{currentAthlete.ageGroup}</div>
+                    <div className="text-xs text-[var(--text-secondary)]">{normalizeAgeGroup(currentAthlete.ageGroup)}</div>
                   </div>
                 </div>
 

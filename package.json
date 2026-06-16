@@ -2,11 +2,14 @@
   "name": "ikf-kenshido",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --no-cache",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -16,6 +19,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "firebase": "^12.14.0",
     "framer-motion": "^12.40.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
@@ -27,8 +31,6 @@
     "react-hook-form": "^7.78.0",
     "react-hot-toast": "^2.6.0",
     "recharts": "^3.8.1",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^14.0.0",

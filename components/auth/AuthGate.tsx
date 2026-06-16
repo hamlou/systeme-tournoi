@@ -5,18 +5,15 @@ import { motion } from "framer-motion";
 import { LockKeyhole, ShieldCheck, Trophy, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 
-const ADMIN_USERS = Array.from({ length: 7 }, (_, index) => {
-  const adminNumber = index + 1;
-  return {
-    username: `admin${adminNumber}`,
-    password: `admin${adminNumber}password`,
-  };
-});
+// Admin credentials from environment variables (set in Vercel / .env.local)
+// Fallback to a single default admin account for development
+const ADMIN_USERNAME = process.env.NEXT_PUBLIC_ADMIN_USERNAME ?? "admin";
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "admin";
 
 const AUTH_STORAGE_KEY = "ikf_admin_session";
 
 function isValidAdmin(username: string, password: string) {
-  return ADMIN_USERS.some((admin) => admin.username === username.trim() && admin.password === password);
+  return username.trim() === ADMIN_USERNAME && password === ADMIN_PASSWORD;
 }
 
 export function getStoredAdminSession() {
@@ -64,7 +61,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     window.setTimeout(() => {
       if (!isValidAdmin(username, password)) {
         setIsSubmitting(false);
-        toast.error("Access denied. Use one of the seven admin accounts.");
+        toast.error("Access denied. Invalid credentials.");
         return;
       }
       const normalizedUsername = username.trim();

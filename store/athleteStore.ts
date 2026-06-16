@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { normalizeAgeGroup } from "@/lib/ageCategories";
 
 export interface Athlete {
   id: string;
@@ -45,8 +46,8 @@ const MOCK_ATHLETES: Athlete[] = [
 type SetState = (partial: Partial<AthleteState> | ((state: AthleteState) => Partial<AthleteState>)) => void;
 
 export const useAthleteStore = create<AthleteState>((set: SetState) => ({
-  athletes: MOCK_ATHLETES,
-  addAthlete: (athlete) => set((state) => ({ athletes: [athlete, ...state.athletes] })),
+  athletes: MOCK_ATHLETES.map(athlete => ({ ...athlete, ageGroup: normalizeAgeGroup(athlete.ageGroup) })),
+  addAthlete: (athlete) => set((state) => ({ athletes: [{ ...athlete, ageGroup: normalizeAgeGroup(athlete.ageGroup) }, ...state.athletes] })),
   updateAthlete: (id, data) => set((state) => ({
     athletes: state.athletes.map(a => a.id === id ? { ...a, ...data } : a)
   })),

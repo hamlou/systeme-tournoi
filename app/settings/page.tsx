@@ -177,8 +177,8 @@ export default function SettingsPage() {
                 <IKFInput 
                   label={t('round_duration_seconds', settings.language)} 
                   type="number" 
-                  value={localSettings.roundDurations['Senior A']}
-                  onChange={(e) => handleDurationChange('Senior A', e.target.value)}
+                  value={localSettings.roundDurations['Senior']}
+                  onChange={(e) => handleDurationChange('Senior', e.target.value)}
                 />
                 <IKFInput 
                   label={t('rest_period_seconds', settings.language)} 
@@ -196,8 +196,8 @@ export default function SettingsPage() {
                 <IKFInput 
                   label={t('round_duration_seconds', settings.language)} 
                   type="number" 
-                  value={localSettings.roundDurations['U16']}
-                  onChange={(e) => handleDurationChange('U16', e.target.value)}
+                  value={localSettings.roundDurations['Junior']}
+                  onChange={(e) => handleDurationChange('Junior', e.target.value)}
                 />
                 <IKFInput 
                   label={t('rest_period_seconds', settings.language)} 

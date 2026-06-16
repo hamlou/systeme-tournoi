@@ -3,7 +3,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { format as formatDate } from "date-fns";
-import { Play, Pause, Square, AlertTriangle, Activity, FastForward, Info } from "lucide-react";
+import { Play, Pause, Square, AlertTriangle, Activity, FastForward, Info, Wifi } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Match } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFButton, SectionDivider, IKFBadge, IKFEmptyState } from "@/components/ui";
@@ -12,6 +12,8 @@ import { useLiveAggregateScore } from "@/store/tournamentStore";
 import { t } from "@/lib/i18n";
 import { useMatchNotifications } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
+import { pushMatchState, useFirebaseMatchState, deriveLiveMatchTimers } from "@/hooks/useFirebaseMatchSync";
+import { formatMatchCategory, getRoundDuration } from "@/lib/ageCategories";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -34,12 +36,86 @@ export default function RoundManagementPage() {
   const [woskCorner, setWoskCorner] = useState<"RED" | "BLUE" | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(60);
   const [resumeMode, setResumeMode] = useState<"round" | "rest" | null>(null);
+  const [firebaseSyncing, setFirebaseSyncing] = useState(false);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const activeMatches = matches.filter(m => m.status === "scheduled" || m.status === "in-progress");
+  // ── Resume timer state from Firebase on mount ──────────────────────────────
+  const [fbMatchState, setFbMatchState] = useState<any>(null);
+  useFirebaseMatchState((state) => setFbMatchState(state));
+
+  useEffect(() => {
+    if (!fbMatchState || !activeMatch || fbMatchState.matchId !== activeMatch.id) return;
+    // Only resume if the page just mounted and timer is idle but Firebase says it's running
+    if (timerMode === "idle" && fbMatchState.timerMode === "round") {
+      const derived = deriveLiveMatchTimers(fbMatchState);
+      if (derived) {
+        setRoundTimer(derived.roundTimer);
+        setTimerMode("round");
+        if (fbMatchState.currentRound) setCurrentRound(fbMatchState.currentRound);
+      }
+    }
+    if (timerMode === "idle" && fbMatchState.timerMode === "rest") {
+      const derived = deriveLiveMatchTimers(fbMatchState);
+      if (derived) {
+        setRestTimeLeft(derived.restTimer);
+        setTimerMode("rest");
+      }
+    }
+    if (timerMode === "idle" && fbMatchState.timerMode === "passivity") {
+      const derived = deriveLiveMatchTimers(fbMatchState);
+      if (derived) {
+        setWoskTimeLeft(derived.woskTimeLeft);
+        setWoskCorner(fbMatchState.woskCorner as "RED" | "BLUE" | null);
+        setTimerMode("passivity");
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fbMatchState]);
+
+  const activeMatches = matches.filter(m =>
+    (m.status === "scheduled" || m.status === "in-progress") &&
+    Boolean(m.assignedRefereeId) &&
+    (m.assignedJudgeIds?.length ?? 0) === settings.defaultJudgesCount &&
+    Boolean(m.redCornerId) &&
+    Boolean(m.blueCornerId) &&
+    !m.isBye
+  );
 
   const { red: redScore, blue: blueScore } = useLiveAggregateScore();
+
+  const maxTime = activeMatch ? getRoundDuration(settings.roundDurations, activeMatch.ageGroup) : 180;
+  const maxRounds = activeMatch?.totalRounds ?? 3;
+
+  // ── Push state to Firebase on every meaningful change ──────────────────────
+  const syncToFirebase = (overrides?: Partial<{
+    timerMode: string; roundTimer: number; currentRound: number;
+    woskTimeLeft: number; woskCorner: string | null; restTimeLeft: number;
+  }>) => {
+    if (!activeMatch) return;
+    const state = {
+      matchId: activeMatch.id,
+      matchNumber: activeMatch.matchNumber,
+      redCornerName: activeMatch.redCornerName,
+      blueCornerName: activeMatch.blueCornerName,
+      redScore,
+      blueScore,
+      roundTimer: overrides?.roundTimer ?? roundTimer,
+      restTimer: overrides?.restTimeLeft ?? restTimeLeft,
+      timerMode: overrides?.timerMode ?? timerMode,
+      currentRound: overrides?.currentRound ?? currentRound,
+      totalRounds: maxRounds,
+      maxTime,
+      woskTimeLeft: overrides?.woskTimeLeft ?? woskTimeLeft,
+      woskCorner: overrides?.woskCorner !== undefined ? overrides.woskCorner : woskCorner,
+      status: activeMatch.status,
+        category: formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory),
+      matNumber: activeMatch.matNumber,
+      updatedAt: Date.now(),
+    };
+    setFirebaseSyncing(true);
+    pushMatchState(state).finally(() => setFirebaseSyncing(false));
+  };
 
   // TICKER LOOP
   useEffect(() => {
@@ -47,13 +123,23 @@ export default function RoundManagementPage() {
 
     timerRef.current = setInterval(() => {
       if (timerMode === "round") {
-        setRoundTimer(Math.max(0, roundTimer - 1));
+        const next = Math.max(0, roundTimer - 1);
+        setRoundTimer(next);
+        syncToFirebase({ roundTimer: next });
       }
       if (timerMode === "rest") {
-        setRestTimeLeft(prev => Math.max(0, prev - 1));
+        setRestTimeLeft(prev => {
+          const next = Math.max(0, prev - 1);
+          syncToFirebase({ restTimeLeft: next });
+          return next;
+        });
       }
       if (timerMode === "passivity") {
-        setWoskTimeLeft(prev => Math.max(0, prev - 1));
+        setWoskTimeLeft(prev => {
+          const next = Math.max(0, prev - 1);
+          syncToFirebase({ woskTimeLeft: next });
+          return next;
+        });
       }
     }, 1000);
 
@@ -75,6 +161,7 @@ export default function RoundManagementPage() {
       setTimerMode(resumeMode ?? "round");
       addRoundEvent({ type: "deduction", corner: woskCorner || "RED", details: `Match #${activeMatch?.matchNumber ?? ""} — WOSK penalty applied after timeout` });
       setResumeMode(null);
+      syncToFirebase({ timerMode: resumeMode ?? "round", woskTimeLeft: 0, woskCorner: null });
     }
   }, [timerMode, woskTimeLeft, resumeMode, woskCorner, activeMatch?.matchNumber]);
 
@@ -91,10 +178,30 @@ export default function RoundManagementPage() {
     setRestTimeLeft(60);
     setWoskTimeLeft(10);
     setResumeMode(null);
+    // Push initial state to Firebase
+    setTimeout(() => {
+      pushMatchState({
+        matchId: m.id,
+        matchNumber: m.matchNumber,
+        redCornerName: m.redCornerName,
+        blueCornerName: m.blueCornerName,
+        redScore: 0,
+        blueScore: 0,
+        roundTimer: getRoundDuration(settings.roundDurations, m.ageGroup),
+        restTimer: 60,
+        timerMode: "idle",
+        currentRound: 1,
+        totalRounds: m.totalRounds,
+        maxTime: getRoundDuration(settings.roundDurations, m.ageGroup),
+        woskTimeLeft: 10,
+        woskCorner: null,
+        status: "in-progress",
+        category: formatMatchCategory(m.ageGroup, m.weightCategory),
+        matNumber: m.matNumber,
+        updatedAt: Date.now(),
+      });
+    }, 100);
   };
-
-  const maxTime = activeMatch ? (settings.roundDurations[activeMatch.ageGroup] ?? 180) : 180;
-  const maxRounds = activeMatch?.totalRounds ?? 3;
 
   const startTimer = () => {
     if (!activeMatch) return;
@@ -102,6 +209,7 @@ export default function RoundManagementPage() {
     if (activeMatch.status === "scheduled") updateMatch(activeMatch.id, { status: "in-progress" });
     setTimerMode("round");
     addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Round ${currentRound} started` });
+    syncToFirebase({ timerMode: "round", roundTimer: roundTimer <= 0 ? maxTime : roundTimer });
   };
 
   const pauseTimer = () => {
@@ -109,6 +217,7 @@ export default function RoundManagementPage() {
     setResumeMode(timerMode === "rest" ? "rest" : timerMode === "round" ? "round" : resumeMode);
     setTimerMode("idle");
     addRoundEvent({ type: "wosk-stop", details: `Match #${activeMatch.matchNumber} — Timer paused` });
+    syncToFirebase({ timerMode: "idle" });
   };
 
   const triggerWosk = (corner: "RED" | "BLUE") => {
@@ -118,6 +227,7 @@ export default function RoundManagementPage() {
     setWoskTimeLeft(10);
     setWoskCorner(corner);
     addRoundEvent({ type: "yellow-card", corner, details: `Match #${activeMatch.matchNumber} — WOSK passivity warning` });
+    syncToFirebase({ timerMode: "passivity", woskTimeLeft: 10, woskCorner: corner });
   };
 
   const triggerMedical = () => {
@@ -125,6 +235,7 @@ export default function RoundManagementPage() {
     setResumeMode(timerMode === "rest" ? "rest" : "round");
     setTimerMode("medical");
     addRoundEvent({ type: "doctor", details: `Match #${activeMatch.matchNumber} — Doctor requested to Mat` });
+    syncToFirebase({ timerMode: "medical" });
   };
 
   const endRound = () => {
@@ -133,13 +244,17 @@ export default function RoundManagementPage() {
     addRoundEvent({ type: "round-end", details: `Match #${activeMatch.matchNumber} — Round ${currentRound} ended` });
     
     if (currentRound < maxRounds) {
-      setTimerMode("rest");
-      setRestTimeLeft(60);
-      setResumeMode("rest");
+      const nextRound = currentRound + 1;
+      setCurrentRound(nextRound);
+      setRoundTimer(maxTime);
+      setRestTimeLeft(0);
+      setResumeMode(null);
+      syncToFirebase({ timerMode: "idle", currentRound: nextRound, roundTimer: maxTime, restTimeLeft: 0 });
     } else {
       toast("Match Complete. Awaiting Judge Validation.", { icon: "🏁", duration: 5000 });
       addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} — All rounds completed. Awaiting chief referee validation.` });
       setResumeMode(null);
+      syncToFirebase({ timerMode: "idle" });
     }
   };
 
@@ -151,6 +266,7 @@ export default function RoundManagementPage() {
     setTimerMode("round");
     setResumeMode(null);
     addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Round ${nextRound} started` });
+    syncToFirebase({ timerMode: "round", currentRound: nextRound, roundTimer: maxTime });
   };
 
   const stopMatch = () => {
@@ -158,6 +274,26 @@ export default function RoundManagementPage() {
     setTimerMode("idle");
     setResumeMode(null);
     setActiveMatch(null);
+    pushMatchState({
+      matchId: null,
+      matchNumber: null,
+      redCornerName: "—",
+      blueCornerName: "—",
+      redScore: 0,
+      blueScore: 0,
+      roundTimer: 0,
+      restTimer: 0,
+      timerMode: "idle",
+      currentRound: 1,
+      totalRounds: 3,
+      maxTime: 180,
+      woskTimeLeft: 10,
+      woskCorner: null,
+      status: "idle",
+      category: "—",
+      matNumber: 0,
+      updatedAt: Date.now(),
+    });
   };
 
   const resumeTimer = () => {
@@ -165,6 +301,7 @@ export default function RoundManagementPage() {
     setTimerMode(resumeMode ?? "round");
     addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Timer resumed` });
     setResumeMode(null);
+    syncToFirebase({ timerMode: resumeMode ?? "round" });
   };
 
   // Status mapping
@@ -190,6 +327,14 @@ export default function RoundManagementPage() {
         category={t('live', settings.language)}
         title={t('round_management', settings.language).toUpperCase()}
         subtitle={t('round_management_desc', settings.language)}
+        actions={
+          <div className="flex items-center gap-2 text-xs font-bold">
+            <Wifi size={14} className={firebaseSyncing ? "text-green-400 animate-pulse" : "text-[var(--text-muted)]"} />
+            <span className={firebaseSyncing ? "text-green-400" : "text-[var(--text-muted)]"}>
+              {firebaseSyncing ? "SYNCING TO TV..." : "TV SYNC READY"}
+            </span>
+          </div>
+        }
       />
 
       {/* MATCH SELECTOR BAR */}
@@ -208,7 +353,7 @@ export default function RoundManagementPage() {
               <span className="font-bold text-white text-sm">{t('match_number', settings.language).replace('#', '')} #{m.matchNumber}</span>
               <IKFBadge variant="live" label={`${t('mat', settings.language).toUpperCase()} ${m.matNumber}`} size="sm" />
             </div>
-            <div className="text-xs text-[var(--text-muted)] font-mono mb-2">{m.category} • {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}</div>
+            <div className="text-xs text-[var(--text-muted)] font-mono mb-2">{formatMatchCategory(m.ageGroup, m.weightCategory)} • {m.scheduledTime ? new Date(m.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'TBD'}</div>
             <div className="flex items-center gap-2 text-xs font-semibold">
               <span className="text-[var(--ikf-red)] truncate flex-1">{m.redCornerName}</span>
               <span className="text-[var(--text-muted)]">vs</span>
@@ -243,7 +388,7 @@ export default function RoundManagementPage() {
                 </div>
               </div>
               <div className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider text-right w-48">
-                {activeMatch.category}
+                {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory)}
               </div>
             </div>
 
@@ -444,4 +589,3 @@ export default function RoundManagementPage() {
     </div>
   );
 }
-

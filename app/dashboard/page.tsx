@@ -8,6 +8,7 @@ import { IKFCard, IKFBadge, StatCard, SectionDivider } from "@/components/ui";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { format } from "date-fns";
 import { t } from "@/lib/i18n";
+import { formatMatchCategory } from "@/lib/ageCategories";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -69,7 +70,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-6 text-[var(--text-secondary)] font-body text-sm font-medium">
                 <span className="flex items-center gap-2"><MapPin size={18} className="text-[var(--ikf-red)]" />{settings.venue}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)]" />
-                <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{format(new Date(settings.startDate), "dd MMM yyyy")}</span>
+                <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{format(new Date(), "dd MMM yyyy")}</span>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full xl:w-auto flex-shrink-0">
@@ -118,7 +119,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex flex-col items-center justify-center space-y-3 mt-4 mb-6">
                     <span className="text-[11px] font-bold tracking-[0.2em] uppercase text-[var(--text-secondary)]">
-                      {match.round} · {match.category}
+                      {match.round} · {formatMatchCategory(match.ageGroup, match.weightCategory)}
                     </span>
                     {match.status === "in-progress" ? (
                       <LiveTimer initialSeconds={activeMatch?.id === match.id ? roundTimer : match.roundDurationSeconds} />
@@ -157,7 +158,7 @@ export default function DashboardPage() {
                     <span className="text-[10px] text-[var(--text-muted)] font-bold px-1">{t('vs', settings.language)}</span>
                     <span className="font-semibold text-[var(--corner-blue)] text-sm truncate">{m.blueCornerName}</span>
                   </div>
-                  <div className="text-[11px] text-[var(--text-secondary)] mt-1 truncate">{m.category}</div>
+                  <div className="text-[11px] text-[var(--text-secondary)] mt-1 truncate">{formatMatchCategory(m.ageGroup, m.weightCategory)}</div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-bold text-[var(--text-muted)] tracking-widest bg-[var(--bg-primary)] px-2.5 py-1 rounded border border-[var(--border-default)]">{t('mat', settings.language)} {m.matNumber}</span>

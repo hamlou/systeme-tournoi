@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { v4 as uuidv4 } from "uuid";
-import { getSocket } from "@/lib/socketClient";
 
 export type TimerStatus = "IDLE" | "RUNNING" | "PAUSED" | "REST" | "MEDICAL" | "WOSK";
 
@@ -45,12 +44,12 @@ interface RoundState {
   syncFromRemote: (state: Partial<RoundState>) => void;
 }
 
-const emitTimerUpdate = (state: any) => {
-  getSocket()?.emit("timer_update", state);
+const emitTimerUpdate = (_state: unknown) => {
+  // Socket.IO removed — timer sync is handled by Firebase in rounds/page.tsx
 };
 
-const emitMatchEvent = (message: string) => {
-  getSocket()?.emit("match_event", { message });
+const emitMatchEvent = (_message: string) => {
+  // Socket.IO removed — event sync is handled by Firebase in tournamentStore
 };
 
 type SetState = (partial: Partial<RoundState> | ((state: RoundState) => Partial<RoundState>)) => void;

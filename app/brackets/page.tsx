@@ -15,6 +15,7 @@ import { PoolEliminationBracket } from "@/components/brackets/PoolEliminationBra
 import { TeamBracket } from "@/components/brackets/TeamBracket";
 import { MatchDetailModal } from "@/components/brackets/MatchDetailModal";
 import toast from "react-hot-toast";
+import { AGE_GROUPS, AGE_GROUP_LABELS, formatMatchCategory, normalizeAgeGroup } from "@/lib/ageCategories";
 
 const FORMATS: { value: BracketFormat; label: string; desc: string }[] = [
   { value: "single-elimination", label: "Single Elimination", desc: "Lose once and you're out. BYEs auto-assigned for non power-of-2 counts." },
@@ -28,22 +29,28 @@ export default function BracketsPage() {
   const { brackets, matches, athletes, generateBracket, generateFightOrder, deleteBracket } = useTournamentStore();
   const upcomingMatches = useMatchNotifications();
 
-  const ageOptions: { value: AgeGroup; label: string }[] = [
-    { value: "Mini", label: "Mini (6-11 years)" },
-    { value: "Cadet", label: "Cadet (12-14 years)" },
-    { value: "Junior", label: "Junior (15-17 years)" },
-    { value: "Senior", label: "Senior (18+ years)" },
-  ];
-  const confirmed = useMemo(() => athletes.filter(a => a.registrationStatus === "Active"), [athletes]);
-  const uniqueWeights = useMemo(() => Array.from(new Set(confirmed.map(a => a.weightCategory))).sort(), [confirmed]);
-
+  const ageOptions: { value: AgeGroup; label: string }[] = AGE_GROUPS.map(value => ({ value, label: AGE_GROUP_LABELS[value] }));
+  const confirmed = useMemo(() => athletes.filter(a => a.registrationStatus === "Active").map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })), [athletes]);
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup | "">("Senior");
+  const uniqueWeights = useMemo(() => {
+    const relevant = selectedAgeGroup ? confirmed.filter(a => normalizeAgeGroup(a.ageGroup) === selectedAgeGroup) : confirmed;
+    return Array.from(new Set(relevant.map(a => a.weightCategory))).sort();
+  }, [confirmed, selectedAgeGroup]);
+
   const [selectedWeightCategory, setSelectedWeightCategory] = useState(uniqueWeights[0] || "");
-  const selectedCategory = selectedAgeGroup && selectedWeightCategory ? `${selectedAgeGroup} ${selectedWeightCategory}` : "";
+  const selectedCategory = selectedAgeGroup && selectedWeightCategory ? formatMatchCategory(selectedAgeGroup, selectedWeightCategory) : "";
   const [selectedFormat, setSelectedFormat] = useState<BracketFormat>("single-elimination");
   const [printMode, setPrintMode] = useState(false);
   const [detailMatch, setDetailMatch] = useState<Match | null>(null);
   const [pendingRegen, setPendingRegen] = useState<Bracket | null>(null);
+
+  React.useEffect(() => {
+    if (uniqueWeights.length > 0 && !uniqueWeights.includes(selectedWeightCategory)) {
+      setSelectedWeightCategory(uniqueWeights[0]);
+    } else if (uniqueWeights.length === 0 && selectedWeightCategory !== "") {
+      setSelectedWeightCategory("");
+    }
+  }, [uniqueWeights, selectedWeightCategory]);
 
   // Options
   const [seeding, setSeeding] = useState(false);
@@ -63,11 +70,11 @@ export default function BracketsPage() {
     [matches, bracket]
   );
   const categoryAthletes = useMemo(
-    () => confirmed.filter(a => (!selectedAgeGroup || a.ageGroup === selectedAgeGroup) && (!selectedWeightCategory || a.weightCategory === selectedWeightCategory)),
+    () => confirmed.filter(a => (!selectedAgeGroup || normalizeAgeGroup(a.ageGroup) === selectedAgeGroup) && (!selectedWeightCategory || a.weightCategory === selectedWeightCategory)),
     [confirmed, selectedAgeGroup, selectedWeightCategory]
   );
   const fightOrderMatches = useMemo(
-    () => matches.filter(m => m.round === "Fight Order" && m.ageGroup === selectedAgeGroup && m.weightCategory === selectedWeightCategory).sort((a, b) => a.matchNumber - b.matchNumber),
+    () => matches.filter(m => m.round === "Fight Order" && normalizeAgeGroup(m.ageGroup) === selectedAgeGroup && m.weightCategory === selectedWeightCategory).sort((a, b) => a.matchNumber - b.matchNumber),
     [matches, selectedAgeGroup, selectedWeightCategory]
   );
 

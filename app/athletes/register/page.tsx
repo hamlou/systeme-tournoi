@@ -15,6 +15,7 @@ import type { Athlete, AgeGroup } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
 import { COUNTRIES } from "@/lib/countries";
 import { uploadImageToImgBB } from "@/lib/imgbb";
+import { normalizeAgeGroup } from "@/lib/ageCategories";
 
 const registerSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -116,7 +117,7 @@ export default function RegisterAthletePage() {
     if (editingAthlete) {
       updateAthlete(editingAthlete.id, {
         ...data,
-        ageGroup: data.ageGroup as AgeGroup,
+        ageGroup: normalizeAgeGroup(data.ageGroup),
         clubName: selectedClub?.name ?? data.clubId,
         photoUrl,
       });
@@ -125,7 +126,7 @@ export default function RegisterAthletePage() {
       const newAthlete: Athlete = {
         id: uuidv4(), licenseNumber,
         ...data,
-        ageGroup: data.ageGroup as AgeGroup,
+        ageGroup: normalizeAgeGroup(data.ageGroup),
         clubName: selectedClub?.name ?? data.clubId,
         photoUrl,
         weighInStatus: "Confirmed",

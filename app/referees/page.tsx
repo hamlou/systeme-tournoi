@@ -10,6 +10,7 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import type { RefRole } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFButton, SectionDivider, IKFEmptyState, IKFBadge } from "@/components/ui";
 import { t } from "@/lib/i18n";
+import { formatMatchCategory } from "@/lib/ageCategories";
 import { useMatchNotifications, isMatchStartingSoon } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 
@@ -35,19 +36,36 @@ export default function RefereesPage() {
 
   const requiredJudgeCount = settings.defaultJudgesCount;
 
+  const isRealAssignableMatch = (match: typeof matches[number]) =>
+    match.status === "scheduled" &&
+    !match.isBye &&
+    Boolean(match.redCornerId) &&
+    Boolean(match.blueCornerId) &&
+    !["BYE", "TBD"].includes(match.redCornerName) &&
+    !["BYE", "TBD"].includes(match.blueCornerName);
+
+  const isFullyAssigned = (match: typeof matches[number]) =>
+    Boolean(match.assignedRefereeId) && (match.assignedJudgeIds?.length ?? 0) === requiredJudgeCount;
+
+  const canUseOfficialForMatch = (official: typeof referees[number], match: typeof matches[number]) => {
+    if (official.currentMatchId === match.id || official.status === "Available") return true;
+    const assignedMatch = matches.find(m => m.id === official.currentMatchId);
+    return assignedMatch?.status !== "in-progress";
+  };
+
   const filteredReferees = useMemo(
     () => referees.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.role.toLowerCase().includes(searchTerm.toLowerCase()) || r.country.toLowerCase().includes(searchTerm.toLowerCase())),
     [searchTerm, referees]
   );
 
   const scheduledMatches = useMemo(() => matches
-    .filter(m => m.status === "scheduled")
-    .filter(m => !showOnlyUnassigned || !m.assignedRefereeId)
+    .filter(isRealAssignableMatch)
+    .filter(m => !showOnlyUnassigned || !isFullyAssigned(m))
     .sort((a, b) => a.matchNumber - b.matchNumber),
-  [matches, showOnlyUnassigned]);
+  [matches, showOnlyUnassigned, requiredJudgeCount]);
 
   const assignedMatches = useMemo(() => matches
-    .filter(m => m.assignedRefereeId || (m.assignedJudgeIds?.length ?? 0) > 0)
+    .filter(m => m.status !== "completed" && (m.assignedRefereeId || (m.assignedJudgeIds?.length ?? 0) > 0))
     .sort((a, b) => new Date(a.scheduledTime ?? 0).getTime() - new Date(b.scheduledTime ?? 0).getTime()),
   [matches]);
 
@@ -180,12 +198,12 @@ export default function RefereesPage() {
                 return (
                   <tr key={match.id} className={`border-b border-[rgba(255,255,255,0.04)] ${startingSoon ? 'bg-[rgba(200,16,46,0.18)]' : assigned ? 'bg-[rgba(46,204,113,0.08)]' : ''}`}>
                     <td className="py-3 px-3 font-mono text-white">#{match.matchNumber}{startingSoon && <div className="mt-1 text-[9px] text-[var(--ikf-gold)] font-bold flex items-center gap-1"><Clock size={10} /> STARTING SOON</div>}</td>
-                    <td className="py-3 px-3 text-[var(--text-secondary)]">{match.category}</td>
+                    <td className="py-3 px-3 text-[var(--text-secondary)]">{formatMatchCategory(match.ageGroup, match.weightCategory)}</td>
                     <td className="py-3 px-3"><span className="text-[var(--ikf-red)] font-bold">{match.redCornerName}</span><span className="text-[var(--text-muted)] mx-1">vs</span><span className="text-[var(--corner-blue)] font-bold">{match.blueCornerName}</span></td>
                     <td className="py-3 px-3 text-[var(--ikf-gold)] font-bold">{match.matNumber}</td>
                     <td className="py-3 px-3"><input type="datetime-local" value={timeByMatch[match.id] ?? toDateTimeLocal(match.scheduledTime)} onChange={e => setTimeByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white" /></td>
-                    <td className="py-3 px-3"><select value={centralByMatch[match.id] ?? match.assignedRefereeId ?? ""} onChange={e => setCentralByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white"><option value="">Central Referee</option>{referees.filter(r => r.role === "Central Referee" && (r.status === "Available" || r.currentMatchId === match.id)).map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></td>
-                    <td className="py-3 px-3"><div className="flex flex-wrap gap-1 max-w-[280px]">{referees.filter(r => r.role === "Corner Judge" && (r.status === "Available" || r.currentMatchId === match.id)).map(r => <button type="button" key={r.id} onClick={() => toggleJudge(match.id, r.id)} className={`px-2 py-1 rounded border text-[10px] ${selectedJudges.includes(r.id) ? 'bg-[#0066cc]/20 border-[#0066cc] text-[#76b7ff]' : 'border-[var(--border-default)] text-[var(--text-muted)] hover:text-white'}`}>{selectedJudges.includes(r.id) && <CheckCircle2 size={10} className="inline mr-1" />}{r.name}</button>)}</div><div className="mt-1 text-[10px] text-[var(--text-muted)]">{selectedJudges.length}/{requiredJudgeCount}</div></td>
+                    <td className="py-3 px-3"><select value={centralByMatch[match.id] ?? match.assignedRefereeId ?? ""} onChange={e => setCentralByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white"><option value="">Central Referee</option>{referees.filter(r => (r.role === "Central Referee" || r.role === "Chief Referee") && canUseOfficialForMatch(r, match)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role === "Chief Referee" ? " (Chief)" : ""}</option>)}</select></td>
+                    <td className="py-3 px-3"><div className="flex flex-wrap gap-1 max-w-[280px]">{referees.filter(r => r.role === "Corner Judge" && canUseOfficialForMatch(r, match)).map(r => <button type="button" key={r.id} onClick={() => toggleJudge(match.id, r.id)} className={`px-2 py-1 rounded border text-[10px] ${selectedJudges.includes(r.id) ? 'bg-[#0066cc]/20 border-[#0066cc] text-[#76b7ff]' : 'border-[var(--border-default)] text-[var(--text-muted)] hover:text-white'}`}>{selectedJudges.includes(r.id) && <CheckCircle2 size={10} className="inline mr-1" />}{r.name}</button>)}</div><div className="mt-1 text-[10px] text-[var(--text-muted)]">{selectedJudges.length}/{requiredJudgeCount}</div></td>
                     <td className="py-3 px-3"><IKFButton size="sm" variant={assigned ? "secondary" : "primary"} onClick={() => assignMatch(match.id)}>{assigned ? "Update" : "Assign"}</IKFButton></td>
                   </tr>
                 );
@@ -203,7 +221,38 @@ export default function RefereesPage() {
             {assignedMatches.map(match => {
               const centralRef = referees.find(r => r.id === match.assignedRefereeId);
               const cornerRefs = match.assignedJudgeIds?.map(id => referees.find(r => r.id === id)?.name).filter(Boolean) ?? [];
-              return <IKFCard key={match.id} padding="md"><div className="flex justify-between mb-2"><span className="font-bold text-white">Match #{match.matchNumber}</span><span className="text-[var(--ikf-gold)] font-mono">{match.scheduledTime ? format(new Date(match.scheduledTime), "HH:mm") : "TBD"}</span></div><div className="text-xs text-[var(--text-muted)] mb-2">{match.category} · Mat {match.matNumber}</div><div className="text-xs text-white"><span className="text-[var(--text-muted)]">Red:</span> {match.redCornerName}</div><div className="text-xs text-white mb-2"><span className="text-[var(--text-muted)]">Blue:</span> {match.blueCornerName}</div><div className="text-xs text-white">CR: {centralRef?.name ?? "Unassigned"}</div><div className="text-xs text-[var(--text-muted)]">CJ: {cornerRefs.join(", ") || "Unassigned"}</div></IKFCard>;
+              const isLive = match.status === "in-progress";
+              return (
+                <IKFCard key={match.id} padding="md" className={isLive ? "border-[var(--ikf-red)]" : "border-[rgba(255,255,255,0.05)]"}>
+                  <div className="flex justify-between mb-2">
+                    <span className="font-bold text-white flex items-center gap-2">
+                      Match #{match.matchNumber} 
+                      {isLive && <span className="bg-[var(--ikf-red)] text-white text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-widest animate-pulse">LIVE</span>}
+                    </span>
+                    <span className="text-[var(--ikf-gold)] font-mono text-xs font-bold">{match.scheduledTime ? format(new Date(match.scheduledTime), "HH:mm") : "TBD"}</span>
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)] font-bold mb-3 pb-3 border-b border-[rgba(255,255,255,0.06)]">
+                    {formatMatchCategory(match.ageGroup, match.weightCategory)} · Mat {match.matNumber}
+                  </div>
+                  
+                  <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center mb-4 text-center">
+                    <div className="text-xs font-bold text-[var(--ikf-red)]">{match.redCornerName}</div>
+                    <div className="text-[10px] text-[var(--text-muted)] font-bold">VS</div>
+                    <div className="text-xs font-bold text-[var(--corner-blue)]">{match.blueCornerName}</div>
+                  </div>
+
+                  <div className="space-y-2 bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-default)]">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-[var(--text-muted)] font-semibold uppercase tracking-wider text-[9px]">Central Referee</span>
+                      <span className="text-white font-bold">{centralRef?.name ?? "Unassigned"}</span>
+                    </div>
+                    <div className="flex items-start justify-between text-xs">
+                      <span className="text-[var(--text-muted)] font-semibold uppercase tracking-wider text-[9px]">Corner Judges</span>
+                      <span className="text-white text-right max-w-[150px] leading-tight">{cornerRefs.join(", ") || "Unassigned"}</span>
+                    </div>
+                  </div>
+                </IKFCard>
+              );
             })}
           </div>
         </div>

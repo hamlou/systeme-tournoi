@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import React from "react";
-import { Bebas_Neue, Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import { ThemeProvider } from "next-themes";
 import "../styles/globals.css";
@@ -9,27 +8,6 @@ import { SocketProvider } from "@/components/providers/SocketProvider";
 import { AuthGate } from "@/components/auth/AuthGate";
 
 /* ── Google Fonts ──────────────────────────────────────────────────────────── */
-
-const bebasNeue = Bebas_Neue({
-  weight: "400",
-  subsets: ["latin"],
-  variable: "--font-bebas",
-  display: "swap",
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
-});
-
-const jetBrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains",
-  display: "swap",
-  weight: ["400", "500", "600"],
-});
 
 /* ── Metadata ──────────────────────────────────────────────────────────────── */
 
@@ -65,13 +43,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${bebasNeue.variable} ${inter.variable} ${jetBrainsMono.variable}`}
+      className="dark"
       suppressHydrationWarning
     >
       <head>
-        {/* Preconnect for performance */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body
         className="font-body bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased min-h-screen"

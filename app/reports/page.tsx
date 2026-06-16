@@ -13,6 +13,8 @@ import html2canvas from "html2canvas";
 import { PageHeader, IKFButton, IKFCard, IKFBadge, SectionDivider } from "@/components/ui";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { t } from "@/lib/i18n";
+import { formatMatchCategory } from "@/lib/ageCategories";
+import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type ReportType = "Match Report" | "Judge Scorecard" | "Table Official Report" | "Tournament Summary";
@@ -49,7 +51,27 @@ function normalizeAgeGroup(ageGroup?: string) {
   return ageGroup;
 }
 
-function MatchReportDocument({ report }: { report: Report }) {
+function formatMethodEvent(event: { type: string; corner?: "RED" | "BLUE" }) {
+  const labels: Record<string, string> = {
+    decision: "Decision",
+    "ko-tko": "KO / TKO",
+    "ippon-result": "Ippon (Kids)",
+    disqualification: "Disqualification",
+    draw: "DRAW",
+  };
+  const corner = event.corner ? ` (${event.corner})` : "";
+  return `${labels[event.type] ?? event.type}${corner}`;
+}
+
+function MatchReportDocument({
+  report,
+  databaseScores,
+  databaseEvents,
+}: {
+  report: Report;
+  databaseScores: StoredJudgeScore[];
+  databaseEvents: StoredJudgingEvent[];
+}) {
   const { matches, athletes, reports: storeReports, settings, referees } = useTournamentStore();
   const storeReport = storeReports.find(r => r.id === report.id || r.matchId === report.matchId);
   const match = storeReport?.matchData ?? matches.find(m => m.id === report.matchId);
@@ -57,15 +79,69 @@ function MatchReportDocument({ report }: { report: Report }) {
   if (!match) return <div className="bg-white text-black p-10">No match data available for this report.</div>;
 
   const allJudgeScores = useTournamentStore.getState().judgeScores;
-  const matchScores = (storeReport?.judgeScores?.length ? storeReport.judgeScores : match.result?.roundScores?.length ? match.result.roundScores : allJudgeScores.filter(score => score.matchId === match.id)).filter(score => score.matchId === match.id || !('matchId' in score));
-  const matchEvents = (storeReport?.events ?? []).filter(event => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`));
+
+  // Merge scores from all sources, deduplicate by judgeId + round + matchId
+  const allScoreSources = [
+    ...databaseScores,
+    ...(storeReport?.judgeScores ?? []),
+    ...(match.result?.roundScores ?? []),
+    ...allJudgeScores.filter(score => score.matchId === match.id),
+  ] as any[];
+  const scoreKey = (s: any) => `${s.judgeId}-${s.round}-${s.matchId ?? match.id}`;
+  const seenScores = new Map<string, any>();
+  for (const s of allScoreSources) {
+    const key = scoreKey(s);
+    if (!seenScores.has(key) || (s.submitted && !seenScores.get(key)?.submitted)) {
+      seenScores.set(key, s);
+    }
+  }
+  const matchScores = Array.from(seenScores.values()).filter(score => !('matchId' in score) || score.matchId === match.id);
+
+  // Merge events from all sources, deduplicate by id
+  const allEventSources = [
+    ...databaseEvents,
+    ...((storeReport?.events ?? []).filter((event: any) => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`))),
+  ];
+  const seenEvents = new Map<string, any>();
+  for (const e of allEventSources) {
+    const key = e.id ?? `${e.type}-${e.corner}-${e.timestamp}`;
+    if (!seenEvents.has(key)) seenEvents.set(key, e);
+  }
+  const matchEvents = Array.from(seenEvents.values());
   const redAthlete = athletes.find(a => a.id === match.redCornerId);
   const blueAthlete = athletes.find(a => a.id === match.blueCornerId);
   const centralReferee = referees.find(r => r.id === match.assignedRefereeId);
-  const cornerJudges = match.assignedJudgeIds?.map(id => referees.find(r => r.id === id)?.name).filter(Boolean) ?? [];
+  const cornerJudgeRecords = match.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) ?? [];
+  const cornerJudges = cornerJudgeRecords.map(referee => referee!.name);
+  const assignedOfficialRecords = [centralReferee, ...cornerJudgeRecords].filter(Boolean);
   const officialAgeGroup = normalizeAgeGroup(match.ageGroup);
   const generatedAt = report.generatedAt instanceof Date ? report.generatedAt : new Date(report.generatedAt);
   const validatedAt = match.result?.validatedAt ? new Date(match.result.validatedAt) : null;
+  const submittedScores = matchScores.filter(score => score.submitted);
+  const calculatedRedTotal = submittedScores.reduce((sum, score) => sum + score.redScore, 0);
+  const calculatedBlueTotal = submittedScores.reduce((sum, score) => sum + score.blueScore, 0);
+  const finalRedTotal = match.result?.redTotalScore ?? calculatedRedTotal;
+  const finalBlueTotal = match.result?.blueTotalScore ?? calculatedBlueTotal;
+  const liveMethodEvents = matchEvents.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+  const officialRows = assignedOfficialRecords.map((official: any) => {
+    const scores = submittedScores.filter(score => score.judgeId === official.id);
+    const officialEvents = matchEvents.filter(event => (event as any).officialId === official.id || (event as any).officialName === official.name);
+    const methodEvents = officialEvents.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+    const redTotal = scores.reduce((sum, score) => sum + score.redScore, 0);
+    const blueTotal = scores.reduce((sum, score) => sum + score.blueScore, 0);
+    return {
+      id: official.id,
+      name: official.name,
+      role: official.role,
+      redTotal,
+      blueTotal,
+      yellowCards: officialEvents.filter(event => event.type === "yellow-card").length,
+      redCards: officialEvents.filter(event => event.type === "red-card").length,
+      methodDecisions: methodEvents.map(formatMethodEvent).join(", ") || "None",
+      decision: redTotal > blueTotal ? match.redCornerName : blueTotal > redTotal ? match.blueCornerName : scores.length ? "Draw" : "No score submitted",
+      status: scores.length ? "Submitted" : "Pending",
+    };
+  });
   
   return (
     <div className="bg-white text-black p-10 min-h-[1100px] font-sans text-[13px] leading-relaxed" style={{ fontFamily: "Arial, sans-serif" }}>
@@ -85,7 +161,7 @@ function MatchReportDocument({ report }: { report: Report }) {
       {/* TOURNAMENT INFO */}
       <div className="bg-gray-50 p-4 rounded border border-gray-200 mb-6 grid grid-cols-2 gap-4">
         <div>
-          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('tournament', settings.language)}</div>
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('tournament' as any, settings.language)}</div>
           <div className="font-bold">{settings.tournamentName}</div>
         </div>
         <div>
@@ -94,11 +170,11 @@ function MatchReportDocument({ report }: { report: Report }) {
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('date', settings.language)}</div>
-          <div className="font-bold">{format(new Date(settings.startDate), "MMMM d, yyyy")}</div>
+          <div className="font-bold">{format(generatedAt, "MMMM d, yyyy")}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('match_details', settings.language)}</div>
-          <div className="font-bold">{t('match_number', settings.language).replace('#', '')} #{match.matchNumber} · {match.category} · {t('mat_uc', settings.language)} {match.matNumber} · {match.round}</div>
+          <div className="font-bold">{t('match_number', settings.language).replace('#', '')} #{match.matchNumber} · {formatMatchCategory(match.ageGroup, match.weightCategory)} · {t('mat_uc', settings.language)} {match.matNumber} · {match.round}</div>
         </div>
         <div>
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">{t('start_time', settings.language)}</div>
@@ -163,9 +239,71 @@ function MatchReportDocument({ report }: { report: Report }) {
             )})}
             <tr className="bg-gray-900 text-white font-black">
               <td className="px-3 py-2 border border-gray-700 uppercase tracking-wider text-sm">{t('total', settings.language)}</td>
-              <td className="px-3 py-2 border border-gray-700 text-center text-red-400">{match.result?.redTotalScore ?? "—"}</td>
-              <td className="px-3 py-2 border border-gray-700 text-center text-blue-400">{match.result?.blueTotalScore ?? "—"}</td>
+              <td className="px-3 py-2 border border-gray-700 text-center text-red-400">{finalRedTotal}</td>
+              <td className="px-3 py-2 border border-gray-700 text-center text-blue-400">{finalBlueTotal}</td>
             </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* LIVE METHOD DECISIONS */}
+      <div className="mb-6">
+        <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Live Method Decisions</div>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-gray-800 text-white">
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Method</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Corner</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Official</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {liveMethodEvents.length === 0 ? (
+              <tr><td colSpan={4} className="px-3 py-3 border border-gray-200 text-gray-500">No live method decisions recorded yet.</td></tr>
+            ) : liveMethodEvents.map((event, i) => (
+              <tr key={event.id ?? i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-2 border border-gray-200 font-bold">{formatMethodEvent(event)}</td>
+                <td className="px-3 py-2 border border-gray-200">{event.corner ?? "DRAW"}</td>
+                <td className="px-3 py-2 border border-gray-200">{(event as any).officialName ?? "Unknown official"}</td>
+                <td className="px-3 py-2 border border-gray-200">{event.timestamp ? format(new Date(event.timestamp), "HH:mm:ss") : "Pending"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* PER-OFFICIAL DECISIONS */}
+      <div className="mb-6">
+        <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Per-Official Decisions, Cards, and Totals</div>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-gray-800 text-white">
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Official</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Role</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Red Total</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Blue Total</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Decision</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Method Clicks</th>
+              <th className="px-3 py-2 text-center text-[11px] uppercase tracking-wider">Y/R Cards</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {officialRows.length === 0 ? (
+              <tr><td colSpan={8} className="px-3 py-3 border border-gray-200 text-gray-500">No officials assigned for this match yet.</td></tr>
+            ) : officialRows.map((row, i) => (
+              <tr key={row.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                <td className="px-3 py-2 border border-gray-200 font-semibold">{row.name}</td>
+                <td className="px-3 py-2 border border-gray-200">{row.role}</td>
+                <td className="px-3 py-2 border border-gray-200 text-center text-red-700 font-bold">{row.redTotal}</td>
+                <td className="px-3 py-2 border border-gray-200 text-center text-blue-700 font-bold">{row.blueTotal}</td>
+                <td className="px-3 py-2 border border-gray-200">{row.decision}</td>
+                <td className="px-3 py-2 border border-gray-200">{row.methodDecisions}</td>
+                <td className="px-3 py-2 border border-gray-200 text-center font-bold">Y:{row.yellowCards} / R:{row.redCards}</td>
+                <td className="px-3 py-2 border border-gray-200 uppercase text-[11px] font-bold">{row.status}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -182,7 +320,7 @@ function MatchReportDocument({ report }: { report: Report }) {
               <div className="text-base font-bold text-gray-700 mt-1">{match.result.winnerCorner === "RED" ? t('red_corner', settings.language) : t('blue_corner', settings.language)} · {t('method', settings.language)} {match.result.method}</div>
             </div>
             <div className="text-right">
-              <div className="text-4xl font-black">{match.result.redTotalScore} <span className="text-gray-300">–</span> {match.result.blueTotalScore}</div>
+              <div className="text-4xl font-black">{finalRedTotal} <span className="text-gray-300">–</span> {finalBlueTotal}</div>
               <div className="text-xs text-gray-500 font-semibold uppercase tracking-wider mt-1">{t('red_blue_label', settings.language)}</div>
             </div>
           </div>
@@ -196,16 +334,18 @@ function MatchReportDocument({ report }: { report: Report }) {
           <thead>
             <tr className="bg-gray-800 text-white">
               <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Time</th>
+              <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Official</th>
               <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Type</th>
               <th className="px-3 py-2 text-left text-[11px] uppercase tracking-wider">Details</th>
             </tr>
           </thead>
           <tbody>
             {matchEvents.length === 0 ? (
-              <tr><td colSpan={3} className="px-3 py-3 border border-gray-200 text-gray-500">No round events recorded for this report.</td></tr>
-            ) : matchEvents.slice(0, 12).map((event, i) => (
+              <tr><td colSpan={4} className="px-3 py-3 border border-gray-200 text-gray-500">No round events recorded for this report.</td></tr>
+            ) : matchEvents.map((event, i) => (
               <tr key={event.id ?? i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                 <td className="px-3 py-2 border border-gray-200 font-mono text-xs">{format(new Date(event.timestamp), "HH:mm:ss")}</td>
+                <td className="px-3 py-2 border border-gray-200">{(event as any).officialName ?? "Table / Round"}</td>
                 <td className="px-3 py-2 border border-gray-200 font-semibold uppercase text-[11px]">{event.type}</td>
                 <td className="px-3 py-2 border border-gray-200">{event.details}</td>
               </tr>
@@ -235,15 +375,15 @@ function MatchReportDocument({ report }: { report: Report }) {
       <div className="mt-8 pt-6 border-t border-gray-300">
         <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-5">{t('official_signatures', settings.language)}</div>
         <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-          {[
-            [t('central_referee', settings.language), centralReferee?.name ?? ""],
-            [t('chief_judge' as any, settings.language), ""],
-            [t('table_official', settings.language), ""],
-            [t('medical_officer', settings.language), ""],
-          ].map(([role, name]) => (
-            <div key={role}>
-              <div className="border-b border-black h-8 mb-1 flex items-end text-xs font-semibold">{name}</div>
-              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{role}</div>
+          {officialRows.length === 0 ? (
+            <div>
+              <div className="border-b border-black h-8 mb-1" />
+              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Assigned Official</div>
+            </div>
+          ) : officialRows.map((official) => (
+            <div key={`sig-${official.id}`}>
+              <div className="border-b border-black h-8 mb-1 flex items-end text-xs font-semibold">{official.name}</div>
+              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{official.role} Signature</div>
             </div>
           ))}
         </div>
@@ -258,26 +398,33 @@ function MatchReportDocument({ report }: { report: Report }) {
 // ── PAGE COMPONENT ─────────────────────────────────────────────────────────
 export default function ReportsPage() {
   const { matches, reports: storeReports, settings, updateReportStatus } = useTournamentStore();
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [databaseScores, setDatabaseScores] = useState<StoredJudgeScore[]>([]);
+  const [databaseEvents, setDatabaseEvents] = useState<StoredJudgingEvent[]>([]);
+
+  useFirebaseJudgingData(selectedReport?.matchId ?? null, ({ scores, events }) => {
+    setDatabaseScores(scores);
+    setDatabaseEvents(events);
+  });
   
   const generatedReports = useMemo<Report[]>(() => {
     const reportByMatch = new Map(storeReports.map(report => [report.matchId, report]));
-    return matches.filter(m => m.status === "completed").map(m => {
+    return matches.filter(m => m.status === "completed" || Boolean(m.assignedRefereeId) || (m.assignedJudgeIds?.length ?? 0) > 0).map(m => {
       const stored = reportByMatch.get(m.id);
       return {
         id: stored?.id ?? `mrep-${m.id}`,
         type: stored?.type ?? "Match Report",
         title: stored?.title ?? `${t('match_number', settings.language).replace('#', '')} #${m.matchNumber} — ${m.redCornerName} ${t('vs', settings.language)} ${m.blueCornerName}`,
         generatedAt: new Date(stored?.generatedAt ?? m.result?.validatedAt ?? m.scheduledTime ?? Date.now()),
-        status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? "Official"),
+        status: stored?.status === "Draft" && m.result ? "Official" : (stored?.status ?? (m.result ? "Official" : "Draft")),
         matchId: m.id,
         matchNumber: m.matchNumber,
-        category: `${normalizeAgeGroup(m.ageGroup)} ${m.weightCategory}`,
+        category: formatMatchCategory(m.ageGroup, m.weightCategory),
         mat: `Mat ${m.matNumber}`
       };
     });
   }, [matches, storeReports, settings.language]);
 
-  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [reports, setReports] = useState<Report[]>(generatedReports);
   const [dateFilter, setDateFilter] = useState("today");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -357,7 +504,7 @@ export default function ReportsPage() {
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
       <PageHeader
-        category={t('analytics', settings.language)}
+        category={t('analytics' as any, settings.language)}
         title={t('instant_reports', settings.language).toUpperCase()}
         subtitle={t('auto_generated_reports', settings.language)}
         actions={
@@ -445,7 +592,7 @@ export default function ReportsPage() {
 
                 {/* Badge + Actions */}
                 <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                  <IKFBadge variant={statusVariant(report.status)} label={t(report.status.toLowerCase(), settings.language) || report.status} size="sm" />
+                  <IKFBadge variant={statusVariant(report.status)} label={t(report.status.toLowerCase() as any, settings.language) || report.status} size="sm" />
                 </div>
 
                 {selectedReport?.id === report.id && (
@@ -486,7 +633,7 @@ export default function ReportsPage() {
               {/* Scrollable document area */}
               <div className="overflow-y-auto max-h-[820px] custom-scrollbar">
                 <div ref={previewRef}>
-                  <MatchReportDocument report={selectedReport} />
+                  <MatchReportDocument report={selectedReport} databaseScores={databaseScores} databaseEvents={databaseEvents} />
                 </div>
               </div>
             </div>

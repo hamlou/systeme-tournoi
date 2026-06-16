@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { MatchReference } from "./roundStore";
-import { getSocket } from "@/lib/socketClient";
 import toast from "react-hot-toast";
 
 export interface JudgeRoundScore {
@@ -44,18 +43,13 @@ const createEmptyJudge = (id: string, label: string): JudgeState => ({
   ]
 });
 
-// Initial mock data to make it easy to test
-const MOCK_MATCH: MatchReference = {
-  id: "m7", title: "Match #7", category: "-70kg Senior A", mat: "Mat 01", time: "14:30",
-  redCorner: { name: "Ahmed Ben Ali", score: 0 },
-  blueCorner: { name: "Karim Mansouri", score: 0 }
-};
+// Initial state (no mock data — match is loaded at runtime)
 
 type SetState = (partial: Partial<JudgingState> | ((state: JudgingState) => Partial<JudgingState>)) => void;
 type GetState = () => JudgingState;
 
 export const useJudgingStore = create<JudgingState>((set: SetState, get: GetState) => ({
-  activeMatch: MOCK_MATCH,
+  activeMatch: null,
   judges: [
     createEmptyJudge("j1", "JUDGE 1"),
     createEmptyJudge("j2", "JUDGE 2"),
@@ -114,7 +108,6 @@ export const useJudgingStore = create<JudgingState>((set: SetState, get: GetStat
         }
         return j;
       });
-      getSocket()?.emit("judge_score_submitted", { judges: nextJudges });
       toast.success(`${judge?.label ?? "Judge"} — Round ${roundNumber} score submitted`, { icon: "✅" });
       return { judges: nextJudges };
     });
@@ -126,8 +119,7 @@ export const useJudgingStore = create<JudgingState>((set: SetState, get: GetStat
       matchWinner: corner,
       matchEndReason: reason
     });
-    getSocket()?.emit("match_validated", { status: "WAITING_VALIDATION", winner: corner, reason });
-    toast(`🏆 INSTANT WIN — ${corner} CORNER — ${reason}`, {
+    toast(`INSTANT WIN — ${corner} CORNER — ${reason}`, {
       duration: 6000,
       style: { background: corner === "RED" ? "#c8102e" : "#0066cc", color: "#fff", fontWeight: "bold", fontSize: "14px" }
     });
@@ -136,7 +128,6 @@ export const useJudgingStore = create<JudgingState>((set: SetState, get: GetStat
   validateResult: () => {
     set({ matchStatus: "VALIDATED" });
     const state = get();
-    getSocket()?.emit("match_validated", { status: "VALIDATED", winner: state.matchWinner, reason: state.matchEndReason });
     toast.success(`Result VALIDATED — ${state.matchWinner} CORNER WINS`, { duration: 5000 });
   },
 
@@ -146,8 +137,7 @@ export const useJudgingStore = create<JudgingState>((set: SetState, get: GetStat
       matchWinner: winner,
       matchEndReason: `Overridden: ${reason}`
     });
-    getSocket()?.emit("match_validated", { status: "OVERRIDDEN", winner, reason: `Overridden: ${reason}` });
-    toast(`⚠️ Result OVERRIDDEN by Chief Referee — ${winner} CORNER`, { duration: 5000, icon: "⚖️" });
+    toast(`Result OVERRIDDEN by Chief Referee — ${winner} CORNER`, { duration: 5000, icon: "⚖️" });
   },
 
   advanceRound: () => {
