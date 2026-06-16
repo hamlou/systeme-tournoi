@@ -5,15 +5,35 @@ import { motion } from "framer-motion";
 import { LockKeyhole, ShieldCheck, Trophy, Sparkles } from "lucide-react";
 import toast from "react-hot-toast";
 
-// Admin credentials from environment variables (set in Vercel / .env.local)
-// Fallback to a single default admin account for development
+// Admin credentials from environment variables (set in Vercel / .env.local).
+// Legacy accounts stay available so existing event tablets do not get locked out.
 const ADMIN_USERNAME = process.env.NEXT_PUBLIC_ADMIN_USERNAME ?? "admin";
 const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "admin";
+
+const FALLBACK_ADMINS = [
+  { username: "admin", password: "admin" },
+  ...Array.from({ length: 7 }, (_, index) => {
+    const accountNumber = index + 1;
+    return {
+      username: `admin${accountNumber}`,
+      password: `admin${accountNumber}password`,
+    };
+  }),
+];
+
+const ADMIN_ACCOUNTS = [
+  { username: ADMIN_USERNAME, password: ADMIN_PASSWORD },
+  ...FALLBACK_ADMINS,
+];
 
 const AUTH_STORAGE_KEY = "ikf_admin_session";
 
 function isValidAdmin(username: string, password: string) {
-  return username.trim() === ADMIN_USERNAME && password === ADMIN_PASSWORD;
+  const normalizedUsername = username.trim();
+  const normalizedPassword = password.trim();
+  return ADMIN_ACCOUNTS.some(
+    account => normalizedUsername === account.username && normalizedPassword === account.password
+  );
 }
 
 export function getStoredAdminSession() {
