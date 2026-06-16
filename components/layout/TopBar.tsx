@@ -13,16 +13,16 @@ export function Topbar() {
   const router = useRouter();
 
   return (
-    <header className="h-[64px] bg-[var(--bg-secondary)]/95 backdrop-blur-md border-b border-[var(--border-default)] z-40 flex items-center justify-between px-6 flex-shrink-0">
+    <header className="h-[56px] sm:h-[64px] bg-[var(--bg-secondary)]/95 backdrop-blur-md border-b border-[var(--border-default)] z-40 flex items-center justify-between gap-2 px-3 sm:px-6 flex-shrink-0">
       {/* ── Left: Current Page Title ── */}
-      <div className="flex items-center">
-        <h2 className="font-display text-2xl text-[var(--text-primary)] tracking-wide">
+      <div className="flex min-w-0 items-center">
+        <h2 className="truncate font-display text-xl sm:text-2xl text-[var(--text-primary)] tracking-wide">
           {activePage}
         </h2>
       </div>
 
       {/* ── Center: Tournament Name ── */}
-      <div className="absolute left-1/2 -translate-x-1/2 items-center gap-3 hidden md:flex">
+      <div className="absolute left-1/2 -translate-x-1/2 items-center gap-3 hidden xl:flex">
         <span className="font-display text-xl text-[var(--ikf-gold)] tracking-widest drop-shadow-[0_0_8px_rgba(212,160,23,0.3)]">
           IKF WORLD CHAMPIONSHIP 2026
         </span>
@@ -30,7 +30,7 @@ export function Topbar() {
       </div>
 
       {/* ── Right: Action Icons ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-shrink-0 items-center gap-1.5 sm:gap-3">
         {/* Search shortcut hint */}
         <button
           onClick={() => {
@@ -48,7 +48,7 @@ export function Topbar() {
 
         {/* Socket connection indicator */}
         <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-bold"
+          className="flex items-center gap-1.5 px-1.5 sm:px-2 py-1 rounded-md text-xs font-bold"
           title={isConnected ? "Real-time sync active" : "Connecting to server..."}
           style={{
             color: isConnected ? "var(--status-win)" : "var(--text-muted)",
@@ -66,8 +66,8 @@ export function Topbar() {
         >
           <Settings size={18} />
         </button>
-        <div className="h-4 w-px bg-[var(--border-default)] mx-1" />
-        <IKFBadge variant="live" label="LIVE" size="sm" />
+        <div className="hidden sm:block h-4 w-px bg-[var(--border-default)] mx-1" />
+        <span className="hidden sm:inline-flex"><IKFBadge variant="live" label="LIVE" size="sm" /></span>
       </div>
     </header>
   );

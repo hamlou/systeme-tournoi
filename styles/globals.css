@@ -441,3 +441,37 @@ body::before {
     break-inside: avoid;
   }
 }
+
+@media screen and (max-width: 640px) {
+  #main-scroll-container main > div[class*="p-8"] {
+    padding: 1rem !important;
+  }
+
+  #main-scroll-container main > div[class*="space-y-8"] {
+    row-gap: 1rem !important;
+  }
+
+  #main-scroll-container table {
+    min-width: 720px;
+  }
+
+  #main-scroll-container [class*="overflow-hidden"]:has(> table) {
+    overflow-x: auto !important;
+  }
+
+  #main-scroll-container [class*="text-[80px]"],
+  #main-scroll-container [class*="text-[120px]"],
+  #main-scroll-container [class*="text-[140px]"],
+  #main-scroll-container [class*="text-[160px]"],
+  #main-scroll-container [class*="text-[200px]"] {
+    font-size: clamp(3rem, 18vw, 5.5rem) !important;
+  }
+
+  #main-scroll-container [class*="w-[280px]"],
+  #main-scroll-container [class*="w-[320px]"],
+  #main-scroll-container [class*="w-[360px]"],
+  #main-scroll-container [class*="min-w-[300px]"],
+  #main-scroll-container [class*="min-w-[520px]"] {
+    max-width: 100% !important;
+  }
+}
