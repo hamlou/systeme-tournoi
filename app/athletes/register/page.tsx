@@ -2,6 +2,7 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -202,7 +203,7 @@ export default function RegisterAthletePage() {
             <label className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-8 flex flex-col items-center justify-center text-center group cursor-pointer hover:border-[var(--ikf-gold)] transition-colors">
               <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploading} />
               {photoUrl ? (
-                <img src={photoUrl} alt="Athlete" className="h-24 w-24 object-cover rounded-full mb-3" />
+                <Image src={photoUrl} alt="Athlete" width={96} height={96} sizes="96px" className="h-24 w-24 object-cover rounded-full mb-3" unoptimized />
               ) : (
                 <div className="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.05)] flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-[rgba(212,160,23,0.1)] transition-all">
                   {isUploading ? <Loader2 size={24} className="text-[var(--ikf-gold)] animate-spin" /> : <UploadCloud size={24} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)]" />}

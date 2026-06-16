@@ -1,6 +1,7 @@
 /* eslint-disable */
 "use client";
 import React, { useState, useMemo, useCallback } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   useReactTable, getCoreRowModel, getPaginationRowModel,
@@ -16,6 +17,30 @@ import { normalizeAgeGroup } from "@/lib/ageCategories";
 
 const columnHelper = createColumnHelper<Athlete>();
 
+function AthleteAvatar({ athlete, size = "sm" }: { athlete: Athlete; size?: "sm" | "lg" }) {
+  const [imageFailed, setImageFailed] = React.useState(false);
+  const dimensionClass = size === "lg" ? "w-20 h-20" : "w-9 h-9";
+  const iconSize = size === "lg" ? 32 : 16;
+
+  return (
+    <div className={`relative ${dimensionClass} rounded-full bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center overflow-hidden flex-shrink-0`}>
+      {athlete.photoUrl && !imageFailed ? (
+        <Image
+          src={athlete.photoUrl}
+          alt={`${athlete.fullName} profile photo`}
+          fill
+          sizes={size === "lg" ? "80px" : "36px"}
+          className="object-cover"
+          unoptimized
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <User size={iconSize} className="text-[var(--text-muted)]" />
+      )}
+    </div>
+  );
+}
+
 // ─── Profile Modal ────────────────────────────────────────────────────────────
 function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => void }) {
   const { settings } = useTournamentStore();
@@ -29,8 +54,8 @@ function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => v
           </div>
           <button onClick={onClose} className="text-[var(--text-muted)] hover:text-white transition-colors"><X size={20} /></button>
         </div>
-        <div className="w-16 h-16 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center mb-6">
-          <User size={28} className="text-[var(--text-muted)]" />
+        <div className="mb-6">
+          <AthleteAvatar athlete={athlete} size="lg" />
         </div>
         <div className="grid grid-cols-2 gap-4 text-sm">
           {[
@@ -130,11 +155,7 @@ export default function AthletesPage() {
     }),
     columnHelper.accessor("photoUrl", {
       header: "",
-      cell: () => (
-        <div className="w-8 h-8 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center">
-          <User size={14} className="text-[var(--text-muted)]" />
-        </div>
-      ),
+      cell: info => <AthleteAvatar athlete={info.row.original} />,
     }),
     columnHelper.accessor("fullName", {
       header: t('full_name', settings.language),

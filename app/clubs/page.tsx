@@ -1,13 +1,58 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Search, Building2, Edit2, User, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { Club } from "@/types/tournament";
+import type { Athlete, Club } from "@/types/tournament";
 import { PageHeader, IKFButton, IKFCard, IKFBadge, IKFEmptyState } from "@/components/ui";
 import { t } from "@/lib/i18n";
+
+function ClubLogo({ club }: { club: Club }) {
+  const [imageFailed, setImageFailed] = React.useState(false);
+
+  return (
+    <div className="relative w-16 h-16 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center overflow-hidden flex-shrink-0">
+      {club.logoUrl && !imageFailed ? (
+        <Image
+          src={club.logoUrl}
+          alt={`${club.name} logo`}
+          fill
+          sizes="64px"
+          className="object-contain p-1.5"
+          unoptimized
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <Building2 size={28} className="text-[var(--text-muted)]" />
+      )}
+    </div>
+  );
+}
+
+function RosterAthleteAvatar({ athlete }: { athlete: Athlete }) {
+  const [imageFailed, setImageFailed] = React.useState(false);
+
+  return (
+    <div className="relative w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[var(--bg-elevated)] flex items-center justify-center overflow-hidden z-10 hover:z-20 hover:scale-110 transition-transform">
+      {athlete.photoUrl && !imageFailed ? (
+        <Image
+          src={athlete.photoUrl}
+          alt={`${athlete.fullName} profile photo`}
+          fill
+          sizes="32px"
+          className="object-cover"
+          unoptimized
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <User size={14} className="text-[var(--text-muted)]" />
+      )}
+    </div>
+  );
+}
 
 export default function ClubsPage() {
   const router = useRouter();
@@ -93,13 +138,16 @@ export default function ClubsPage() {
               </div>
 
               {/* Top section */}
-              <div className="mb-6">
-                <h3 className="font-display text-4xl text-[var(--text-primary)] group-hover:text-[var(--ikf-gold)] transition-colors pr-24 leading-none mb-2 truncate">
-                  {club.name}
-                </h3>
-                <p className="text-sm font-semibold text-[var(--text-secondary)] tracking-wide uppercase">
-                  {club.country}
-                </p>
+              <div className="mb-6 flex items-start gap-4 pr-24">
+                <ClubLogo club={club} />
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-display text-4xl text-[var(--text-primary)] group-hover:text-[var(--ikf-gold)] transition-colors leading-none mb-2 truncate">
+                    {club.name}
+                  </h3>
+                  <p className="text-sm font-semibold text-[var(--text-secondary)] tracking-wide uppercase truncate">
+                    {club.country}
+                  </p>
+                </div>
               </div>
 
               {/* Middle stats */}
@@ -131,10 +179,8 @@ export default function ClubsPage() {
               <div className="mt-auto pt-4 border-t border-[var(--border-default)] flex items-center gap-3">
                 <span className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase flex-shrink-0">{t('roster', settings.language)}</span>
                 <div className="flex items-center -space-x-2">
-                  {Array.from({ length: Math.min(5, athletes.filter(a => a.clubId === club.id).length) }).map((_, i) => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[var(--bg-elevated)] flex items-center justify-center overflow-hidden z-10 hover:z-20 hover:scale-110 transition-transform">
-                      <User size={14} className="text-[var(--text-muted)]" />
-                    </div>
+                  {athletes.filter(a => a.clubId === club.id).slice(0, 5).map(athlete => (
+                    <RosterAthleteAvatar key={athlete.id} athlete={athlete} />
                   ))}
                   {athletes.filter(a => a.clubId === club.id).length > 5 && (
                     <div className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[rgba(212,160,23,0.1)] flex items-center justify-center z-0 ml-1">
