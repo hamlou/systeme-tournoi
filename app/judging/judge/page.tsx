@@ -43,6 +43,12 @@ const UNDER_14_ACTIONS: Array<{ type: RoundEventType; label: string }> = [
   { type: "yuko", label: "Yuko" },
   { type: "ippon", label: "Ippon" },
 ];
+const CORNER_UNDER_14_ACTIONS: Array<{ type: RoundEventType; label: string }> = [
+  { type: "waza-ari", label: "Waza-ari" },
+  { type: "ippon", label: "Ippon" },
+  { type: "immobilisation", label: "Immobilisation" },
+  { type: "yuko", label: "Yuko" },
+];
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -604,6 +610,42 @@ export default function JudgeTabletView() {
               <p className="font-display text-3xl text-white">Choose your assigned profile to begin.</p>
             </div>
           </div>
+        ) : isCornerReferee && isUnder14Match ? (
+          <section className="space-y-5">
+            <div className="rounded-3xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.06)] p-5">
+              <div className="flex items-center gap-3">
+                <ShieldAlert size={22} className="text-[var(--ikf-gold)]" />
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Corner referee under-14 mode</div>
+                  <p className="mt-1 text-sm font-semibold text-[var(--text-secondary)]">
+                    Point buttons are hidden for this age group. Save only Waza-ari, Ippon, Immobilisation, or Yuko for the selected athlete.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-2">
+              {(["RED", "BLUE"] as Corner[]).map(corner => (
+                <div key={`corner-under14-${corner}`} className="rounded-3xl border bg-[rgba(255,255,255,0.035)] p-5 shadow-2xl" style={{ borderColor: `${cornerColor(corner)}55` }}>
+                  <div className="mb-5">
+                    <div className="text-[10px] font-black uppercase tracking-[0.35em]" style={{ color: cornerColor(corner) }}>{corner} athlete</div>
+                    <h2 className="mt-2 font-display text-3xl leading-none text-white">{corner === "RED" ? activeMatch.redCornerName : activeMatch.blueCornerName}</h2>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {CORNER_UNDER_14_ACTIONS.map(action => (
+                      <CentralActionButton
+                        key={`${corner}-corner-u14-${action.type}`}
+                        label={action.label}
+                        corner={corner}
+                        disabled={!canAct}
+                        onClick={() => persistEvent(action.type, action.label, corner)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         ) : isCornerReferee ? (
           <section className="space-y-5">
             <div className="grid gap-5 xl:grid-cols-2">
