@@ -56,7 +56,7 @@ function RosterAthleteAvatar({ athlete }: { athlete: Athlete }) {
 
 export default function ClubsPage() {
   const router = useRouter();
-  const { clubs, athletes, settings, deleteClub, approveClub } = useTournamentStore();
+  const { clubs, athletes, accounts, settings, deleteClub, approveClub } = useTournamentStore();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
 
@@ -67,10 +67,7 @@ export default function ClubsPage() {
   };
 
   const filteredClubs = useMemo(() => {
-    return clubs.filter(c => 
-      c.name.toLowerCase().includes(search.toLowerCase()) || 
-      c.country.toLowerCase().includes(search.toLowerCase())
-    );
+    return clubs.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   }, [clubs, search]);
 
   return (
@@ -110,7 +107,7 @@ export default function ClubsPage() {
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
           <input 
             type="text" 
-            placeholder={t('search_clubs', settings.language)} 
+            placeholder="Search by club name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md pl-10 pr-4 py-2.5 text-sm text-[var(--text-primary)] focus:border-[var(--ikf-red)] focus:ring-1 focus:ring-[var(--ikf-red)] outline-none transition-all"
@@ -121,7 +118,14 @@ export default function ClubsPage() {
       {/* CLUB GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredClubs.length > 0 ? (
-          filteredClubs.map(club => (
+          filteredClubs.map(club => {
+            const account = accounts.find(item => item.clubId === club.id || item.id === club.accountId);
+            const approvedClubAthletes = athletes.filter(a =>
+              a.clubId === club.id &&
+              a.registrationStatus === "Active" &&
+              (a.approvalStatus ?? "Approved") === "Approved"
+            );
+            return (
             <IKFCard 
               key={club.id} 
               glowColor="gold"
@@ -154,16 +158,26 @@ export default function ClubsPage() {
               <div className="flex items-center gap-4 mb-6">
                 <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
                   <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('athletes', settings.language)}</div>
-                    <div className="text-3xl font-display text-white">{athletes.filter(a => a.clubId === club.id).length}</div>
+                    <div className="text-3xl font-display text-white">{approvedClubAthletes.length}</div>
                 </div>
                 <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
                   <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('confirmed', settings.language)}</div>
-                  <div className="font-mono text-xl text-[var(--status-win)]">{athletes.filter(a => a.clubId === club.id && a.weighInStatus === 'Confirmed').length}</div>
+                  <div className="font-mono text-xl text-[var(--status-win)]">{approvedClubAthletes.filter(a => a.weighInStatus === 'Confirmed').length}</div>
                 </div>
                 <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
                   <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('pending', settings.language)}</div>
-                  <div className="font-mono text-xl text-[var(--status-draw)]">{athletes.filter(a => a.clubId === club.id && a.weighInStatus === 'Pending').length}</div>
+                  <div className="font-mono text-xl text-[var(--status-draw)]">{approvedClubAthletes.filter(a => a.weighInStatus === 'Pending').length}</div>
                 </div>
+              </div>
+
+              <div className="mb-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] p-3">
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Club Account</div>
+                {account ? (
+                  <div className="grid grid-cols-2 gap-3 font-mono text-[10px]">
+                    <div><span className="block font-sans text-[9px] uppercase tracking-widest text-[var(--text-muted)]">Login</span><span className="text-white">{account.username}</span></div>
+                    <div><span className="block font-sans text-[9px] uppercase tracking-widest text-[var(--text-muted)]">Password</span><span className="text-white">{account.password}</span></div>
+                  </div>
+                ) : <div className="text-xs text-[var(--text-muted)]">No linked account yet.</div>}
               </div>
 
               <div className="flex gap-2 mb-4">
@@ -184,18 +198,19 @@ export default function ClubsPage() {
               <div className="mt-auto pt-4 border-t border-[var(--border-default)] flex items-center gap-3">
                 <span className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase flex-shrink-0">{t('roster', settings.language)}</span>
                 <div className="flex items-center -space-x-2">
-                  {athletes.filter(a => a.clubId === club.id).slice(0, 5).map(athlete => (
+                  {approvedClubAthletes.slice(0, 5).map(athlete => (
                     <RosterAthleteAvatar key={athlete.id} athlete={athlete} />
                   ))}
-                  {athletes.filter(a => a.clubId === club.id).length > 5 && (
+                  {approvedClubAthletes.length > 5 && (
                     <div className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[rgba(212,160,23,0.1)] flex items-center justify-center z-0 ml-1">
-                      <span className="text-[10px] font-bold text-[var(--ikf-gold)]">+{athletes.filter(a => a.clubId === club.id).length - 5}</span>
+                      <span className="text-[10px] font-bold text-[var(--ikf-gold)]">+{approvedClubAthletes.length - 5}</span>
                     </div>
                   )}
                 </div>
               </div>
             </IKFCard>
-          ))
+          );
+          })
         ) : (
           <div className="col-span-full">
             <IKFEmptyState 

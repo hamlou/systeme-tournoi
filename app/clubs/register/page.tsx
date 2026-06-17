@@ -12,9 +12,9 @@ import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Club } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
-import { COUNTRIES } from "@/lib/countries";
 import { uploadProfileImage } from "@/lib/imgbb";
 import { getStoredRoleSession } from "@/components/auth/AuthGate";
+import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 
 const clubSchema = z.object({
   name: z.string().min(2, "Club name is required"),
@@ -69,7 +69,7 @@ export default function RegisterClubPage() {
     resolver: zodResolver(clubSchema),
     defaultValues: editingClub ? {
       name: editingClub.name,
-      country: editingClub.country,
+      country: NATIONAL_COUNTRY,
       presidentName: editingClub.presidentName,
       email: editingClub.email,
       phone: editingClub.phone,
@@ -126,13 +126,12 @@ export default function RegisterClubPage() {
       return;
     }
 
-    const countryCode = data.country.match(/[A-Z]{2,}/)?.[0]?.slice(0, 2) ?? data.country.slice(0, 2).toUpperCase();
-    const affiliationNumber = `IKF-${countryCode}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const affiliationNumber = `IKF-TN-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const newClub: Club = {
       id: uuidv4(),
       name: data.name,
-      country: data.country,
+      country: NATIONAL_COUNTRY,
       presidentName: data.presidentName,
       email: data.email,
       phone: data.phone,
@@ -193,16 +192,12 @@ export default function RegisterClubPage() {
               <IKFInput {...register("name")} placeholder="e.g. Kenshido Elite Academy" error={errors.name?.message} />
             </div>
 
+            <input type="hidden" value={NATIONAL_COUNTRY} {...register("country")} />
             <div>
-              <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">Country *</label>
-              <select 
-                {...register("country")}
-                className={`w-full bg-[var(--bg-elevated)] border rounded-md px-3 py-2.5 text-sm text-[var(--text-primary)] outline-none transition-colors ${errors.country ? 'border-[var(--ikf-red)] focus:ring-1 focus:ring-[var(--ikf-red)]' : 'border-[var(--border-default)] focus:border-[var(--ikf-red)] focus:ring-1 focus:ring-[var(--ikf-red-muted)]'}`}
-              >
-                <option value="">Select Country</option>
-                {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {errors.country && <p className="text-[var(--ikf-red)] text-xs mt-1.5">{errors.country.message}</p>}
+              <label className="block text-sm font-semibold mb-2 text-[var(--text-secondary)] uppercase tracking-wider">National Country</label>
+              <div className="w-full bg-[rgba(212,160,23,0.05)] border border-[rgba(212,160,23,0.3)] rounded-md px-3 py-2.5 text-sm text-[var(--ikf-gold)] font-bold">
+                {NATIONAL_COUNTRY}
+              </div>
             </div>
 
             <div>

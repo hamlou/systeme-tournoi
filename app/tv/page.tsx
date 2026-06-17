@@ -455,6 +455,7 @@ export default function TVDisplay() {
             <div>
               <div className="text-xs font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">TV Output Display</div>
               <h1 className="mt-3 font-display text-5xl sm:text-7xl leading-none tracking-wide">Choose Match</h1>
+              <div className="mt-2 text-sm font-black uppercase tracking-[0.24em] text-[var(--ikf-gold)]">{settings.championshipName ?? "Tunisia Championship"}</div>
               <p className="mt-3 max-w-2xl text-sm sm:text-base text-[rgba(255,255,255,0.55)]">
                 Select the mat/match to show on the public TV. The display will stay locked to that match until you choose another one.
               </p>
@@ -642,7 +643,7 @@ export default function TVDisplay() {
             className="font-display text-3xl tracking-[0.3em] text-center"
             style={{ color: "var(--ikf-gold)" }}
           >
-            {t('world_championship', settings.language)}
+            {settings.championshipName ?? "Tunisia Championship"}
           </div>
           <SyncBadge synced={fbConnected} />
         </div>

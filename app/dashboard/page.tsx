@@ -9,6 +9,7 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import { format } from "date-fns";
 import { t } from "@/lib/i18n";
 import { formatMatchCategory } from "@/lib/ageCategories";
+import { NATIONAL_CHAMPIONSHIPS } from "@/lib/nationalCompetition";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -36,7 +37,9 @@ function LiveTimer({ initialSeconds = 180 }: { initialSeconds?: number }) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { athletes, clubs, matches, settings, activeMatch, roundTimer } = useTournamentStore();
+  const { athletes, clubs, matches, settings, updateSettings, activeMatch, roundTimer } = useTournamentStore();
+  const approvedAthletes = athletes.filter(a => a.registrationStatus === "Active" && (a.approvalStatus ?? "Approved") === "Approved");
+  const approvedClubs = clubs.filter(c => c.status === "Active" && (c.approvalStatus ?? "Approved") === "Approved");
 
   const liveMatches = matches.filter(m => m.status === "in-progress");
   const scheduledMatches = matches.filter(m => m.status === "scheduled").sort(
@@ -50,8 +53,9 @@ export default function DashboardPage() {
 
   // Show up to 3 live matches (use scheduled if none live)
   const displayMatches = liveMatches.length > 0 ? liveMatches.slice(0, 3) : scheduledMatches.slice(0, 3);
-  const titleParts = settings.tournamentName.trim().split(/\s+/);
-  const titleMain = titleParts.length > 1 ? titleParts.slice(0, -1).join(" ") : settings.tournamentName;
+  const championshipName = settings.championshipName ?? "Tunisia Championship";
+  const titleParts = championshipName.trim().split(/\s+/);
+  const titleMain = titleParts.length > 1 ? titleParts.slice(0, -1).join(" ") : championshipName;
   const titleAccent = titleParts.length > 1 ? titleParts.at(-1) : "";
 
   return (
@@ -72,10 +76,22 @@ export default function DashboardPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)]" />
                 <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{format(new Date(), "dd MMM yyyy")}</span>
               </div>
+              <div className="mt-5 max-w-sm">
+                <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">National Competition</label>
+                <select
+                  value={championshipName}
+                  onChange={(event) => updateSettings({ championshipName: event.target.value as typeof settings.championshipName })}
+                  className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[var(--bg-elevated)] px-4 py-3 text-sm font-bold text-white outline-none focus:border-[var(--ikf-gold)]"
+                >
+                  {NATIONAL_CHAMPIONSHIPS.map(championship => (
+                    <option key={championship} value={championship}>{championship}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full xl:w-auto flex-shrink-0">
-              <button onClick={() => router.push('/athletes')}><StatCard label={t('athletes', settings.language)} value={athletes.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
-              <button onClick={() => router.push('/clubs')}><StatCard label={t('clubs', settings.language)} value={clubs.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
+              <button onClick={() => router.push('/athletes')}><StatCard label={t('athletes', settings.language)} value={approvedAthletes.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
+              <button onClick={() => router.push('/clubs')}><StatCard label={t('clubs', settings.language)} value={approvedClubs.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
               <button onClick={() => router.push('/brackets')}><StatCard label={t('matches', settings.language)} value={matches.length.toString()} accentColor="none" className="bg-[var(--bg-elevated)] border-none shadow-none hover:border-[var(--ikf-red)]" /></button>
               <button onClick={() => router.push(liveMatches.length > 0 ? '/tv' : '/rounds')}><StatCard label={t('live_mats', settings.language)} value={liveMatches.length.toString()} accentColor="red" badge={liveMatches.length > 0 ? <IKFBadge variant="live" label={t('live', settings.language)} size="sm" /> : undefined} className="bg-[var(--bg-elevated)] border-[var(--border-active)] shadow-none" /></button>
             </div>
@@ -203,7 +219,7 @@ export default function DashboardPage() {
           <button onClick={() => router.push('/reports')}><StatCard label={t('completed', settings.language)} value={completedMatches.length.toString()} accentColor="green" className="!p-5" /></button>
           <button onClick={() => router.push('/statistics')}><StatCard label={t('ko_tko', settings.language)} value={kos.toString()} accentColor="red" className="!p-5" /></button>
           <button onClick={() => router.push('/statistics')}><StatCard label={t('disqualifications', settings.language)} value={disqs.toString()} accentColor="red" className="!p-5" /></button>
-          <button onClick={() => router.push('/weighin')}><StatCard label={t('pending_weigh_in', settings.language)} value={athletes.filter(a => a.weighInStatus === "Pending").length.toString()}
+          <button onClick={() => router.push('/weighin')}><StatCard label={t('pending_weigh_in', settings.language)} value={approvedAthletes.filter(a => a.weighInStatus === "Pending").length.toString()}
             accentColor="gold" icon={<AlertTriangle size={16} />} className="!p-5 border-[rgba(212,160,23,0.3)] shadow-[0_0_20px_rgba(212,160,23,0.15)] bg-[rgba(212,160,23,0.03)]" /></button>
         </div>
       </motion.div>

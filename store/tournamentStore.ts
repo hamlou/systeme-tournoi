@@ -22,6 +22,7 @@ import {
   totalRoundsForAgeGroup,
 } from "@/lib/ageCategories";
 import { DEFAULT_ROLE_ACCOUNTS, makeUsername } from "@/lib/roleAccess";
+import { DEFAULT_CHAMPIONSHIP, NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 
 // ─── Firebase Sync Helpers ────────────────────────────────────────────────────
 
@@ -42,8 +43,9 @@ function patchFirebase(path: string, data: Record<string, unknown>) {
 // ─── Default Settings ─────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS: TournamentSettings = {
-  tournamentName: 'IKF World Championship 2026',
-  venue: 'Tunis Arena, Tunisia',
+  tournamentName: 'IKF Kenshido National Tournament',
+  championshipName: DEFAULT_CHAMPIONSHIP,
+  venue: 'Tunisia National Arena',
   startDate: '2026-06-10',
   defaultJudgesCount: 3,
   roundDurations: {
@@ -83,6 +85,34 @@ function makeRefereeAccount(referee: Referee, existingAccounts: RoleAccount[]): 
     refereeId: referee.id,
     createdAt: nowIso(),
     ...(referee.approvalStatus === "Pending" ? {} : { approvedAt: nowIso() }),
+  };
+}
+
+function makeLinkedAccount(
+  profile: { id: string; name: string },
+  role: RoleAccount["role"],
+  existingAccounts: RoleAccount[],
+): RoleAccount {
+  const prefix = role === "athlete" ? "athlete" : role === "club" ? "club" : role === "tv" ? "tv" : "official";
+  const baseUsername = makeUsername(profile.name, prefix);
+  let username = baseUsername;
+  let index = 2;
+  const taken = new Set(existingAccounts.map(account => account.username.toLowerCase()));
+  while (taken.has(username.toLowerCase())) {
+    username = `${baseUsername}${index}`;
+    index += 1;
+  }
+  return {
+    id: `account-${profile.id}`,
+    username,
+    password: passwordFromId(prefix, profile.id),
+    role,
+    displayName: profile.name,
+    approvalStatus: "Approved",
+    ...(role === "athlete" ? { athleteId: profile.id } : {}),
+    ...(role === "club" ? { clubId: profile.id } : {}),
+    createdAt: nowIso(),
+    approvedAt: nowIso(),
   };
 }
 
@@ -215,13 +245,29 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     const approvalStatus = a.approvalStatus ?? "Approved";
     const readyAthlete: Athlete = {
       ...a,
+      country: NATIONAL_COUNTRY,
       ageGroup: normalizeAgeGroup(a.ageGroup),
       approvalStatus,
       weighInStatus: a.weighInStatus ?? 'Confirmed',
       registrationStatus: a.registrationStatus ?? (approvalStatus === "Approved" ? 'Active' : 'Pending'),
     };
-    set(s => ({ athletes: [readyAthlete, ...s.athletes] }));
+    let linkedAccount: RoleAccount | null = null;
+    set(s => {
+      const existing = readyAthlete.accountId
+        ? s.accounts.find(account => account.id === readyAthlete.accountId)
+        : null;
+      linkedAccount = existing
+        ? { ...existing, athleteId: readyAthlete.id, role: "athlete", displayName: readyAthlete.fullName, approvalStatus: "Approved", approvedAt: nowIso() }
+        : makeLinkedAccount({ id: readyAthlete.id, name: readyAthlete.fullName }, "athlete", s.accounts);
+      return {
+        athletes: [{ ...readyAthlete, accountId: linkedAccount.id }, ...s.athletes],
+        accounts: existing
+          ? s.accounts.map(account => account.id === existing.id ? linkedAccount! : account)
+          : [linkedAccount, ...s.accounts],
+      };
+    });
     syncToFirebase('athletes', get().athletes);
+    syncToFirebase('accounts', get().accounts);
     get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}${approvalStatus === "Pending" ? " and is waiting for approval" : ""}`);
     toast.success(
       approvalStatus === "Pending"
@@ -232,7 +278,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   },
   updateAthlete: (id, data) => {
     set(s => ({
-      athletes: s.athletes.map(a => a.id === id ? { ...a, ...data } : a)
+      athletes: s.athletes.map(a => a.id === id ? { ...a, ...data, country: NATIONAL_COUNTRY } : a)
     }));
     syncToFirebase('athletes', get().athletes);
   },
@@ -268,11 +314,27 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     const approvalStatus = c.approvalStatus ?? (c.status === "Pending" ? "Pending" : "Approved");
     const club: Club = {
       ...c,
+      country: NATIONAL_COUNTRY,
       approvalStatus,
       status: c.status ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
     };
-    set(s => ({ clubs: [club, ...s.clubs] }));
+    let linkedAccount: RoleAccount | null = null;
+    set(s => {
+      const existing = club.accountId
+        ? s.accounts.find(account => account.id === club.accountId)
+        : null;
+      linkedAccount = existing
+        ? { ...existing, clubId: club.id, role: "club", displayName: club.name, approvalStatus: "Approved", approvedAt: nowIso() }
+        : makeLinkedAccount({ id: club.id, name: club.name }, "club", s.accounts);
+      return {
+        clubs: [{ ...club, accountId: linkedAccount.id }, ...s.clubs],
+        accounts: existing
+          ? s.accounts.map(account => account.id === existing.id ? linkedAccount! : account)
+          : [linkedAccount, ...s.accounts],
+      };
+    });
     syncToFirebase('clubs', get().clubs);
+    syncToFirebase('accounts', get().accounts);
     get().addNotification("New Club Registered", `${club.name} (${club.country}) ${approvalStatus === "Pending" ? "is waiting for approval." : "joined the tournament."}`);
     toast.success(
       approvalStatus === "Pending" ? `Club ${club.name} submitted for admin approval` : `Club ${club.name} registered successfully`,
@@ -281,7 +343,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   },
   updateClub: (id, data) => {
     set(s => ({
-      clubs: s.clubs.map(c => c.id === id ? { ...c, ...data } : c)
+      clubs: s.clubs.map(c => c.id === id ? { ...c, ...data, country: NATIONAL_COUNTRY } : c)
     }));
     syncToFirebase('clubs', get().clubs);
   },
@@ -841,7 +903,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   },
   updateReferee: (id, data) => {
     set(s => ({
-      referees: s.referees.map(r => r.id === id ? { ...r, ...data } : r)
+      referees: s.referees.map(r => r.id === id ? { ...r, ...data, country: NATIONAL_COUNTRY } : r)
     }));
     syncToFirebase('referees', get().referees);
   },

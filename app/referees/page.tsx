@@ -13,6 +13,7 @@ import { t } from "@/lib/i18n";
 import { formatMatchCategory } from "@/lib/ageCategories";
 import { useMatchNotifications, isMatchStartingSoon } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
+import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 
 function toDateTimeLocal(value?: string | null) {
   const date = value ? new Date(value) : new Date(Date.now() + 30 * 60 * 1000);
@@ -31,7 +32,6 @@ export default function RefereesPage() {
   const [centralByMatch, setCentralByMatch] = useState<Record<string, string>>({});
   const [judgesByMatch, setJudgesByMatch] = useState<Record<string, string[]>>({});
   const [newRefereeName, setNewRefereeName] = useState("");
-  const [newRefereeCountry, setNewRefereeCountry] = useState("");
   const [newRefereeRole, setNewRefereeRole] = useState<RefRole>("Central Referee");
 
   const requiredJudgeCount = settings.defaultJudgesCount;
@@ -58,7 +58,7 @@ export default function RefereesPage() {
     accounts.find(account => account.refereeId === refereeId);
 
   const filteredReferees = useMemo(
-    () => referees.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.role.toLowerCase().includes(searchTerm.toLowerCase()) || r.country.toLowerCase().includes(searchTerm.toLowerCase())),
+    () => referees.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.role.toLowerCase().includes(searchTerm.toLowerCase())),
     [searchTerm, referees]
   );
 
@@ -87,12 +87,11 @@ export default function RefereesPage() {
       id: uuidv4(),
       name,
       role: newRefereeRole,
-      country: newRefereeCountry.trim() || "—",
+      country: NATIONAL_COUNTRY,
       grade: "IKF Official",
       status: "Available",
     });
     setNewRefereeName("");
-    setNewRefereeCountry("");
     setNewRefereeRole("Central Referee");
   };
 
@@ -133,12 +132,14 @@ export default function RefereesPage() {
 
       <IKFCard padding="lg" className="space-y-4">
         <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]"><UserPlus size={16} /> Add Referee</div>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_180px_auto] gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_150px_auto] gap-3">
           <input value={newRefereeName} onChange={e => setNewRefereeName(e.target.value)} placeholder="Referee name" className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--ikf-red)]" />
           <select value={newRefereeRole} onChange={e => setNewRefereeRole(e.target.value as RefRole)} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--ikf-red)]">
             {REFEREE_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
           </select>
-          <input value={newRefereeCountry} onChange={e => setNewRefereeCountry(e.target.value)} placeholder="Country" className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--ikf-red)]" />
+          <div className="bg-[rgba(212,160,23,0.05)] border border-[rgba(212,160,23,0.3)] rounded-md px-3 py-2.5 text-sm text-[var(--ikf-gold)] font-bold">
+            {NATIONAL_COUNTRY}
+          </div>
           <IKFButton variant="primary" onClick={addNewReferee}>Add</IKFButton>
         </div>
       </IKFCard>

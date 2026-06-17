@@ -14,10 +14,10 @@ import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, AgeGroup } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
-import { COUNTRIES } from "@/lib/countries";
 import { uploadProfileImage } from "@/lib/imgbb";
 import { normalizeAgeGroup } from "@/lib/ageCategories";
 import { getStoredRoleSession } from "@/components/auth/AuthGate";
+import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 
 const registerSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -115,7 +115,7 @@ export default function RegisterAthletePage() {
       fullName: editingAthlete?.fullName ?? "",
       dob: editingAthlete?.dob ?? "",
       gender: editingAthlete?.gender ?? "Male",
-      country: editingAthlete?.country ?? "",
+      country: NATIONAL_COUNTRY,
       nationalId: editingAthlete?.nationalId ?? "",
       clubId: editingAthlete?.clubId ?? "",
       weightCategory: editingAthlete?.weightCategory ?? "",
@@ -236,13 +236,12 @@ export default function RegisterAthletePage() {
                 <option value="Female">Female</option>
               </select>
             </div>
+            <input type="hidden" value={NATIONAL_COUNTRY} {...register("country")} />
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Country *</label>
-              <select {...register("country")} className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-4 py-3 text-sm text-white focus:border-[var(--ikf-red)] outline-none transition-all">
-                <option value="">Select country...</option>
-                {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {errors.country && <p className="text-xs text-[var(--ikf-red)] mt-1">{errors.country.message}</p>}
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">National Country</label>
+              <div className="w-full bg-[rgba(212,160,23,0.05)] border border-[rgba(212,160,23,0.3)] rounded-lg px-4 py-3 text-sm text-[var(--ikf-gold)] font-bold">
+                {NATIONAL_COUNTRY}
+              </div>
             </div>
             <IKFInput label="National ID / Passport *" placeholder="e.g. TN12345678" error={errors.nationalId?.message} {...register("nationalId")} />
           </div>

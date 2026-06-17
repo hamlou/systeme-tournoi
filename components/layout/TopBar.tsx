@@ -3,6 +3,7 @@
 import React from "react";
 import { Settings, Search, Wifi, WifiOff } from "lucide-react";
 import { useNavigationStore } from "@/store/navigationStore";
+import { useTournamentStore } from "@/store/tournamentStore";
 import { IKFBadge } from "@/components/ui/IKFBadge";
 import { useSocket } from "@/components/providers/SocketProvider";
 import { useRouter } from "next/navigation";
@@ -10,6 +11,7 @@ import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 export function Topbar() {
   const { activePage } = useNavigationStore();
+  const { settings } = useTournamentStore();
   const { isConnected } = useSocket();
   const router = useRouter();
   const [isAdmin, setIsAdmin] = React.useState(true);
@@ -30,7 +32,7 @@ export function Topbar() {
       {/* ── Center: Tournament Name ── */}
       <div className="absolute left-1/2 -translate-x-1/2 items-center gap-3 hidden xl:flex">
         <span className="font-display text-xl text-[var(--ikf-gold)] tracking-widest drop-shadow-[0_0_8px_rgba(212,160,23,0.3)]">
-          IKF WORLD CHAMPIONSHIP 2026
+          {settings.championshipName ?? "Tunisia Championship"}
         </span>
         <IKFBadge variant="live" size="sm" />
       </div>

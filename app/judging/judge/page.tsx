@@ -13,6 +13,7 @@ import { formatMatchCategory, isYouthAgeGroup } from "@/lib/ageCategories";
 import { deriveLiveMatchTimers, FirebaseMatchState, useFirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
 import { saveJudgeScoreToDatabase, saveJudgingEventToDatabase, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 import { getStoredRoleSession } from "@/components/auth/AuthGate";
+import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 
 type MethodEventType = "decision" | "ko-tko" | "ippon-result" | "disqualification" | "draw";
 
@@ -105,7 +106,6 @@ export default function JudgeTabletView() {
   const [fallbackAnchor, setFallbackAnchor] = useState({ mode: "idle", source: 0, startedAt: Date.now() });
   const [session, setSession] = useState<ReturnType<typeof getStoredRoleSession>>(null);
   const [profileName, setProfileName] = useState("");
-  const [profileCountry, setProfileCountry] = useState("");
 
   useEffect(() => {
     setSession(getStoredRoleSession());
@@ -211,14 +211,13 @@ export default function JudgeTabletView() {
       id: uuidv4(),
       name,
       role: session.role === "corner-referee" ? "Corner Judge" : "Central Referee",
-      country: profileCountry.trim() || "Pending country",
+      country: NATIONAL_COUNTRY,
       grade: "Submitted Official",
       status: "Available",
       approvalStatus: "Pending",
       accountId: session.accountId,
     });
     setProfileName("");
-    setProfileCountry("");
     toast.success("Referee profile submitted. The chief admin must approve it before judging access is active.");
   };
 
@@ -252,10 +251,10 @@ export default function JudgeTabletView() {
                 <span className="mb-2 block text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">Full Name</span>
                 <input value={profileName} onChange={event => setProfileName(event.target.value)} className="w-full rounded-2xl border border-[rgba(255,255,255,0.1)] bg-black/25 px-5 py-4 text-white outline-none focus:border-[var(--ikf-gold)]" placeholder="Official referee name" />
               </label>
-              <label className="block">
-                <span className="mb-2 block text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">Country</span>
-                <input value={profileCountry} onChange={event => setProfileCountry(event.target.value)} className="w-full rounded-2xl border border-[rgba(255,255,255,0.1)] bg-black/25 px-5 py-4 text-white outline-none focus:border-[var(--ikf-gold)]" placeholder="Country" />
-              </label>
+              <div className="rounded-2xl border border-[rgba(212,160,23,0.25)] bg-[rgba(212,160,23,0.08)] px-5 py-4">
+                <span className="mb-1 block text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">National Country</span>
+                <span className="text-sm font-bold text-[var(--ikf-gold)]">{NATIONAL_COUNTRY}</span>
+              </div>
               <button type="button" onClick={submitRefereeProfile} className="h-14 w-full rounded-2xl bg-[var(--ikf-gold)] text-black font-black uppercase tracking-widest">
                 Submit For Chief Admin Approval
               </button>
@@ -457,6 +456,9 @@ export default function JudgeTabletView() {
           <div className="text-[10px] font-bold uppercase tracking-[0.4em] text-[var(--ikf-gold)] mb-0.5">Electronic Judging · IKF Kenshido</div>
           <div className="text-base font-display tracking-widest text-white">
             Match #{activeMatch.matchNumber} · {formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender)}
+          </div>
+          <div className="mt-0.5 text-[10px] font-black uppercase tracking-[0.28em] text-[var(--ikf-gold)]">
+            {settings.championshipName ?? "Tunisia Championship"}
           </div>
         </div>
 

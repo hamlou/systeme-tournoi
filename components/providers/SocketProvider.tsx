@@ -5,6 +5,7 @@ import { onValue, off, ref } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, RoundEvent, TournamentReport, TournamentSettings, RoleAccount } from "@/types/tournament";
+import { DEFAULT_CHAMPIONSHIP, NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 
 interface SyncContextType {
   isConnected: boolean;
@@ -13,6 +14,80 @@ interface SyncContextType {
 const SyncContext = createContext<SyncContextType>({ isConnected: false });
 
 export const useSocket = () => useContext(SyncContext);
+
+type AccountLinkKey = "athleteId" | "clubId" | "refereeId";
+
+function makeAccountUsername(name: string, prefix: string, accounts: RoleAccount[]) {
+  const base = `${prefix}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "profile"}`;
+  const taken = new Set(accounts.map(account => account.username.toLowerCase()));
+  let username = base;
+  let index = 2;
+  while (taken.has(username.toLowerCase())) {
+    username = `${base}${index}`;
+    index += 1;
+  }
+  return username;
+}
+
+function makeAccountPassword(prefix: string, profileId: string) {
+  const tail = profileId.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "000001";
+  return `${prefix}-${tail}`;
+}
+
+function ensureProfileAccount(
+  accounts: RoleAccount[],
+  profile: {
+    id: string;
+    name: string;
+    role: RoleAccount["role"];
+    linkKey: AccountLinkKey;
+    accountId?: string;
+    approvalStatus?: RoleAccount["approvalStatus"];
+  },
+) {
+  const now = new Date().toISOString();
+  const prefix = profile.role === "athlete" ? "athlete" : profile.role === "club" ? "club" : profile.role === "corner-referee" ? "corner" : "central";
+  const accountStatus = profile.role === "athlete" || profile.role === "club" ? "Approved" : profile.approvalStatus ?? "Approved";
+  const existing = accounts.find(account => account.id === profile.accountId) ?? accounts.find(account => account[profile.linkKey] === profile.id);
+
+  if (existing) {
+    return {
+      accountId: existing.id,
+      accounts: accounts.map(account => account.id === existing.id
+        ? {
+            ...account,
+            role: profile.role,
+            displayName: profile.name,
+            approvalStatus: accountStatus,
+            [profile.linkKey]: profile.id,
+            ...(accountStatus === "Approved" ? { approvedAt: account.approvedAt ?? now } : {}),
+          }
+        : account),
+    };
+  }
+
+  const takenIds = new Set(accounts.map(account => account.id));
+  let id = `account-${profile.id}`;
+  let index = 2;
+  while (takenIds.has(id)) {
+    id = `account-${profile.id}-${index}`;
+    index += 1;
+  }
+
+  const account: RoleAccount = {
+    id,
+    username: makeAccountUsername(profile.name, prefix, accounts),
+    password: makeAccountPassword(prefix, profile.id),
+    role: profile.role,
+    displayName: profile.name,
+    approvalStatus: accountStatus,
+    [profile.linkKey]: profile.id,
+    createdAt: now,
+    ...(accountStatus === "Approved" ? { approvedAt: now } : {}),
+  };
+
+  return { accountId: account.id, accounts: [account, ...accounts] };
+}
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [isConnected, setIsConnected] = useState(false);
@@ -27,19 +102,62 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       if (!connected) { connected = true; setIsConnected(true); }
 
       const store = useTournamentStore;
+      let normalizedAccounts = Array.isArray(data.accounts)
+        ? data.accounts as RoleAccount[]
+        : store.getState().accounts;
 
       // Sync each collection into the Zustand store
       if (data.settings) {
-        store.setState({ settings: data.settings as TournamentSettings });
-      }
-      if (Array.isArray(data.accounts)) {
-        store.setState({ accounts: data.accounts as RoleAccount[] });
+        const settings = data.settings as TournamentSettings;
+        store.setState({ settings: { ...settings, championshipName: settings.championshipName ?? DEFAULT_CHAMPIONSHIP } });
       }
       if (Array.isArray(data.athletes)) {
-        store.setState({ athletes: data.athletes as Athlete[] });
+        const normalizedAthletes = (data.athletes as Athlete[]).map(athlete => {
+          const approvalStatus = athlete.approvalStatus ?? (athlete.registrationStatus === "Active" ? "Approved" : "Pending");
+          const linked = ensureProfileAccount(normalizedAccounts, {
+            id: athlete.id,
+            name: athlete.fullName,
+            role: "athlete",
+            linkKey: "athleteId",
+            accountId: athlete.accountId,
+            approvalStatus: "Approved",
+          });
+          normalizedAccounts = linked.accounts;
+          return {
+            ...athlete,
+            accountId: linked.accountId,
+            country: NATIONAL_COUNTRY,
+            approvalStatus,
+            registrationStatus: athlete.registrationStatus ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
+          };
+        });
+        store.setState({
+          athletes: normalizedAthletes,
+        });
       }
       if (Array.isArray(data.clubs)) {
-        store.setState({ clubs: data.clubs as Club[] });
+        const normalizedClubs = (data.clubs as Club[]).map(club => {
+          const approvalStatus = club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending");
+          const linked = ensureProfileAccount(normalizedAccounts, {
+            id: club.id,
+            name: club.name,
+            role: "club",
+            linkKey: "clubId",
+            accountId: club.accountId,
+            approvalStatus: "Approved",
+          });
+          normalizedAccounts = linked.accounts;
+          return {
+            ...club,
+            accountId: linked.accountId,
+            country: NATIONAL_COUNTRY,
+            approvalStatus,
+            status: club.status ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
+          };
+        });
+        store.setState({
+          clubs: normalizedClubs,
+        });
       }
       if (Array.isArray(data.weighinRecords)) {
         store.setState({ weighinRecords: data.weighinRecords as WeighinRecord[] });
@@ -51,7 +169,30 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         store.setState({ brackets: data.brackets as Bracket[] });
       }
       if (Array.isArray(data.referees)) {
-        store.setState({ referees: data.referees as Referee[] });
+        const normalizedReferees = (data.referees as Referee[]).map(referee => {
+          const approvalStatus = referee.approvalStatus ?? "Approved";
+          const linked = ensureProfileAccount(normalizedAccounts, {
+            id: referee.id,
+            name: referee.name,
+            role: referee.role === "Corner Judge" ? "corner-referee" : "central-referee",
+            linkKey: "refereeId",
+            accountId: referee.accountId,
+            approvalStatus,
+          });
+          normalizedAccounts = linked.accounts;
+          return {
+            ...referee,
+            accountId: linked.accountId,
+            country: NATIONAL_COUNTRY,
+            approvalStatus,
+          };
+        });
+        store.setState({
+          referees: normalizedReferees,
+        });
+      }
+      if (Array.isArray(data.accounts) || Array.isArray(data.athletes) || Array.isArray(data.clubs) || Array.isArray(data.referees)) {
+        store.setState({ accounts: normalizedAccounts });
       }
       if (Array.isArray(data.judgeScores)) {
         store.setState({ judgeScores: data.judgeScores as JudgeScore[] });

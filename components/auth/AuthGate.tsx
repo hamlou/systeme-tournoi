@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { LockKeyhole, ShieldCheck, Trophy, Sparkles } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
+import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import {
   ROLE_LABELS,
@@ -14,9 +15,12 @@ import {
   getUniqueAccounts,
   type RoleSession,
 } from "@/lib/roleAccess";
+import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import type { RoleAccount, UserRole } from "@/types/tournament";
 
 const AUTH_STORAGE_KEY = "ikf_role_session";
 const LEGACY_AUTH_STORAGE_KEY = "ikf_admin_session";
+const SELF_SERVICE_ROLES: UserRole[] = ["athlete", "club", "central-referee", "corner-referee"];
 
 export function getStoredRoleSession(): RoleSession | null {
   if (typeof window === "undefined") return null;
@@ -72,10 +76,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const accounts = useTournamentStore(state => state.accounts);
+  const addAccount = useTournamentStore(state => state.addAccount);
+  const addReferee = useTournamentStore(state => state.addReferee);
   const [isReady, setIsReady] = React.useState(false);
   const [session, setSession] = React.useState<RoleSession | null>(null);
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [loginRole, setLoginRole] = React.useState<UserRole>("admin");
+  const [showCreateAccount, setShowCreateAccount] = React.useState(false);
+  const [createRole, setCreateRole] = React.useState<UserRole>("athlete");
+  const [createName, setCreateName] = React.useState("");
+  const [createUsername, setCreateUsername] = React.useState("");
+  const [createPassword, setCreatePassword] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const loginAccounts = React.useMemo(() => getUniqueAccounts(accounts), [accounts]);
@@ -131,12 +143,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       const normalizedPassword = password.trim();
       const account = loginAccounts.find(item =>
         item.username.trim().toLowerCase() === normalizedUsername.toLowerCase() &&
-        item.password === normalizedPassword
+        item.password === normalizedPassword &&
+        item.role === loginRole
       );
 
       if (!account) {
         setIsSubmitting(false);
-        toast.error("Access denied. Invalid credentials.");
+        toast.error("Access denied. Check login, password, and role.");
         return;
       }
 
@@ -165,6 +178,60 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       toast.success(`Welcome, ${account.displayName}`);
       router.replace(getDefaultRouteForRole(account.role));
     }, 350);
+  };
+
+  const handleCreateAccount = () => {
+    const displayName = createName.trim();
+    const nextUsername = createUsername.trim();
+    const nextPassword = createPassword.trim();
+    if (displayName.length < 2 || nextUsername.length < 3 || nextPassword.length < 3) {
+      toast.error("Name, login, and password are required.");
+      return;
+    }
+    if (loginAccounts.some(account => account.username.trim().toLowerCase() === nextUsername.toLowerCase())) {
+      toast.error("This login is already used. Choose another one.");
+      return;
+    }
+
+    const accountId = `account-${uuidv4()}`;
+    const now = new Date().toISOString();
+    const approvalStatus: RoleAccount["approvalStatus"] = accountRequiresApproval(createRole) ? "Pending" : "Approved";
+    const account: RoleAccount = {
+      id: accountId,
+      username: nextUsername,
+      password: nextPassword,
+      role: createRole,
+      displayName,
+      approvalStatus,
+      createdAt: now,
+      ...(approvalStatus === "Approved" ? { approvedAt: now } : {}),
+    };
+    addAccount(account);
+
+    if (createRole === "central-referee" || createRole === "corner-referee") {
+      addReferee({
+        id: uuidv4(),
+        name: displayName,
+        role: createRole === "corner-referee" ? "Corner Judge" : "Central Referee",
+        country: NATIONAL_COUNTRY,
+        grade: "Submitted Official",
+        status: "Available",
+        approvalStatus: "Pending",
+        accountId,
+      });
+      toast.success("Referee account submitted. The chief admin must approve it before login works.");
+    } else {
+      toast.success("Account created. Log in with your role, then complete your profile.");
+    }
+
+    setUsername(nextUsername);
+    setPassword(nextPassword);
+    setLoginRole(createRole);
+    setShowCreateAccount(false);
+    setCreateName("");
+    setCreateUsername("");
+    setCreatePassword("");
+    setCreateRole("athlete");
   };
 
   if (!isReady) {
@@ -256,15 +323,70 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     required
                   />
                 </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Role</span>
+                  <select
+                    value={loginRole}
+                    onChange={(event) => setLoginRole(event.target.value as UserRole)}
+                    className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 text-base font-semibold text-white outline-none transition-all focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]"
+                    required
+                  >
+                    {Object.entries(ROLE_LABELS).map(([role, label]) => (
+                      <option key={role} value={role}>{label}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                {Object.values(ROLE_LABELS).map(label => (
-                  <span key={label} className="rounded-full border border-[rgba(255,255,255,0.08)] bg-white/[0.03] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                    {label}
-                  </span>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateAccount(value => !value)}
+                className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-[var(--ikf-gold)] hover:text-white"
+              >
+                {showCreateAccount ? "Hide account request" : "Create personal account"}
+              </button>
+
+              {showCreateAccount && (
+                <div className="mt-5 space-y-3 rounded-2xl border border-[rgba(212,160,23,0.24)] bg-[rgba(212,160,23,0.06)] p-4">
+                  <div className="grid grid-cols-1 gap-3">
+                    <input
+                      value={createName}
+                      onChange={(event) => setCreateName(event.target.value)}
+                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
+                      placeholder="Full name / club name"
+                    />
+                    <select
+                      value={createRole}
+                      onChange={(event) => setCreateRole(event.target.value as UserRole)}
+                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
+                    >
+                      {SELF_SERVICE_ROLES.map(role => (
+                        <option key={role} value={role}>{ROLE_LABELS[role]}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={createUsername}
+                      onChange={(event) => setCreateUsername(event.target.value)}
+                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
+                      placeholder="Login"
+                    />
+                    <input
+                      value={createPassword}
+                      onChange={(event) => setCreatePassword(event.target.value)}
+                      type="password"
+                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
+                      placeholder="Password"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateAccount}
+                    className="h-11 w-full rounded-xl bg-[var(--ikf-gold)] text-sm font-black uppercase tracking-widest text-black transition-all hover:bg-[#f0c84c]"
+                  >
+                    Create Account
+                  </button>
+                </div>
+              )}
 
               <button
                 type="submit"

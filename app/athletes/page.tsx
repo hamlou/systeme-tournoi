@@ -43,7 +43,8 @@ function AthleteAvatar({ athlete, size = "sm" }: { athlete: Athlete; size?: "sm"
 
 // ─── Profile Modal ────────────────────────────────────────────────────────────
 function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => void }) {
-  const { settings } = useTournamentStore();
+  const { accounts, settings } = useTournamentStore();
+  const account = accounts.find(item => item.athleteId === athlete.id || item.id === athlete.accountId);
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-2xl p-8 max-w-lg w-full shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -60,7 +61,7 @@ function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => v
         <div className="grid grid-cols-2 gap-4 text-sm">
           {[
             [t('license_number', settings.language), athlete.licenseNumber], [t('dob', settings.language), athlete.dob],
-            [t('gender', settings.language), athlete.gender], [t('country', settings.language), athlete.country],
+            [t('gender', settings.language), athlete.gender], ["National Country", athlete.country],
             [t('club', settings.language), athlete.clubName], [t('age_group', settings.language), athlete.ageGroup],
             [t('weight_category', settings.language), athlete.weightCategory], [t('license_type', settings.language), athlete.licenseType],
             [t('medical_clearance', settings.language), athlete.medicalClearance ? "✅ " + t('confirmed', settings.language) : "❌ " + t('pending', settings.language)],
@@ -70,6 +71,15 @@ function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => v
               <div className="text-white font-semibold">{val}</div>
             </div>
           ))}
+        </div>
+        <div className="mt-5 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] p-4">
+          <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mb-2">Athlete Account</div>
+          {account ? (
+            <div className="grid grid-cols-2 gap-3 font-mono text-xs">
+              <div><span className="block text-[var(--text-muted)] font-sans uppercase tracking-widest text-[9px]">Login</span><span className="text-white">{account.username}</span></div>
+              <div><span className="block text-[var(--text-muted)] font-sans uppercase tracking-widest text-[9px]">Password</span><span className="text-white">{account.password}</span></div>
+            </div>
+          ) : <div className="text-sm text-[var(--text-muted)]">No linked account yet.</div>}
         </div>
         <div className="mt-6 flex gap-3">
           <IKFBadge variant="win" label="Ready for matches" />
@@ -102,11 +112,10 @@ function DeleteConfirmModal({ athlete, onConfirm, onCancel }: { athlete: Athlete
 }
 
 export default function AthletesPage() {
-  const { athletes, deleteAthlete, approveAthlete, settings } = useTournamentStore();
+  const { athletes, accounts, deleteAthlete, approveAthlete, settings } = useTournamentStore();
   const router = useRouter();
 
   const [globalFilter, setGlobalFilter] = useState("");
-  const [countryFilter, setCountryFilter] = useState("");
   const [weightFilter, setWeightFilter] = useState("");
   const [ageFilter, setAgeFilter] = useState("");
   const [viewAthlete, setViewAthlete] = useState<Athlete | null>(null);
@@ -121,10 +130,11 @@ export default function AthletesPage() {
   }, [deleteAthlete]);
 
   const handleExportCSV = () => {
-    const headers = ["License #", "Full Name", "DOB", "Gender", "Country", "Club", "Weight Category", "Age Group"];
+    const headers = ["License #", "Full Name", "DOB", "Gender", "Club", "Weight Category", "Age Group", "Login"];
     const rows = normalizedAthletes.map(a => [
-      a.licenseNumber, a.fullName, a.dob, a.gender, a.country,
+      a.licenseNumber, a.fullName, a.dob, a.gender,
       a.clubName, a.weightCategory, a.ageGroup,
+      accounts.find(account => account.athleteId === a.id || account.id === a.accountId)?.username ?? "",
     ]);
     const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -139,14 +149,12 @@ export default function AthletesPage() {
     return normalizedAthletes.filter(a => {
       const search = globalFilter.toLowerCase();
       const matchSearch = !search || a.fullName.toLowerCase().includes(search) ||
-        a.licenseNumber.toLowerCase().includes(search) || a.clubName.toLowerCase().includes(search) ||
-        a.country.toLowerCase().includes(search);
+        a.licenseNumber.toLowerCase().includes(search) || a.clubName.toLowerCase().includes(search);
       return matchSearch &&
-        (!countryFilter || a.country === countryFilter) &&
         (!weightFilter || a.weightCategory === weightFilter) &&
         (!ageFilter || a.ageGroup === ageFilter);
     });
-  }, [normalizedAthletes, globalFilter, countryFilter, weightFilter, ageFilter]);
+  }, [normalizedAthletes, globalFilter, weightFilter, ageFilter]);
 
   const columns = useMemo(() => [
     columnHelper.accessor("licenseNumber", {
@@ -173,15 +181,24 @@ export default function AthletesPage() {
       header: t('club', settings.language),
       cell: info => <span className="text-sm text-[var(--text-secondary)]">{info.getValue()}</span>,
     }),
-    columnHelper.accessor("country", {
-      header: t('country', settings.language),
-      cell: info => <span className="text-sm">{info.getValue()}</span>,
-    }),
     columnHelper.accessor("approvalStatus", {
       header: "Approval",
       cell: info => {
         const status = info.getValue() ?? (info.row.original.registrationStatus === "Active" ? "Approved" : "Pending");
         return <IKFBadge variant={status === "Approved" ? "win" : status === "Rejected" ? "cancelled" : "pending"} label={status} size="sm" />;
+      },
+    }),
+    columnHelper.display({
+      id: "account",
+      header: "Login",
+      cell: ({ row }) => {
+        const account = accounts.find(item => item.athleteId === row.original.id || item.id === row.original.accountId);
+        return account ? (
+          <div className="space-y-0.5 font-mono text-[10px]">
+            <div className="text-white">{account.username}</div>
+            <div className="text-[var(--text-muted)]">{account.password}</div>
+          </div>
+        ) : <span className="text-[var(--text-muted)]">Not linked</span>;
       },
     }),
     columnHelper.display({
@@ -197,7 +214,7 @@ export default function AthletesPage() {
         </div>
       ),
     }),
-  ], [approveAthlete, router, settings.language]);
+  ], [accounts, approveAthlete, router, settings.language]);
 
   const table = useReactTable({
     data: filteredData, columns,
@@ -209,7 +226,6 @@ export default function AthletesPage() {
     initialState: { pagination: { pageSize: 15 } },
   });
 
-  const countries = Array.from(new Set(normalizedAthletes.map(a => a.country))).sort();
   const weightCats = Array.from(new Set(normalizedAthletes.map(a => a.weightCategory))).sort();
   const ageGroups = Array.from(new Set(normalizedAthletes.map(a => a.ageGroup))).sort();
 
@@ -233,7 +249,7 @@ export default function AthletesPage() {
       <div className="flex flex-col xl:flex-row gap-4 items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-default)] shadow-card">
         <div className="flex-1 w-full relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-          <input type="text" placeholder={t('search_athletes', settings.language)}
+          <input type="text" placeholder="Search by name, license, or club..."
             value={globalFilter ?? ""}
             onChange={e => setGlobalFilter(e.target.value)}
             className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md pl-10 pr-4 py-2.5 text-sm text-[var(--text-primary)] focus:border-[var(--ikf-red)] focus:ring-1 focus:ring-[var(--ikf-red)] outline-none transition-all"
@@ -241,7 +257,6 @@ export default function AthletesPage() {
         </div>
         <div className="flex flex-wrap md:flex-nowrap gap-4 w-full xl:w-auto">
           {[
-            { value: countryFilter, onChange: setCountryFilter, options: countries, placeholder: t('all_countries', settings.language) },
             { value: weightFilter, onChange: setWeightFilter, options: weightCats, placeholder: t('all_weights', settings.language) },
             { value: ageFilter, onChange: setAgeFilter, options: ageGroups, placeholder: t('all_ages', settings.language) },
           ].map(({ value, onChange, options, placeholder }) => (

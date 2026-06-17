@@ -13,6 +13,11 @@ export type ReportStatus = 'Draft' | 'Official' | 'Exported';
 export type RefRole = 'Chief Referee' | 'Central Referee' | 'Corner Judge';
 export type RefStatus = 'Available' | 'In Match' | 'On Break';
 export type UserRole = 'admin' | 'central-referee' | 'corner-referee' | 'athlete' | 'club' | 'tv';
+export type NationalChampionship =
+  | 'Northern Championship'
+  | 'Central Championship'
+  | 'Southern Championship'
+  | 'Tunisia Championship';
 
 export interface RoleAccount {
   id: string;
@@ -258,6 +263,7 @@ export interface TournamentReport {
 
 export interface TournamentSettings {
   tournamentName: string;
+  championshipName: NationalChampionship;
   venue: string;
   startDate: string;
   defaultJudgesCount: 3 | 5;
