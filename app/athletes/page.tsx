@@ -14,6 +14,7 @@ import { PageHeader, IKFButton, IKFBadge, IKFEmptyState } from "@/components/ui"
 import toast from "react-hot-toast";
 import { t } from "@/lib/i18n";
 import { normalizeAgeGroup } from "@/lib/ageCategories";
+import { normalizeWeightCategory } from "@/lib/competitionRules";
 
 const columnHelper = createColumnHelper<Athlete>();
 
@@ -121,7 +122,11 @@ export default function AthletesPage() {
   const [viewAthlete, setViewAthlete] = useState<Athlete | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Athlete | null>(null);
 
-  const normalizedAthletes = useMemo(() => athletes.map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })), [athletes]);
+  const normalizedAthletes = useMemo(() => athletes.map(a => ({
+    ...a,
+    ageGroup: normalizeAgeGroup(a.ageGroup),
+    weightCategory: normalizeWeightCategory(a.weightCategory),
+  })), [athletes]);
 
   const handleDelete = useCallback((a: Athlete) => {
     deleteAthlete(a.id);

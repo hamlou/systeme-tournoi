@@ -8,7 +8,7 @@ export type RegistrationStatus = 'Pending' | 'Active' | 'Withdrawn' | 'Suspended
 export type MatchStatus = 'scheduled' | 'in-progress' | 'completed';
 export type TimerMode = 'idle' | 'round' | 'rest' | 'passivity' | 'medical';
 export type WinMethod = 'majority-decision' | 'unanimous-decision' | 'split-decision' | 'KO' | 'TKO' | 'ippon' | 'disqualification' | 'draw' | 'withdrawal';
-export type RoundEventType = 'round-start' | 'round-end' | 'wosk-stop' | 'doctor' | 'yellow-card' | 'red-card' | 'deduction' | 'ippon' | 'waza-ari' | 'yuko' | 'decision' | 'ko-tko' | 'ippon-result' | 'disqualification' | 'draw' | 'match-end' | 'match-start';
+export type RoundEventType = 'round-start' | 'round-end' | 'wosk-stop' | 'doctor' | 'yellow-card' | 'red-card' | 'deduction' | 'score-input' | 'ippon' | 'waza-ari' | 'yuko' | 'immobilisation' | 'note' | 'decision' | 'ko' | 'tko' | 'ko-tko' | 'ippon-result' | 'disqualification' | 'draw' | 'match-end' | 'match-start';
 export type ReportStatus = 'Draft' | 'Official' | 'Exported';
 export type RefRole = 'Chief Referee' | 'Central Referee' | 'Corner Judge';
 export type RefStatus = 'Available' | 'In Match' | 'On Break';
@@ -237,6 +237,10 @@ export interface RoundEvent {
   type: RoundEventType;
   corner?: 'RED' | 'BLUE';
   details: string;
+  matchId?: string;
+  round?: number;
+  officialId?: string;
+  officialName?: string;
 }
 
 export interface JudgeScore {

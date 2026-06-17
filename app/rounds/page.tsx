@@ -13,7 +13,7 @@ import { t } from "@/lib/i18n";
 import { useMatchNotifications } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 import { pushMatchState, useFirebaseMatchState, deriveLiveMatchTimers } from "@/hooks/useFirebaseMatchSync";
-import { formatMatchCategory, getRoundDuration } from "@/lib/ageCategories";
+import { formatMatchCategory, getRoundDuration, totalRoundsForAgeGroup } from "@/lib/ageCategories";
 import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 function formatTime(seconds: number) {
@@ -29,7 +29,8 @@ export default function RoundManagementPage() {
     roundTimer, setRoundTimer,
     timerMode, setTimerMode,
     roundEvents, addRoundEvent,
-    settings, updateMatch
+    settings, updateMatch,
+    judgeScores,
   } = useTournamentStore();
   const upcomingMatches = useMatchNotifications();
 
@@ -93,7 +94,7 @@ export default function RoundManagementPage() {
   const { red: redScore, blue: blueScore } = useLiveAggregateScore();
 
   const maxTime = activeMatch ? getRoundDuration(settings.roundDurations, activeMatch.ageGroup) : 180;
-  const maxRounds = activeMatch?.totalRounds ?? 3;
+  const maxRounds = activeMatch?.totalRounds ?? 2;
 
   // ── Push state to Firebase on every meaningful change ──────────────────────
   const syncToFirebase = (overrides?: Partial<{
@@ -123,6 +124,27 @@ export default function RoundManagementPage() {
     };
     setFirebaseSyncing(true);
     pushMatchState(state).finally(() => setFirebaseSyncing(false));
+  };
+
+  const getAggregateRoundWinner = (roundNumber: number): "RED" | "BLUE" | null => {
+    if (!activeMatch) return null;
+    const submittedScores = judgeScores.filter(score =>
+      score.matchId === activeMatch.id &&
+      score.round === roundNumber &&
+      score.submitted
+    );
+    if (submittedScores.length === 0) return null;
+
+    const redVotes = submittedScores.filter(score => score.redScore > score.blueScore).length;
+    const blueVotes = submittedScores.filter(score => score.blueScore > score.redScore).length;
+    if (redVotes > blueVotes) return "RED";
+    if (blueVotes > redVotes) return "BLUE";
+
+    const redTotal = submittedScores.reduce((sum, score) => sum + score.redScore, 0);
+    const blueTotal = submittedScores.reduce((sum, score) => sum + score.blueScore, 0);
+    if (redTotal > blueTotal) return "RED";
+    if (blueTotal > redTotal) return "BLUE";
+    return null;
   };
 
   // TICKER LOOP
@@ -179,9 +201,13 @@ export default function RoundManagementPage() {
       toast.error("Pause or stop the current match before switching matches.");
       return;
     }
-    const selected = { ...m, totalRounds: 3, status: m.status === "scheduled" ? "in-progress" : m.status } as Match;
-    updateMatch(m.id, { ...(m.status === "scheduled" ? { status: "in-progress" as const } : {}), totalRounds: 3 });
+    const baseRounds = totalRoundsForAgeGroup(m.ageGroup);
+    const totalRounds = m.totalRounds && m.totalRounds > baseRounds ? m.totalRounds : baseRounds;
+    const selected = { ...m, totalRounds, status: m.status === "scheduled" ? "in-progress" : m.status } as Match;
+    updateMatch(m.id, { ...(m.status === "scheduled" ? { status: "in-progress" as const } : {}), totalRounds });
     setActiveMatch(selected);
+    setCurrentRound(1);
+    setRoundTimer(getRoundDuration(settings.roundDurations, m.ageGroup));
     setTimerMode("idle");
     setRestTimeLeft(60);
     setWoskTimeLeft(10);
@@ -199,7 +225,7 @@ export default function RoundManagementPage() {
         restTimer: 60,
         timerMode: "idle",
         currentRound: 1,
-        totalRounds: m.totalRounds,
+        totalRounds,
         maxTime: getRoundDuration(settings.roundDurations, m.ageGroup),
         woskTimeLeft: 10,
         woskCorner: null,
@@ -251,6 +277,23 @@ export default function RoundManagementPage() {
     setTimerMode("idle");
     addRoundEvent({ type: "round-end", details: `Match #${activeMatch.matchNumber} — Round ${currentRound} ended` });
     
+    if (currentRound === 2 && maxRounds === 2) {
+      const roundOneWinner = getAggregateRoundWinner(1);
+      const roundTwoWinner = getAggregateRoundWinner(2);
+      if (roundOneWinner && roundTwoWinner && roundOneWinner !== roundTwoWinner) {
+        updateMatch(activeMatch.id, { totalRounds: 3 });
+        setActiveMatch({ ...activeMatch, totalRounds: 3 });
+        setCurrentRound(3);
+        setRoundTimer(maxTime);
+        setRestTimeLeft(0);
+        setResumeMode(null);
+        toast("Draw after two rounds. Round 3 tiebreak opened.", { icon: "!", duration: 5000 });
+        addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} - Round 3 tiebreak opened because each athlete won one round` });
+        syncToFirebase({ timerMode: "idle", currentRound: 3, roundTimer: maxTime, restTimeLeft: 0 });
+        return;
+      }
+    }
+
     if (currentRound < maxRounds) {
       const nextRound = currentRound + 1;
       setCurrentRound(nextRound);
@@ -293,7 +336,7 @@ export default function RoundManagementPage() {
       restTimer: 0,
       timerMode: "idle",
       currentRound: 1,
-      totalRounds: 3,
+      totalRounds: 2,
       maxTime: 180,
       woskTimeLeft: 10,
       woskCorner: null,

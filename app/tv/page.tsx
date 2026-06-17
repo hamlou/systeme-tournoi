@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { useTournamentStore, useLiveAggregateScore } from "@/store/tournamentStore";
@@ -62,9 +63,11 @@ interface CornerCardProps {
   label: string;
   yellowCards?: number;
   redCards?: number;
+  athletePhotoUrl?: string;
+  clubLogoUrl?: string;
 }
 
-function CornerCard({ side, name, club, country, score, label, yellowCards = 0, redCards = 0 }: CornerCardProps) {
+function CornerCard({ side, name, club, country, score, label, yellowCards = 0, redCards = 0, athletePhotoUrl, clubLogoUrl }: CornerCardProps) {
   const isRed = side === "RED";
   return (
     <div
@@ -96,6 +99,24 @@ function CornerCard({ side, name, club, country, score, label, yellowCards = 0, 
           }}
         >
           {isRed ? "🔴" : "🔵"} {label.toUpperCase()}
+        </div>
+
+        {/* Athlete and club images */}
+        <div className={`mb-5 flex items-center gap-4 ${isRed ? "" : "flex-row-reverse"}`}>
+          <div className="relative h-24 w-24 overflow-hidden rounded-3xl border border-white/20 bg-black/35 shadow-2xl">
+            {athletePhotoUrl ? (
+              <Image src={athletePhotoUrl} alt={`${name} profile photo`} fill sizes="96px" className="object-cover" unoptimized />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center font-display text-4xl text-white/35">{name.slice(0, 1) || "?"}</div>
+            )}
+          </div>
+          <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-white/15 bg-black/35">
+            {clubLogoUrl ? (
+              <Image src={clubLogoUrl} alt={`${club || "Club"} logo`} fill sizes="64px" className="object-cover" unoptimized />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-xs font-black uppercase tracking-widest text-white/30">Club</div>
+            )}
+          </div>
         </div>
 
         {/* Fighter Name */}
@@ -154,14 +175,36 @@ function sameEventKey(event: RoundEvent | StoredJudgingEvent) {
   return `${event.id || event.timestamp}-${event.type}-${event.corner || ""}-${event.details}`;
 }
 
-const METHOD_EVENT_TYPES = new Set(["decision", "ko-tko", "ippon-result", "disqualification", "draw"]);
+const METHOD_EVENT_TYPES = new Set([
+  "decision",
+  "ko",
+  "tko",
+  "ko-tko",
+  "ippon",
+  "ippon-result",
+  "waza-ari",
+  "yuko",
+  "immobilisation",
+  "disqualification",
+  "doctor",
+  "note",
+  "draw",
+]);
 
 function methodLabel(type: string) {
   const labels: Record<string, string> = {
     decision: "Decision",
+    ko: "KO",
+    tko: "TKO",
     "ko-tko": "KO / TKO",
+    ippon: "Ippon",
     "ippon-result": "Ippon (Kids)",
+    "waza-ari": "Waza-ari",
+    yuko: "Yuko",
+    immobilisation: "Immobilisation",
     disqualification: "Disqualification",
+    doctor: "Doctor Pause",
+    note: "Referee Note",
     draw: "DRAW",
   };
   return labels[type] ?? type;
@@ -246,7 +289,7 @@ export default function TVDisplay() {
   const liveWoskTimeLeft = derivedTimers?.woskTimeLeft ?? selectedFbState?.woskTimeLeft ?? 10;
   const liveWoskCorner = selectedFbState?.woskCorner ?? null;
   const liveMaxTime = selectedFbState?.maxTime ?? displayMatch?.roundDurationSeconds ?? 180;
-  const liveTotalRounds = selectedFbState?.totalRounds ?? displayMatch?.totalRounds ?? 3;
+  const liveTotalRounds = selectedFbState?.totalRounds ?? displayMatch?.totalRounds ?? 2;
 
   useFirebaseJudgingData(displayMatch?.id ?? null, ({ scores, events }) => {
     setDatabaseScores(scores);
@@ -255,6 +298,8 @@ export default function TVDisplay() {
 
   const redAthlete = athletes.find(a => a.id === displayMatch?.redCornerId);
   const blueAthlete = athletes.find(a => a.id === displayMatch?.blueCornerId);
+  const redClub = clubs.find(club => club.id === redAthlete?.clubId || club.name === redAthlete?.clubName);
+  const blueClub = clubs.find(club => club.id === blueAthlete?.clubId || club.name === blueAthlete?.clubName);
 
   const combinedScores = useMemo(() => {
     const byRoundAndJudge = new Map<string, StoredJudgeScore | typeof judgeScores[number]>();
@@ -416,7 +461,37 @@ export default function TVDisplay() {
   const assignedOfficials = [
     displayMatch?.assignedRefereeId ? referees.find(r => r.id === displayMatch.assignedRefereeId) : null,
     ...(displayMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)) ?? []),
-  ].filter(Boolean);
+  ].filter(Boolean) as typeof referees;
+
+  const officialRows = useMemo(() => assignedOfficials.map(official => {
+    const officialScores = combinedScores.filter(score => score.matchId === displayMatch?.id && score.judgeId === official.id);
+    const currentScore = officialScores.find(score => score.round === liveCurrentRound);
+    const officialEvents = scopedEvents.filter(event =>
+      (event as StoredJudgingEvent).officialId === official.id ||
+      (event as StoredJudgingEvent).officialName === official.name
+    );
+    const redYellow = officialEvents.filter(event => event.corner === "RED" && event.type === "yellow-card").length;
+    const blueYellow = officialEvents.filter(event => event.corner === "BLUE" && event.type === "yellow-card").length;
+    const redRed = officialEvents.filter(event => event.corner === "RED" && event.type === "red-card").length;
+    const blueRed = officialEvents.filter(event => event.corner === "BLUE" && event.type === "red-card").length;
+    const methodCalls = officialEvents.filter(event => METHOD_EVENT_TYPES.has(event.type));
+    const latestAction = officialEvents[officialEvents.length - 1] ?? null;
+    const submittedScores = officialScores.filter(score => score.submitted);
+
+    return {
+      official,
+      currentScore,
+      redTotal: submittedScores.reduce((sum, score) => sum + score.redScore, 0),
+      blueTotal: submittedScores.reduce((sum, score) => sum + score.blueScore, 0),
+      redYellow,
+      blueYellow,
+      redRed,
+      blueRed,
+      methodCalls,
+      latestAction,
+      actionCount: officialEvents.length,
+    };
+  }), [assignedOfficials, combinedScores, displayMatch?.id, liveCurrentRound, scopedEvents]);
 
   const approvedClubs = useMemo(
     () => clubs.filter(club => club.status === "Active" && (club.approvalStatus ?? "Approved") === "Approved"),
@@ -518,7 +593,7 @@ export default function TVDisplay() {
                         </div>
                       </div>
                       <div className="mt-5 flex items-center justify-between border-t border-[rgba(255,255,255,0.07)] pt-4 text-xs font-bold uppercase tracking-widest text-[rgba(255,255,255,0.45)]">
-                        <span>Round {liveState?.currentRound ?? 1} / {liveState?.totalRounds ?? match.totalRounds ?? 3}</span>
+                        <span>Round {liveState?.currentRound ?? 1} / {liveState?.totalRounds ?? match.totalRounds ?? 2}</span>
                         <span>{liveState ? formatTime(deriveLiveMatchTimers(liveState)?.roundTimer ?? liveState.roundTimer) : "Standby"}</span>
                       </div>
                     </button>
@@ -688,6 +763,8 @@ export default function TVDisplay() {
           label={t('red_corner', settings.language)}
           yellowCards={redWarnings}
           redCards={redCards}
+          athletePhotoUrl={redAthlete?.photoUrl}
+          clubLogoUrl={redClub?.logoUrl}
         />
 
         {/* CENTER: Timer + VS */}
@@ -749,11 +826,65 @@ export default function TVDisplay() {
           label={t('blue_corner', settings.language)}
           yellowCards={blueWarnings}
           redCards={blueCards}
+          athletePhotoUrl={blueAthlete?.photoUrl}
+          clubLogoUrl={blueClub?.logoUrl}
         />
       </div>
 
       {/* ── JUDGE SCORE PANEL ─────────────────────────────────────────────── */}
-      <div className="relative z-10 flex items-stretch border-t border-[rgba(255,255,255,0.06)] h-[90px]">
+      <div className="relative z-10 border-t border-[rgba(255,255,255,0.06)] bg-black/45 px-5 py-3">
+        <div className="mb-2 flex items-center justify-between gap-4">
+          <div className="text-[10px] font-black uppercase tracking-[0.32em] text-[rgba(255,255,255,0.42)]">Every referee decision, points, cards, and actions</div>
+          <div className="flex items-center gap-3 rounded-2xl border border-[rgba(255,255,255,0.12)] bg-white/[0.03] px-4 py-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.28em] text-[rgba(255,255,255,0.38)]">{t('aggregate_uc', settings.language)}</span>
+            <span className="font-display text-3xl text-[var(--ikf-red)]">{displayScores.red}</span>
+            <span className="text-[rgba(255,255,255,0.32)]">-</span>
+            <span className="font-display text-3xl text-[var(--corner-blue)]">{displayScores.blue}</span>
+          </div>
+        </div>
+
+        <div className="grid max-h-[190px] grid-cols-1 gap-2 overflow-y-auto pr-1 xl:grid-cols-2 2xl:grid-cols-3">
+          {officialRows.length === 0 ? (
+            <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] p-4 text-sm font-bold text-[rgba(255,255,255,0.42)]">No assigned officials for this match yet.</div>
+          ) : officialRows.map(row => (
+            <div key={row.official.id} className="rounded-2xl border border-[rgba(255,255,255,0.09)] bg-white/[0.035] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-black text-white">{row.official.name}</div>
+                  <div className="text-[9px] font-black uppercase tracking-[0.24em] text-[rgba(255,255,255,0.36)]">{row.official.role}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-display text-3xl text-[var(--ikf-red)]">{row.currentScore?.redScore ?? 0}</span>
+                  <span className="text-[rgba(255,255,255,0.25)]">-</span>
+                  <span className="font-display text-3xl text-[var(--corner-blue)]">{row.currentScore?.blueScore ?? 0}</span>
+                </div>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
+                <div className="rounded-xl bg-[rgba(200,16,46,0.1)] px-3 py-2 text-[var(--ikf-red)]">Red cards: Y{row.redYellow} / R{row.redRed}</div>
+                <div className="rounded-xl bg-[rgba(0,102,204,0.1)] px-3 py-2 text-[var(--corner-blue)]">Blue cards: Y{row.blueYellow} / R{row.blueRed}</div>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {row.methodCalls.slice(-4).map((event, index) => (
+                  <span key={`${row.official.id}-method-${index}-${event.timestamp}`} className="rounded-full border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] px-2 py-1 text-[9px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">
+                    {methodLabel(event.type)}{event.corner ? ` ${event.corner}` : ""}
+                  </span>
+                ))}
+                {row.methodCalls.length === 0 && (
+                  <span className="rounded-full border border-[rgba(255,255,255,0.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">No central call</span>
+                )}
+              </div>
+
+              <div className="mt-2 truncate text-[11px] font-semibold text-[rgba(255,255,255,0.55)]">
+                Latest: {row.latestAction ? `${new Date(row.latestAction.timestamp).toLocaleTimeString()} - ${row.latestAction.details}` : "Waiting for action"}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="hidden">
         {/* Individual judge scores */}
         {assignedOfficials.map((judge, i) => {
           if (!judge) return null;

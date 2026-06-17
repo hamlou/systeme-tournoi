@@ -54,14 +54,39 @@ function normalizeAgeGroup(ageGroup?: string) {
 function formatMethodEvent(event: { type: string; corner?: "RED" | "BLUE" }) {
   const labels: Record<string, string> = {
     decision: "Decision",
+    ko: "KO",
+    tko: "TKO",
     "ko-tko": "KO / TKO",
+    ippon: "Ippon",
     "ippon-result": "Ippon (Kids)",
+    "waza-ari": "Waza-ari",
+    yuko: "Yuko",
+    immobilisation: "Immobilisation",
     disqualification: "Disqualification",
+    doctor: "Doctor Pause",
+    note: "Referee Note",
+    "score-input": "Score Input",
     draw: "DRAW",
   };
   const corner = event.corner ? ` (${event.corner})` : "";
   return `${labels[event.type] ?? event.type}${corner}`;
 }
+
+const REPORT_METHOD_EVENT_TYPES = new Set([
+  "decision",
+  "ko",
+  "tko",
+  "ko-tko",
+  "ippon",
+  "ippon-result",
+  "waza-ari",
+  "yuko",
+  "immobilisation",
+  "disqualification",
+  "doctor",
+  "note",
+  "draw",
+]);
 
 function MatchReportDocument({
   report,
@@ -123,11 +148,11 @@ function MatchReportDocument({
   const calculatedBlueTotal = submittedScores.reduce((sum, score) => sum + score.blueScore, 0);
   const finalRedTotal = match.result?.redTotalScore ?? calculatedRedTotal;
   const finalBlueTotal = match.result?.blueTotalScore ?? calculatedBlueTotal;
-  const liveMethodEvents = matchEvents.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+  const liveMethodEvents = matchEvents.filter(event => REPORT_METHOD_EVENT_TYPES.has(event.type));
   const officialRows = assignedOfficialRecords.map((official: any) => {
     const scores = submittedScores.filter(score => score.judgeId === official.id);
     const officialEvents = matchEvents.filter(event => (event as any).officialId === official.id || (event as any).officialName === official.name);
-    const methodEvents = officialEvents.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+    const methodEvents = officialEvents.filter(event => REPORT_METHOD_EVENT_TYPES.has(event.type));
     const redTotal = scores.reduce((sum, score) => sum + score.redScore, 0);
     const blueTotal = scores.reduce((sum, score) => sum + score.blueScore, 0);
     return {
@@ -140,7 +165,7 @@ function MatchReportDocument({
       redCards: officialEvents.filter(event => event.type === "red-card").length,
       deductions: officialEvents.filter(event => event.type === "deduction").length,
       warnings: officialEvents.filter(event => event.type === "yellow-card" || event.type === "wosk-stop").length,
-      specialEvents: officialEvents.filter(event => ["ippon", "waza-ari", "yuko", "doctor"].includes(event.type)).length,
+      specialEvents: officialEvents.filter(event => REPORT_METHOD_EVENT_TYPES.has(event.type) || ["score-input", "deduction"].includes(event.type)).length,
       actionCount: officialEvents.length,
       methodDecisions: methodEvents.map(formatMethodEvent).join(", ") || "None",
       decision: redTotal > blueTotal ? match.redCornerName : blueTotal > redTotal ? match.blueCornerName : scores.length ? "Draw" : "No score submitted",

@@ -27,7 +27,7 @@ export function isYouthAgeGroup(value?: string | null) {
 
 export function totalRoundsForAgeGroup(value?: string | null) {
   normalizeAgeGroup(value);
-  return 3;
+  return 2;
 }
 
 export function getRoundDuration(
@@ -39,14 +39,15 @@ export function getRoundDuration(
 }
 
 export function formatMatchCategory(ageGroup?: string | null, weightCategory?: string | null, gender?: Gender | string | null) {
-  return [gender, normalizeAgeGroup(ageGroup), weightCategory].filter(Boolean).join(" ");
+  const normalizedWeight = weightCategory?.trim().replace(/^\+/, "-");
+  return [gender, normalizeAgeGroup(ageGroup), normalizedWeight].filter(Boolean).join(" ");
 }
 
 export function parseCategoryId(categoryId: string) {
   const parts = categoryId.trim().split(/\s+/);
   const gender = parts[0] === "Male" || parts[0] === "Female" ? parts[0] as Gender : undefined;
   const categoryParts = gender ? parts.slice(1) : parts;
-  const weightCategory = categoryParts.find(part => /kg$/i.test(part)) ?? categoryParts[categoryParts.length - 1] ?? "";
+  const weightCategory = (categoryParts.find(part => /kg$/i.test(part)) ?? categoryParts[categoryParts.length - 1] ?? "").replace(/^\+/, "-");
   const ageGroup = normalizeAgeGroup(categoryParts.filter(part => part !== weightCategory).join(" "));
   const baseCategory = formatMatchCategory(ageGroup, weightCategory);
   return { ageGroup, weightCategory, gender, category: gender ? `${gender} ${baseCategory}` : baseCategory };

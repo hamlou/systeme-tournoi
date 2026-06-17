@@ -11,8 +11,7 @@ import type { Athlete, WeighinRecord, WeighinStatus } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFButton, IKFBadge, SectionDivider } from "@/components/ui";
 import { t } from "@/lib/i18n";
 import { normalizeAgeGroup } from "@/lib/ageCategories";
-
-const WEIGHT_CATEGORIES = ["-40kg", "-45kg", "-50kg", "-55kg", "-60kg", "-65kg", "-70kg", "-75kg", "-80kg", "-85kg", "-90kg", "+90kg"];
+import { getNextWeightCategory, normalizeWeightCategory } from "@/lib/competitionRules";
 
 export default function WeighInPage() {
   const { athletes, weighinRecords: logs, addWeighinRecord: addLog, updateAthleteWeighinStatus, settings } = useTournamentStore();
@@ -36,7 +35,7 @@ export default function WeighInPage() {
   }, [searchTerm, athletes]);
 
   const handleSelectAthlete = (athlete: Athlete) => {
-    setCurrentAthlete(athlete);
+    setCurrentAthlete({ ...athlete, weightCategory: normalizeWeightCategory(athlete.weightCategory) });
     setSearchTerm("");
     setWeightValue("");
     setLastRecordedWeight(null);
@@ -47,20 +46,16 @@ export default function WeighInPage() {
   };
 
   const getLimitFromCategory = (cat: string) => {
-    const match = cat.match(/([+-])(\d+)kg/);
+    const match = normalizeWeightCategory(cat).match(/-(\d+)kg/);
     if (!match) return null;
     return {
-      sign: match[1],
-      limit: parseInt(match[2], 10)
+      sign: "-",
+      limit: parseInt(match[1], 10)
     };
   };
 
   const getNextCategory = (currentLimit: number) => {
-    const index = WEIGHT_CATEGORIES.indexOf(`-${currentLimit}kg`);
-    if (index !== -1 && index + 1 < WEIGHT_CATEGORIES.length) {
-      return WEIGHT_CATEGORIES[index + 1];
-    }
-    return "+90kg";
+    return getNextWeightCategory(`-${currentLimit}kg`);
   };
 
   const handleConfirmWeight = () => {
@@ -110,16 +105,6 @@ export default function WeighInPage() {
       } else {
         status = "Confirmed";
         message = `${displayWeight} kg — Within category limit (-${limitData.limit}kg). Athlete cleared.`;
-      }
-    } else {
-      // +90kg logic
-      if (kgValue < limitData.limit) {
-        status = "Overweight"; 
-        message = `${displayWeight} kg — Below minimum for +${limitData.limit}kg. Reassign to the correct lower category before competing.`;
-        nextCat = "-90kg";
-      } else {
-        status = "Confirmed";
-        message = `${displayWeight} kg — Meets category minimum (+${limitData.limit}kg). Athlete cleared.`;
       }
     }
 
@@ -227,7 +212,7 @@ export default function WeighInPage() {
                     <span className="font-semibold text-[var(--text-primary)]">{a.fullName}</span>
                     <span className="text-xs font-mono text-[var(--text-muted)]">{a.licenseNumber} • {a.clubName}</span>
                   </div>
-                  <IKFBadge variant="pending" label={a.weightCategory} size="sm" />
+                  <IKFBadge variant="pending" label={normalizeWeightCategory(a.weightCategory)} size="sm" />
                 </div>
               ))}
             </div>

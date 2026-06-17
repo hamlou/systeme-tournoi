@@ -16,6 +16,7 @@ import { TeamBracket } from "@/components/brackets/TeamBracket";
 import { MatchDetailModal } from "@/components/brackets/MatchDetailModal";
 import toast from "react-hot-toast";
 import { AGE_GROUPS, AGE_GROUP_LABELS, formatMatchCategory, normalizeAgeGroup } from "@/lib/ageCategories";
+import { normalizeWeightCategory } from "@/lib/competitionRules";
 
 const FORMATS: { value: BracketFormat; label: string; desc: string }[] = [
   { value: "single-elimination", label: "Single Elimination", desc: "Lose once and you're out. BYEs auto-assigned for non power-of-2 counts." },
@@ -34,7 +35,7 @@ export default function BracketsPage() {
   const ageOptions: { value: AgeGroup; label: string }[] = AGE_GROUPS.map(value => ({ value, label: AGE_GROUP_LABELS[value] }));
   const confirmed = useMemo(() => athletes
     .filter(a => a.registrationStatus === "Active" && (a.approvalStatus ?? "Approved") === "Approved")
-    .map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })),
+    .map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup), weightCategory: normalizeWeightCategory(a.weightCategory) })),
   [athletes]);
   const [selectedGender, setSelectedGender] = useState<Gender>("Male");
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup | "">("Senior");
@@ -43,7 +44,7 @@ export default function BracketsPage() {
       a.gender === selectedGender &&
       (!selectedAgeGroup || normalizeAgeGroup(a.ageGroup) === selectedAgeGroup)
     );
-    return Array.from(new Set(relevant.map(a => a.weightCategory))).sort();
+    return Array.from(new Set(relevant.map(a => normalizeWeightCategory(a.weightCategory)))).sort();
   }, [confirmed, selectedGender, selectedAgeGroup]);
 
   const [selectedWeightCategory, setSelectedWeightCategory] = useState(uniqueWeights[0] || "");
@@ -82,7 +83,7 @@ export default function BracketsPage() {
     () => confirmed.filter(a =>
       a.gender === selectedGender &&
       (!selectedAgeGroup || normalizeAgeGroup(a.ageGroup) === selectedAgeGroup) &&
-      (!selectedWeightCategory || a.weightCategory === selectedWeightCategory)
+      (!selectedWeightCategory || normalizeWeightCategory(a.weightCategory) === selectedWeightCategory)
     ),
     [confirmed, selectedGender, selectedAgeGroup, selectedWeightCategory]
   );
@@ -90,7 +91,7 @@ export default function BracketsPage() {
     () => matches.filter(m =>
       m.round === "Fight Order" &&
       normalizeAgeGroup(m.ageGroup) === selectedAgeGroup &&
-      m.weightCategory === selectedWeightCategory &&
+      normalizeWeightCategory(m.weightCategory) === selectedWeightCategory &&
       (m.gender === selectedGender || m.category === selectedCategory)
     ).sort((a, b) => a.matchNumber - b.matchNumber),
     [matches, selectedGender, selectedAgeGroup, selectedWeightCategory, selectedCategory]

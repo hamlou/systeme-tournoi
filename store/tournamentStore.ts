@@ -23,6 +23,7 @@ import {
 } from "@/lib/ageCategories";
 import { DEFAULT_ROLE_ACCOUNTS, makeUsername } from "@/lib/roleAccess";
 import { DEFAULT_CHAMPIONSHIP, NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import { normalizeWeightCategory } from "@/lib/competitionRules";
 
 // ─── Firebase Sync Helpers ────────────────────────────────────────────────────
 
@@ -114,6 +115,11 @@ function makeLinkedAccount(
     createdAt: nowIso(),
     approvedAt: nowIso(),
   };
+}
+
+function matchTotalRounds(match: Pick<Match, "ageGroup" | "totalRounds">, requested?: number) {
+  const baseRounds = totalRoundsForAgeGroup(match.ageGroup);
+  return requested && requested > baseRounds ? requested : baseRounds;
 }
 
 // ─── Store Interface ─────────────────────────────────────────────────────────
@@ -247,6 +253,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       ...a,
       country: NATIONAL_COUNTRY,
       ageGroup: normalizeAgeGroup(a.ageGroup),
+      weightCategory: normalizeWeightCategory(a.weightCategory),
       approvalStatus,
       weighInStatus: a.weighInStatus ?? 'Confirmed',
       registrationStatus: a.registrationStatus ?? (approvalStatus === "Approved" ? 'Active' : 'Pending'),
@@ -278,7 +285,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   },
   updateAthlete: (id, data) => {
     set(s => ({
-      athletes: s.athletes.map(a => a.id === id ? { ...a, ...data, country: NATIONAL_COUNTRY } : a)
+      athletes: s.athletes.map(a => a.id === id ? { ...a, ...data, country: NATIONAL_COUNTRY, weightCategory: normalizeWeightCategory(data.weightCategory ?? a.weightCategory) } : a)
     }));
     syncToFirebase('athletes', get().athletes);
   },
@@ -386,7 +393,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     set(s => ({
       athletes: s.athletes.map(a =>
         a.id === athleteId
-          ? { ...a, weighInStatus: status, ...(newCategory ? { weightCategory: newCategory } : {}) }
+          ? { ...a, weighInStatus: status, ...(newCategory ? { weightCategory: normalizeWeightCategory(newCategory) } : {}) }
           : a
       )
     }));
@@ -397,7 +404,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   matches: [],
   brackets: [],
   addMatch: (m) => {
-    set(s => ({ matches: [...s.matches, { ...m, totalRounds: 3 }] }));
+    set(s => ({ matches: [...s.matches, { ...m, weightCategory: normalizeWeightCategory(m.weightCategory), totalRounds: matchTotalRounds(m, m.totalRounds) }] }));
     syncToFirebase('matches', get().matches);
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
@@ -408,10 +415,27 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       const completed = data.status === 'completed';
       const started = data.status === 'in-progress';
       const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
-      updatedMatch = current ? { ...current, ...data, totalRounds: 3 } as Match : undefined;
+      updatedMatch = current
+        ? {
+            ...current,
+            ...data,
+            weightCategory: normalizeWeightCategory(data.weightCategory ?? current.weightCategory),
+            totalRounds: matchTotalRounds(current, data.totalRounds),
+          } as Match
+        : undefined;
       return {
-        matches: s.matches.map(m => m.id === id ? { ...m, ...data, totalRounds: 3 } : m),
-        activeMatch: s.activeMatch?.id === id ? { ...s.activeMatch, ...data, totalRounds: 3 } as Match : s.activeMatch,
+        matches: s.matches.map(m => m.id === id ? {
+          ...m,
+          ...data,
+          weightCategory: normalizeWeightCategory(data.weightCategory ?? m.weightCategory),
+          totalRounds: matchTotalRounds(m, data.totalRounds),
+        } : m),
+        activeMatch: s.activeMatch?.id === id ? {
+          ...s.activeMatch,
+          ...data,
+          weightCategory: normalizeWeightCategory(data.weightCategory ?? s.activeMatch.weightCategory),
+          totalRounds: matchTotalRounds(s.activeMatch, data.totalRounds),
+        } as Match : s.activeMatch,
         referees: completed
           ? s.referees.map(r => assignedIds.includes(r.id) ? { ...r, status: 'Available', currentMatchId: undefined, currentAssignment: undefined } : r)
           : started
@@ -434,7 +458,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     const settings = get().settings;
     const parsedCategory = parseCategoryId(categoryId);
     const ageGroup = normalizeAgeGroup(eligibleAthletes[0]?.ageGroup ?? parsedCategory.ageGroup);
-    const weightCategory = eligibleAthletes[0]?.weightCategory ?? parsedCategory.weightCategory;
+    const weightCategory = normalizeWeightCategory(eligibleAthletes[0]?.weightCategory ?? parsedCategory.weightCategory);
     const gender = options?.gender ?? eligibleAthletes[0]?.gender ?? parsedCategory.gender;
     if (!gender) {
       toast.error('Select Male or Female before generating a bracket');
@@ -538,11 +562,12 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
 
   generateFightOrder: (ageGroup, weightCategory, gender) => {
     const normalizedAgeGroup = normalizeAgeGroup(ageGroup);
-    const baseCategory = formatMatchCategory(normalizedAgeGroup, weightCategory);
+    const normalizedWeightCategory = normalizeWeightCategory(weightCategory);
+    const baseCategory = formatMatchCategory(normalizedAgeGroup, normalizedWeightCategory);
     const category = gender ? `${gender} ${baseCategory}` : baseCategory;
     const matchBelongsToCategory = (match: Match) =>
       normalizeAgeGroup(match.ageGroup) === normalizedAgeGroup &&
-      match.weightCategory === weightCategory &&
+      normalizeWeightCategory(match.weightCategory) === normalizedWeightCategory &&
       (!gender || match.gender === gender || match.category === category);
     const categoryMatches = get().matches.filter(m => matchBelongsToCategory(m) && m.status === 'scheduled');
     const shuffled = shuffle(categoryMatches);
@@ -961,7 +986,11 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   // ── Active Match & Round State ──
   activeMatch: null,
   setActiveMatch: (m) => {
-    const nextMatch = m ? { ...m, totalRounds: 3 } : null;
+    const nextMatch = m ? {
+      ...m,
+      weightCategory: normalizeWeightCategory(m.weightCategory),
+      totalRounds: matchTotalRounds(m, m.totalRounds),
+    } : null;
     set({ activeMatch: nextMatch });
     if (nextMatch) syncToFirebase('activeMatch', nextMatch);
   },
@@ -1017,69 +1046,29 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     const match = state.matches.find(m => m.id === matchId);
     if (!match) return;
 
-    // Check for live method events first (Decision, KO/TKO, Ippon, Disqualification, Draw).
-    const matchEvents = (sourceEvents ?? state.roundEvents).filter(e =>
-      e.details?.includes(`#${match.matchNumber}`) || e.details?.toLowerCase().includes(`match #${match.matchNumber}`)
-    );
-    const decisiveEvents = matchEvents.filter(e =>
-      ['decision', 'ko-tko', 'ippon-result', 'disqualification', 'draw'].includes(e.type)
-    );
-    const lastDecisive = decisiveEvents.length > 0 ? decisiveEvents[decisiveEvents.length - 1] : null;
+    const judgeAgg = judgeIds.map(jid => {
+      const js = scores.filter(s => s.judgeId === jid);
+      const red = js.reduce((a, s) => a + s.redScore, 0);
+      const blue = js.reduce((a, s) => a + s.blueScore, 0);
+      return { judgeId: jid, redWins: red > blue, blueWins: blue > red, redTotal: red, blueTotal: blue };
+    });
 
-    let result: MatchResult;
+    const redWins = judgeAgg.filter(j => j.redWins).length;
+    const blueWins = judgeAgg.filter(j => j.blueWins).length;
+    const totalRed = judgeAgg.reduce((a, j) => a + j.redTotal, 0);
+    const totalBlue = judgeAgg.reduce((a, j) => a + j.blueTotal, 0);
 
-    if (lastDecisive) {
-      // Use the decisive event as the authoritative result
-      const method = lastDecisive.type === 'decision' ? 'majority-decision' :
-                     lastDecisive.type === 'ko-tko' ? 'KO' :
-                     lastDecisive.type === 'ippon-result' ? 'ippon' :
-                     lastDecisive.type === 'disqualification' ? 'disqualification' : 'draw';
+    const winnerCorner: 'RED' | 'BLUE' = redWins >= blueWins ? 'RED' : 'BLUE';
+    const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
+    const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
+    const method = redWins === blueWins ? 'split-decision' :
+      (redWins === judgeIds.length || blueWins === judgeIds.length) ? 'unanimous-decision' : 'majority-decision';
 
-      const totalRed = scores.reduce((a, s) => a + s.redScore, 0);
-      const totalBlue = scores.reduce((a, s) => a + s.blueScore, 0);
-
-      if (method === 'draw') {
-        result = {
-          winnerId: '', winnerName: 'Draw', winnerCorner: 'RED', method: 'draw',
-          redTotalScore: totalRed, blueTotalScore: totalBlue,
-          roundScores: scores, validatedAt: new Date().toISOString(),
-        };
-      } else {
-        const winnerCorner = lastDecisive.corner ?? (totalRed >= totalBlue ? 'RED' : 'BLUE');
-        const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
-        const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
-        result = {
-          winnerId, winnerName, winnerCorner, method,
-          redTotalScore: totalRed, blueTotalScore: totalBlue,
-          roundScores: scores, validatedAt: new Date().toISOString(),
-        };
-      }
-    } else {
-      // Fallback: score-based majority/unanimous/split decision
-      const judgeAgg = judgeIds.map(jid => {
-        const js = scores.filter(s => s.judgeId === jid);
-        const red = js.reduce((a, s) => a + s.redScore, 0);
-        const blue = js.reduce((a, s) => a + s.blueScore, 0);
-        return { judgeId: jid, redWins: red > blue, redTotal: red, blueTotal: blue };
-      });
-
-      const redWins = judgeAgg.filter(j => j.redWins).length;
-      const blueWins = judgeAgg.filter(j => !j.redWins).length;
-      const totalRed = judgeAgg.reduce((a, j) => a + j.redTotal, 0);
-      const totalBlue = judgeAgg.reduce((a, j) => a + j.blueTotal, 0);
-
-      const winnerCorner: 'RED' | 'BLUE' = redWins >= blueWins ? 'RED' : 'BLUE';
-      const winnerId = winnerCorner === 'RED' ? match.redCornerId : match.blueCornerId;
-      const winnerName = winnerCorner === 'RED' ? match.redCornerName : match.blueCornerName;
-      const method = redWins === blueWins ? 'split-decision' :
-        (redWins === judgeIds.length || blueWins === judgeIds.length) ? 'unanimous-decision' : 'majority-decision';
-
-      result = {
-        winnerId, winnerName, winnerCorner, method,
-        redTotalScore: totalRed, blueTotalScore: totalBlue,
-        roundScores: scores, validatedAt: new Date().toISOString(),
-      };
-    }
+    const result: MatchResult = {
+      winnerId, winnerName, winnerCorner, method,
+      redTotalScore: totalRed, blueTotalScore: totalBlue,
+      roundScores: scores, validatedAt: new Date().toISOString(),
+    };
 
     if (sourceScores || sourceEvents) {
       set(s => {

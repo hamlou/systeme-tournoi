@@ -6,6 +6,8 @@ import { db } from "@/lib/firebase";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, RoundEvent, TournamentReport, TournamentSettings, RoleAccount } from "@/types/tournament";
 import { DEFAULT_CHAMPIONSHIP, NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import { totalRoundsForAgeGroup } from "@/lib/ageCategories";
+import { normalizeWeightCategory } from "@/lib/competitionRules";
 
 interface SyncContextType {
   isConnected: boolean;
@@ -32,6 +34,15 @@ function makeAccountUsername(name: string, prefix: string, accounts: RoleAccount
 function makeAccountPassword(prefix: string, profileId: string) {
   const tail = profileId.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "000001";
   return `${prefix}-${tail}`;
+}
+
+function normalizeMatch(match: Match): Match {
+  const baseRounds = totalRoundsForAgeGroup(match.ageGroup);
+  return {
+    ...match,
+    weightCategory: normalizeWeightCategory(match.weightCategory),
+    totalRounds: match.totalRounds && match.totalRounds > baseRounds ? match.totalRounds : baseRounds,
+  };
 }
 
 function ensureProfileAccount(
@@ -127,6 +138,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             ...athlete,
             accountId: linked.accountId,
             country: NATIONAL_COUNTRY,
+            weightCategory: normalizeWeightCategory(athlete.weightCategory),
             approvalStatus,
             registrationStatus: athlete.registrationStatus ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
           };
@@ -163,10 +175,13 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         store.setState({ weighinRecords: data.weighinRecords as WeighinRecord[] });
       }
       if (Array.isArray(data.matches)) {
-        store.setState({ matches: (data.matches as Match[]).map(match => ({ ...match, totalRounds: 3 })) });
+        store.setState({ matches: (data.matches as Match[]).map(normalizeMatch) });
       }
       if (Array.isArray(data.brackets)) {
-        store.setState({ brackets: data.brackets as Bracket[] });
+        store.setState({ brackets: (data.brackets as Bracket[]).map(bracket => ({
+          ...bracket,
+          weightCategory: normalizeWeightCategory(bracket.weightCategory),
+        })) });
       }
       if (Array.isArray(data.referees)) {
         const normalizedReferees = (data.referees as Referee[]).map(referee => {
@@ -207,7 +222,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         store.setState({ reports: data.reports as TournamentReport[] });
       }
       if (data.activeMatch) {
-        store.setState({ activeMatch: { ...(data.activeMatch as Match), totalRounds: 3 } });
+        store.setState({ activeMatch: normalizeMatch(data.activeMatch as Match) });
       }
     };
 

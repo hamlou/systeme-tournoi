@@ -39,6 +39,23 @@ const PURPLE = "#9b59b6";
 const TEAL = "#1abc9c";
 const MUTED = "rgba(255,255,255,0.08)";
 const TEXT = "rgba(255,255,255,0.45)";
+const RESULT_EVENT_TYPES = new Set(["decision", "ko", "tko", "ko-tko", "ippon", "ippon-result", "disqualification", "draw"]);
+const REFEREE_ACTION_TYPES = new Set([
+  "decision",
+  "ko",
+  "tko",
+  "ko-tko",
+  "ippon",
+  "ippon-result",
+  "waza-ari",
+  "yuko",
+  "immobilisation",
+  "disqualification",
+  "doctor",
+  "note",
+  "draw",
+  "score-input",
+]);
 
 const DarkTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
@@ -133,12 +150,11 @@ export default function StatisticsPage() {
 
   const RESULT_PIE = useMemo(() => {
     let decision = 0, ko = 0, ippon = 0, dq = 0, draw = 0;
-    const methodEventTypes = new Set(["decision", "ko-tko", "ippon-result", "disqualification", "draw"]);
-    const resultEvents = combinedRoundEvents.filter(event => methodEventTypes.has(event.type));
+    const resultEvents = combinedRoundEvents.filter(event => RESULT_EVENT_TYPES.has(event.type));
     resultEvents.forEach(event => {
       if (event.type === "decision") decision++;
-      if (event.type === "ko-tko") ko++;
-      if (event.type === "ippon-result") ippon++;
+      if (event.type === "ko" || event.type === "tko" || event.type === "ko-tko") ko++;
+      if (event.type === "ippon" || event.type === "ippon-result") ippon++;
       if (event.type === "disqualification") dq++;
       if (event.type === "draw") draw++;
     });
@@ -223,7 +239,7 @@ export default function StatisticsPage() {
     const assignedMatches = matches.filter(m => m.assignedJudgeIds?.includes(r.id) || m.assignedRefereeId === r.id);
     const officialEvents = combinedRoundEvents.filter(e => e.officialId === r.id || e.officialName === r.name);
     const submittedScorecards = combinedJudgeScores.filter(score => score.judgeId === r.id && score.submitted).length;
-    const methodCalls = officialEvents.filter(e => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(e.type)).length;
+    const methodCalls = officialEvents.filter(e => REFEREE_ACTION_TYPES.has(e.type)).length;
     const lastActivity = [...officialEvents].sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime())[0];
     return {
       id: r.id,

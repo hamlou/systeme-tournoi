@@ -18,6 +18,7 @@ import { uploadProfileImage } from "@/lib/imgbb";
 import { normalizeAgeGroup } from "@/lib/ageCategories";
 import { getStoredRoleSession } from "@/components/auth/AuthGate";
 import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import { WEIGHT_CATEGORIES, normalizeWeightCategory } from "@/lib/competitionRules";
 
 const registerSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -34,7 +35,6 @@ const registerSchema = z.object({
 
 type FormValues = z.infer<typeof registerSchema>;
 
-const WEIGHT_CATEGORIES = ["-40kg","-45kg","-50kg","-55kg","-60kg","-65kg","-70kg","-75kg","-80kg","-85kg","-90kg","+90kg"];
 const AGE_GROUP_LABELS: Record<"Mini" | "Cadet" | "Junior" | "Senior", string> = {
   Mini: "Mini: 6–11 years",
   Cadet: "Cadet: 12–14 years",
@@ -118,7 +118,7 @@ export default function RegisterAthletePage() {
       country: NATIONAL_COUNTRY,
       nationalId: editingAthlete?.nationalId ?? "",
       clubId: editingAthlete?.clubId ?? "",
-      weightCategory: editingAthlete?.weightCategory ?? "",
+      weightCategory: normalizeWeightCategory(editingAthlete?.weightCategory),
       ageGroup: editingAthlete?.ageGroup ?? "",
     },
   });
@@ -149,6 +149,7 @@ export default function RegisterAthletePage() {
       updateAthlete(editingAthlete.id, {
         ...data,
         ageGroup: normalizeAgeGroup(data.ageGroup),
+        weightCategory: normalizeWeightCategory(data.weightCategory),
         clubName: selectedClub?.name ?? data.clubId,
         photoUrl,
       });
@@ -158,6 +159,7 @@ export default function RegisterAthletePage() {
         id: uuidv4(), licenseNumber,
         ...data,
         ageGroup: normalizeAgeGroup(data.ageGroup),
+        weightCategory: normalizeWeightCategory(data.weightCategory),
         clubName: selectedClub?.name ?? data.clubId,
         photoUrl,
         weighInStatus: "Confirmed",

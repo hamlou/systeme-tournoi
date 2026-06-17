@@ -9,6 +9,23 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import { formatMatchCategory } from "@/lib/ageCategories";
 import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 
+const AI_METHOD_EVENT_TYPES = new Set([
+  "decision",
+  "ko",
+  "tko",
+  "ko-tko",
+  "ippon",
+  "ippon-result",
+  "waza-ari",
+  "yuko",
+  "immobilisation",
+  "disqualification",
+  "doctor",
+  "note",
+  "draw",
+]);
+const AI_PRIORITY_EVENT_TYPES = new Set(["disqualification", "ko", "tko", "ko-tko", "ippon", "ippon-result", "draw", "decision"]);
+
 function NeuralBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -108,7 +125,7 @@ function summarizeJudgeDecisions(judgeScores: any[], referees: any[]) {
 function summarizeEventCounts(events: any[]) {
   const count = (type: string, corner?: "RED" | "BLUE") =>
     events.filter(event => event.type === type && (!corner || event.corner === corner)).length;
-  const methods = events.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+  const methods = events.filter(event => AI_METHOD_EVENT_TYPES.has(event.type));
   return {
     red: {
       yellowCards: count("yellow-card", "RED"),
@@ -140,9 +157,9 @@ function buildInstantReportSnapshot(match: any, judgeScores: any[], events: any[
   const redTotal = submitted.reduce((sum, score) => sum + score.redScore, 0);
   const blueTotal = submitted.reduce((sum, score) => sum + score.blueScore, 0);
   const judgeBreakdown = summarizeJudgeDecisions(submitted, officials?.allReferees ?? []);
-  const methodEvents = events.filter(event => ["decision", "ko-tko", "ippon-result", "disqualification", "draw"].includes(event.type));
+  const methodEvents = events.filter(event => AI_METHOD_EVENT_TYPES.has(event.type));
   const cardSummary = summarizeEventCounts(events);
-  const lastPriorityMethod = [...methodEvents].reverse().find(event => ["disqualification", "ko-tko", "ippon-result", "draw", "decision"].includes(event.type));
+  const lastPriorityMethod = [...methodEvents].reverse().find(event => AI_PRIORITY_EVENT_TYPES.has(event.type));
 
   let recommendedWinner: "RED" | "BLUE" | "DRAW" | "CANNOT_DETERMINE" = "CANNOT_DETERMINE";
   let recommendationReason = "Not enough submitted scorecards or decisive method events.";
@@ -180,7 +197,7 @@ function buildInstantReportSnapshot(match: any, judgeScores: any[], events: any[
     recommendationReason,
     integrity: {
       expectedScorecards: (match.assignedJudgeIds?.length ?? 0) + (match.assignedRefereeId ? 1 : 0),
-      totalRounds: match.totalRounds ?? 3,
+      totalRounds: match.totalRounds ?? 2,
       missingOfficials: [
         ...(match.assignedRefereeId ? [] : ["central referee"]),
         ...((match.assignedJudgeIds?.length ?? 0) === 0 ? ["corner judges"] : []),
@@ -253,7 +270,7 @@ Hard rules:
 - Do not copy the event log. Interpret it.
 - Do not paraphrase the instant report. Use it as evidence, then produce an expert opinion.
 - Aggregate repeated events: write "2 yellow cards", never "yellow card, yellow card".
-- Treat KO/TKO, Ippon (Kids), Disqualification, DRAW, red cards, yellow cards, deductions, warnings, and judge submissions as meaningful decision factors.
+- Treat KO/TKO, Ippon, under-14 actions (immobilisation, Waza-ari, Yuko), Disqualification, DRAW, 10/9/8/7 point entries, red cards, yellow cards, deductions, warnings, notes, and judge submissions as meaningful decision factors.
 - A disqualification or red-card pattern can outweigh points if the data supports it. Explain that explicitly.
 - If the official/stored result is missing, still recommend who appears to deserve the win based only on the provided data.
 - If the stored result conflicts with the data, say so clearly and explain which evidence is stronger.
