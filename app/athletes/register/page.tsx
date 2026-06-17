@@ -17,6 +17,7 @@ import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/comp
 import { COUNTRIES } from "@/lib/countries";
 import { uploadProfileImage } from "@/lib/imgbb";
 import { normalizeAgeGroup } from "@/lib/ageCategories";
+import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 const registerSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
@@ -56,9 +57,30 @@ export default function RegisterAthletePage() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get("edit");
-  const { athletes, clubs, addAthlete, updateAthlete } = useTournamentStore();
+  const { athletes, clubs, matches, addAthlete, updateAthlete, updateAccount } = useTournamentStore();
+  const [session, setSession] = React.useState<ReturnType<typeof getStoredRoleSession>>(null);
 
-  const editingAthlete = editId ? athletes.find(a => a.id === editId) : null;
+  React.useEffect(() => {
+    setSession(getStoredRoleSession());
+  }, []);
+
+  const ownAthlete = session?.role === "athlete"
+    ? athletes.find(a => a.accountId === session.accountId || a.id === session.athleteId)
+    : null;
+  const editingAthlete = editId ? athletes.find(a => a.id === editId) : ownAthlete ?? null;
+  const isSelfRegistration = session?.role === "athlete";
+  const selectableClubs = React.useMemo(
+    () => isSelfRegistration
+      ? clubs.filter(club => (club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending")) === "Approved" && club.status === "Active")
+      : clubs,
+    [clubs, isSelfRegistration],
+  );
+  const nextCombat = React.useMemo(() => {
+    if (!ownAthlete) return null;
+    return matches
+      .filter(match => match.status !== "completed" && (match.redCornerId === ownAthlete.id || match.blueCornerId === ownAthlete.id))
+      .sort((a, b) => a.matchNumber - b.matchNumber)[0] ?? null;
+  }, [matches, ownAthlete]);
 
   const licenseNumber = React.useMemo(() =>
     editingAthlete?.licenseNumber ?? `IKF-26-${Math.floor(1000 + Math.random() * 9000)}`, [editingAthlete]);
@@ -112,7 +134,7 @@ export default function RegisterAthletePage() {
       return;
     }
     await new Promise(r => setTimeout(r, 600));
-    const selectedClub = clubs.find(c => c.id === data.clubId);
+    const selectedClub = selectableClubs.find(c => c.id === data.clubId);
     const duplicateNationalId = athletes.find(a => a.id !== editingAthlete?.id && a.nationalId.trim().toLowerCase() === data.nationalId.trim().toLowerCase());
     if (duplicateNationalId) {
       toast.error(`National ID/Passport already belongs to ${duplicateNationalId.fullName}`);
@@ -139,15 +161,20 @@ export default function RegisterAthletePage() {
         clubName: selectedClub?.name ?? data.clubId,
         photoUrl,
         weighInStatus: "Confirmed",
-        registrationStatus: "Active",
+        approvalStatus: isSelfRegistration ? "Pending" : "Approved",
+        registrationStatus: isSelfRegistration ? "Pending" : "Active",
+        accountId: isSelfRegistration ? session?.accountId : undefined,
       };
       addAthlete(newAthlete);
+      if (isSelfRegistration && session?.accountId) {
+        updateAccount(session.accountId, { athleteId: newAthlete.id, displayName: data.fullName });
+      }
       toast.success(
-        <div><p className="font-bold">Athlete Registered!</p><p className="text-sm font-mono mt-1">{data.fullName} — {licenseNumber}</p></div>,
-        { duration: 4000, icon: "✅" }
+        <div><p className="font-bold">{isSelfRegistration ? "Athlete Submitted!" : "Athlete Registered!"}</p><p className="text-sm font-mono mt-1">{data.fullName} - {licenseNumber}</p></div>,
+        { duration: 4000 }
       );
     }
-    router.push("/athletes");
+    router.push(isSelfRegistration ? "/athletes/register" : "/athletes");
   };
 
   return (
@@ -158,12 +185,26 @@ export default function RegisterAthletePage() {
         subtitle={editingAthlete ? `Editing: ${editingAthlete.fullName}` : "Add a new competitor to the tournament registry"}
       />
 
-      {clubs.length === 0 && (
+      {isSelfRegistration && ownAthlete && (
+        <div className="rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5">
+          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)] mb-2">Account notification</div>
+          <p className="font-bold text-white">
+            Profile status: {(ownAthlete.approvalStatus ?? "Pending") === "Approved" ? "Approved by chief admin" : "Waiting for chief admin approval"}
+          </p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {nextCombat
+              ? `Next combat: Match #${nextCombat.matchNumber} - ${nextCombat.redCornerName} vs ${nextCombat.blueCornerName}, Mat ${nextCombat.matNumber}.`
+              : "No next combat has been generated for your profile yet."}
+          </p>
+        </div>
+      )}
+
+      {selectableClubs.length === 0 && (
         <div className="rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5 flex items-center gap-4">
           <AlertTriangle className="text-[var(--ikf-gold)]" size={24} />
           <div>
-            <p className="font-bold text-white">No clubs are registered yet.</p>
-            <p className="text-sm text-[var(--text-secondary)]">Register a club before adding athletes so every athlete links to a valid delegation.</p>
+            <p className="font-bold text-white">No approved clubs are available yet.</p>
+            <p className="text-sm text-[var(--text-secondary)]">A chief admin must approve at least one club before athlete registration can be submitted.</p>
           </div>
         </div>
       )}
@@ -231,7 +272,7 @@ export default function RegisterAthletePage() {
               <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] mb-2">Club / Delegation *</label>
               <select {...register("clubId")} className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-4 py-3 text-sm text-white focus:border-[var(--ikf-red)] outline-none transition-all">
                 <option value="">Select club...</option>
-                {clubs.map(c => <option key={c.id} value={c.id}>{c.name} ({c.country})</option>)}
+                {selectableClubs.map(c => <option key={c.id} value={c.id}>{c.name} ({c.country})</option>)}
               </select>
               {errors.clubId && <p className="text-xs text-[var(--ikf-red)] mt-1">{errors.clubId.message}</p>}
             </div>
@@ -271,9 +312,9 @@ export default function RegisterAthletePage() {
 
         {/* SUBMIT */}
         <div className="flex gap-4 justify-end">
-          <IKFButton variant="ghost" type="button" onClick={() => router.push("/athletes")}>Cancel</IKFButton>
-          <IKFButton variant="primary" type="submit" loading={isSubmitting || isUploading} disabled={clubs.length === 0 || isUploading} size="lg">
-            {isUploading ? "Uploading Photo..." : editingAthlete ? "Save Changes" : "Register Athlete"}
+          <IKFButton variant="ghost" type="button" onClick={() => router.push(isSelfRegistration ? "/athletes/register" : "/athletes")}>Cancel</IKFButton>
+          <IKFButton variant="primary" type="submit" loading={isSubmitting || isUploading} disabled={selectableClubs.length === 0 || isUploading} size="lg">
+            {isUploading ? "Uploading Photo..." : editingAthlete ? "Save Changes" : isSelfRegistration ? "Submit For Approval" : "Register Athlete"}
           </IKFButton>
         </div>
       </form>

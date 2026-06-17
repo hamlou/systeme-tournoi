@@ -7,7 +7,7 @@ import type {
   Athlete, Club, WeighinRecord, Match, Bracket, Referee,
   RoundEvent, JudgeScore, TournamentReport, MatchResult,
   TournamentSettings, AgeGroup, Gender, TimerMode, WeighinStatus, AppNotification,
-  BracketOptions, Pool, TeamMatchup, Standing, BracketFormat,
+  BracketOptions, Pool, TeamMatchup, Standing, BracketFormat, RoleAccount,
 } from '@/types/tournament';
 import {
   buildSingleElimination, buildSixPlayerElimination, buildDoubleElimination, buildRoundRobin,
@@ -21,6 +21,7 @@ import {
   parseCategoryId,
   totalRoundsForAgeGroup,
 } from "@/lib/ageCategories";
+import { DEFAULT_ROLE_ACCOUNTS, makeUsername } from "@/lib/roleAccess";
 
 // ─── Firebase Sync Helpers ────────────────────────────────────────────────────
 
@@ -51,9 +52,48 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   language: 'en',
 };
 
+const nowIso = () => new Date().toISOString();
+
+function passwordFromId(prefix: string, id: string) {
+  return `${prefix}-${id.replace(/-/g, "").slice(0, 6) || "000000"}`;
+}
+
+function accountRoleForReferee(role: Referee["role"]): RoleAccount["role"] {
+  return role === "Corner Judge" ? "corner-referee" : "central-referee";
+}
+
+function makeRefereeAccount(referee: Referee, existingAccounts: RoleAccount[]): RoleAccount {
+  const role = accountRoleForReferee(referee.role);
+  const prefix = role === "corner-referee" ? "corner" : "central";
+  const baseUsername = makeUsername(referee.name, prefix);
+  let username = baseUsername;
+  let index = 2;
+  const taken = new Set(existingAccounts.map(account => account.username.toLowerCase()));
+  while (taken.has(username.toLowerCase())) {
+    username = `${baseUsername}${index}`;
+    index += 1;
+  }
+  return {
+    id: `account-${referee.id}`,
+    username,
+    password: passwordFromId(prefix, referee.id),
+    role,
+    displayName: referee.name,
+    approvalStatus: referee.approvalStatus ?? "Approved",
+    refereeId: referee.id,
+    createdAt: nowIso(),
+    ...(referee.approvalStatus === "Pending" ? {} : { approvedAt: nowIso() }),
+  };
+}
+
 // ─── Store Interface ─────────────────────────────────────────────────────────
 
 interface TournamentStore {
+  // Role accounts
+  accounts: RoleAccount[];
+  addAccount: (account: RoleAccount) => void;
+  updateAccount: (id: string, data: Partial<RoleAccount>) => void;
+
   // Settings
   settings: TournamentSettings;
   updateSettings: (data: Partial<TournamentSettings>) => void;
@@ -62,12 +102,14 @@ interface TournamentStore {
   athletes: Athlete[];
   addAthlete: (a: Athlete) => void;
   updateAthlete: (id: string, data: Partial<Athlete>) => void;
+  approveAthlete: (id: string) => void;
   deleteAthlete: (id: string) => void;
 
   // Clubs
   clubs: Club[];
   addClub: (c: Club) => void;
   updateClub: (id: string, data: Partial<Club>) => void;
+  approveClub: (id: string) => void;
   deleteClub: (id: string) => void;
 
   // Weigh-in
@@ -94,6 +136,7 @@ interface TournamentStore {
   referees: Referee[];
   addReferee: (r: Referee) => void;
   updateReferee: (id: string, data: Partial<Referee>) => void;
+  approveReferee: (id: string) => void;
   deleteReferee: (id: string) => void;
   assignRefereeToMatch: (matchId: string, refereeId: string, judgeIds: string[], scheduledTime?: string) => void;
 
@@ -133,6 +176,24 @@ interface TournamentStore {
 // ─── Store Implementation (no localStorage, Firebase-backed) ─────────────────
 
 export const useTournamentStore = create<TournamentStore>()((set, get) => ({
+  accounts: DEFAULT_ROLE_ACCOUNTS,
+  addAccount: (account) => {
+    set(s => {
+      const exists = s.accounts.some(existing =>
+        existing.id === account.id ||
+        existing.username.trim().toLowerCase() === account.username.trim().toLowerCase()
+      );
+      return { accounts: exists ? s.accounts : [account, ...s.accounts] };
+    });
+    syncToFirebase('accounts', get().accounts);
+  },
+  updateAccount: (id, data) => {
+    set(s => ({
+      accounts: s.accounts.map(account => account.id === id ? { ...account, ...data } : account),
+    }));
+    syncToFirebase('accounts', get().accounts);
+  },
+
   settings: DEFAULT_SETTINGS,
   updateSettings: (data) => {
     set(s => ({ settings: { ...s.settings, ...data } }));
@@ -151,11 +212,23 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   // ── Athletes ──
   athletes: [],
   addAthlete: (a) => {
-    const readyAthlete: Athlete = { ...a, ageGroup: normalizeAgeGroup(a.ageGroup), weighInStatus: 'Confirmed', registrationStatus: 'Active' };
+    const approvalStatus = a.approvalStatus ?? "Approved";
+    const readyAthlete: Athlete = {
+      ...a,
+      ageGroup: normalizeAgeGroup(a.ageGroup),
+      approvalStatus,
+      weighInStatus: a.weighInStatus ?? 'Confirmed',
+      registrationStatus: a.registrationStatus ?? (approvalStatus === "Approved" ? 'Active' : 'Pending'),
+    };
     set(s => ({ athletes: [readyAthlete, ...s.athletes] }));
     syncToFirebase('athletes', get().athletes);
-    get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}`);
-    toast.success(`Athlete ${readyAthlete.fullName} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
+    get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}${approvalStatus === "Pending" ? " and is waiting for approval" : ""}`);
+    toast.success(
+      approvalStatus === "Pending"
+        ? `Athlete ${readyAthlete.fullName} submitted for admin approval`
+        : `Athlete ${readyAthlete.fullName} registered successfully`,
+      { style: { background: approvalStatus === "Pending" ? '#d4a017' : '#27ae60', color: approvalStatus === "Pending" ? '#000' : '#fff' } },
+    );
   },
   updateAthlete: (id, data) => {
     set(s => ({
@@ -163,15 +236,28 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     }));
     syncToFirebase('athletes', get().athletes);
   },
+  approveAthlete: (id) => {
+    const athlete = get().athletes.find(a => a.id === id);
+    set(s => ({
+      athletes: s.athletes.map(a => a.id === id ? { ...a, approvalStatus: "Approved", registrationStatus: "Active", approvedAt: nowIso() } : a),
+      accounts: s.accounts.map(account => account.athleteId === id || account.id === athlete?.accountId ? { ...account, athleteId: id, displayName: athlete?.fullName ?? account.displayName, approvalStatus: "Approved", approvedAt: nowIso() } : account),
+    }));
+    syncToFirebase('athletes', get().athletes);
+    syncToFirebase('accounts', get().accounts);
+    if (athlete) get().addNotification("Athlete Approved", `${athlete.fullName} can now appear in brackets, TV lists, and match assignment data.`);
+    toast.success("Athlete approved");
+  },
   deleteAthlete: (id) => set(s => {
     const matchIds = new Set(s.matches.filter(m => m.redCornerId === id || m.blueCornerId === id).map(m => m.id));
     const next = {
       athletes: s.athletes.filter(a => a.id !== id),
+      accounts: s.accounts.map(account => account.athleteId === id ? { ...account, athleteId: undefined } : account),
       weighinRecords: s.weighinRecords.filter(r => r.athleteId !== id),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
     };
     syncToFirebase('athletes', next.athletes);
+    syncToFirebase('accounts', next.accounts);
     syncToFirebase('matches', next.matches);
     return next;
   }),
@@ -179,10 +265,19 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   // ── Clubs ──
   clubs: [],
   addClub: (c) => {
-    set(s => ({ clubs: [c, ...s.clubs] }));
+    const approvalStatus = c.approvalStatus ?? (c.status === "Pending" ? "Pending" : "Approved");
+    const club: Club = {
+      ...c,
+      approvalStatus,
+      status: c.status ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
+    };
+    set(s => ({ clubs: [club, ...s.clubs] }));
     syncToFirebase('clubs', get().clubs);
-    get().addNotification("New Club Registered", `${c.name} (${c.country}) joined the tournament.`);
-    toast.success(`Club ${c.name} registered successfully`, { style: { background: '#27ae60', color: '#fff' } });
+    get().addNotification("New Club Registered", `${club.name} (${club.country}) ${approvalStatus === "Pending" ? "is waiting for approval." : "joined the tournament."}`);
+    toast.success(
+      approvalStatus === "Pending" ? `Club ${club.name} submitted for admin approval` : `Club ${club.name} registered successfully`,
+      { style: { background: approvalStatus === "Pending" ? '#d4a017' : '#27ae60', color: approvalStatus === "Pending" ? '#000' : '#fff' } },
+    );
   },
   updateClub: (id, data) => {
     set(s => ({
@@ -190,17 +285,30 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     }));
     syncToFirebase('clubs', get().clubs);
   },
+  approveClub: (id) => {
+    const club = get().clubs.find(c => c.id === id);
+    set(s => ({
+      clubs: s.clubs.map(c => c.id === id ? { ...c, approvalStatus: "Approved", status: "Active", approvedAt: nowIso() } : c),
+      accounts: s.accounts.map(account => account.clubId === id || account.id === club?.accountId ? { ...account, clubId: id, displayName: club?.name ?? account.displayName, approvalStatus: "Approved", approvedAt: nowIso() } : account),
+    }));
+    syncToFirebase('clubs', get().clubs);
+    syncToFirebase('accounts', get().accounts);
+    if (club) get().addNotification("Club Approved", `${club.name} can now appear in public TV lists and athlete registration.`);
+    toast.success("Club approved");
+  },
   deleteClub: (id) => set(s => {
     const athleteIds = new Set(s.athletes.filter(a => a.clubId === id).map(a => a.id));
     const matchIds = new Set(s.matches.filter(m => athleteIds.has(m.redCornerId) || athleteIds.has(m.blueCornerId)).map(m => m.id));
     const next = {
       clubs: s.clubs.filter(c => c.id !== id),
+      accounts: s.accounts.map(account => account.clubId === id ? { ...account, clubId: undefined } : account),
       athletes: s.athletes.filter(a => a.clubId !== id),
       weighinRecords: s.weighinRecords.filter(r => !athleteIds.has(r.athleteId)),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
     };
     syncToFirebase('clubs', next.clubs);
+    syncToFirebase('accounts', next.accounts);
     syncToFirebase('athletes', next.athletes);
     syncToFirebase('matches', next.matches);
     return next;
@@ -696,9 +804,40 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   // ── Referees ──
   referees: [],
   addReferee: (r) => {
-    set(s => ({ referees: [r, ...s.referees] }));
+    const approvalStatus = r.approvalStatus ?? "Approved";
+    const referee: Referee = { ...r, approvalStatus };
+    let createdAccount: RoleAccount | null = null;
+    set(s => {
+      const existingLinkedAccount = referee.accountId
+        ? s.accounts.find(account => account.id === referee.accountId)
+        : null;
+      createdAccount = existingLinkedAccount
+        ? {
+          ...existingLinkedAccount,
+          role: accountRoleForReferee(referee.role),
+          refereeId: referee.id,
+          displayName: referee.name,
+          approvalStatus,
+          ...(approvalStatus === "Approved" ? { approvedAt: nowIso() } : {}),
+        }
+        : makeRefereeAccount(referee, s.accounts);
+      const linkedReferee = { ...referee, accountId: createdAccount.id };
+      return {
+        referees: [linkedReferee, ...s.referees],
+        accounts: existingLinkedAccount
+          ? s.accounts.map(account => account.id === existingLinkedAccount.id ? createdAccount! : account)
+          : [createdAccount, ...s.accounts],
+      };
+    });
     syncToFirebase('referees', get().referees);
-    toast.success(`Referee ${r.name} added`, { style: { background: '#27ae60', color: '#fff' } });
+    syncToFirebase('accounts', get().accounts);
+    const accountForToast = get().accounts.find(account => account.refereeId === r.id || account.id === r.accountId);
+    toast.success(
+      accountForToast
+        ? `Referee ${r.name} added. Login: ${accountForToast.username} / ${accountForToast.password}`
+        : `Referee ${r.name} added`,
+      { duration: 7000, style: { background: '#27ae60', color: '#fff' } },
+    );
   },
   updateReferee: (id, data) => {
     set(s => ({
@@ -706,11 +845,39 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     }));
     syncToFirebase('referees', get().referees);
   },
-  deleteReferee: (id) => {
-    set(s => ({ referees: s.referees.filter(r => r.id !== id) }));
+  approveReferee: (id) => {
+    const referee = get().referees.find(r => r.id === id);
+    if (!referee) return;
+    const existingAccount = get().accounts.find(account => account.refereeId === id || account.id === referee.accountId);
+    set(s => {
+      const account = existingAccount ?? makeRefereeAccount({ ...referee, approvalStatus: "Approved" }, s.accounts);
+      const nextAccounts = existingAccount
+        ? s.accounts.map(existing => existing.id === existingAccount.id ? { ...existing, approvalStatus: "Approved" as const, approvedAt: nowIso(), refereeId: id, displayName: referee.name } : existing)
+        : [account, ...s.accounts];
+      return {
+        referees: s.referees.map(r => r.id === id ? { ...r, approvalStatus: "Approved", approvedAt: nowIso(), accountId: account.id } : r),
+        accounts: nextAccounts,
+      };
+    });
     syncToFirebase('referees', get().referees);
+    syncToFirebase('accounts', get().accounts);
+    get().addNotification("Referee Approved", `${referee.name} can now log in and judge assigned matches.`);
+    toast.success(`${referee.name} approved for judging access`);
+  },
+  deleteReferee: (id) => {
+    set(s => ({
+      referees: s.referees.filter(r => r.id !== id),
+      accounts: s.accounts.filter(account => account.refereeId !== id),
+    }));
+    syncToFirebase('referees', get().referees);
+    syncToFirebase('accounts', get().accounts);
   },
   assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
+    const officials = get().referees.filter(r => r.id === refereeId || judgeIds.includes(r.id));
+    if (officials.some(official => (official.approvalStatus ?? "Approved") !== "Approved")) {
+      toast.error("Only approved officials can be assigned to a match");
+      return;
+    }
     set(s => ({
       matches: s.matches.map(m => m.id === matchId ? {
         ...m,

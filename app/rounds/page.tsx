@@ -14,6 +14,7 @@ import { useMatchNotifications } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 import { pushMatchState, useFirebaseMatchState, deriveLiveMatchTimers } from "@/hooks/useFirebaseMatchSync";
 import { formatMatchCategory, getRoundDuration } from "@/lib/ageCategories";
+import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -37,8 +38,13 @@ export default function RoundManagementPage() {
   const [restTimeLeft, setRestTimeLeft] = useState(60);
   const [resumeMode, setResumeMode] = useState<"round" | "rest" | null>(null);
   const [firebaseSyncing, setFirebaseSyncing] = useState(false);
+  const [session, setSession] = useState<ReturnType<typeof getStoredRoleSession>>(null);
   
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    setSession(getStoredRoleSession());
+  }, []);
 
   // ── Resume timer state from Firebase on mount ──────────────────────────────
   const [fbMatchState, setFbMatchState] = useState<any>(null);
@@ -73,13 +79,15 @@ export default function RoundManagementPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fbMatchState]);
 
+  const centralRefereeId = session?.role === "central-referee" ? session.refereeId ?? "__unlinked_referee__" : undefined;
   const activeMatches = matches.filter(m =>
     (m.status === "scheduled" || m.status === "in-progress") &&
     Boolean(m.assignedRefereeId) &&
     (m.assignedJudgeIds?.length ?? 0) === settings.defaultJudgesCount &&
     Boolean(m.redCornerId) &&
     Boolean(m.blueCornerId) &&
-    !m.isBye
+    !m.isBye &&
+    (!centralRefereeId || m.assignedRefereeId === centralRefereeId)
   );
 
   const { red: redScore, blue: blueScore } = useLiveAggregateScore();

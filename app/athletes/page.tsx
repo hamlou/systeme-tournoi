@@ -102,7 +102,7 @@ function DeleteConfirmModal({ athlete, onConfirm, onCancel }: { athlete: Athlete
 }
 
 export default function AthletesPage() {
-  const { athletes, deleteAthlete, settings } = useTournamentStore();
+  const { athletes, deleteAthlete, approveAthlete, settings } = useTournamentStore();
   const router = useRouter();
 
   const [globalFilter, setGlobalFilter] = useState("");
@@ -177,17 +177,27 @@ export default function AthletesPage() {
       header: t('country', settings.language),
       cell: info => <span className="text-sm">{info.getValue()}</span>,
     }),
+    columnHelper.accessor("approvalStatus", {
+      header: "Approval",
+      cell: info => {
+        const status = info.getValue() ?? (info.row.original.registrationStatus === "Active" ? "Approved" : "Pending");
+        return <IKFBadge variant={status === "Approved" ? "win" : status === "Rejected" ? "cancelled" : "pending"} label={status} size="sm" />;
+      },
+    }),
     columnHelper.display({
       id: "actions",
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
+          {(row.original.approvalStatus ?? (row.original.registrationStatus === "Active" ? "Approved" : "Pending")) !== "Approved" && (
+            <button onClick={() => approveAthlete(row.original.id)} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--status-win)] hover:bg-[var(--bg-elevated)] rounded transition-colors" title="Approve athlete"><CheckCircle2 size={14} /></button>
+          )}
           <button onClick={() => setViewAthlete(row.original)} className="p-1.5 text-[var(--text-muted)] hover:text-white hover:bg-[var(--bg-elevated)] rounded transition-colors" title={t('view_profile', settings.language)}><Eye size={14} /></button>
           <button onClick={() => router.push(`/athletes/register?edit=${row.original.id}`)} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--ikf-gold)] hover:bg-[var(--bg-elevated)] rounded transition-colors" title={t('edit', settings.language)}><Edit2 size={14} /></button>
           <button onClick={() => setDeleteTarget(row.original)} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--ikf-red)] hover:bg-[var(--bg-elevated)] rounded transition-colors" title={t('delete', settings.language)}><Trash2 size={14} /></button>
         </div>
       ),
     }),
-  ], [router, settings.language]);
+  ], [approveAthlete, router, settings.language]);
 
   const table = useReactTable({
     data: filteredData, columns,
@@ -273,7 +283,7 @@ export default function AthletesPage() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="p-0">
+                  <td colSpan={9} className="p-0">
                     <IKFEmptyState icon={<User size={48} />} title={t('no_athletes_found', settings.language)}
                       subtitle={t('no_athletes_match', settings.language)}
                       actionLabel={t('register_first_athlete', settings.language)} onAction={() => router.push('/athletes/register')} />

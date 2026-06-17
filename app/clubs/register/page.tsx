@@ -14,6 +14,7 @@ import type { Club } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFInput, IKFButton, SectionDivider } from "@/components/ui";
 import { COUNTRIES } from "@/lib/countries";
 import { uploadProfileImage } from "@/lib/imgbb";
+import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 const clubSchema = z.object({
   name: z.string().min(2, "Club name is required"),
@@ -32,8 +33,26 @@ export default function RegisterClubPage() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get("edit");
-  const { clubs, addClub, updateClub } = useTournamentStore();
-  const editingClub = editId ? clubs.find(c => c.id === editId) : null;
+  const { clubs, athletes, matches, addClub, updateClub, updateAccount } = useTournamentStore();
+  const [session, setSession] = React.useState<ReturnType<typeof getStoredRoleSession>>(null);
+
+  React.useEffect(() => {
+    setSession(getStoredRoleSession());
+  }, []);
+
+  const ownClub = session?.role === "club"
+    ? clubs.find(c => c.accountId === session.accountId || c.id === session.clubId)
+    : null;
+  const editingClub = editId ? clubs.find(c => c.id === editId) : ownClub ?? null;
+  const isSelfRegistration = session?.role === "club";
+  const clubUpcomingMatches = React.useMemo(() => {
+    if (!ownClub) return [];
+    const clubAthleteIds = new Set(athletes.filter(athlete => athlete.clubId === ownClub.id).map(athlete => athlete.id));
+    return matches
+      .filter(match => match.status !== "completed" && (clubAthleteIds.has(match.redCornerId) || clubAthleteIds.has(match.blueCornerId)))
+      .sort((a, b) => a.matchNumber - b.matchNumber)
+      .slice(0, 5);
+  }, [athletes, matches, ownClub]);
 
   const [logoUrl, setLogoUrl] = React.useState(editingClub?.logoUrl ?? "");
   const [isUploading, setIsUploading] = React.useState(false);
@@ -99,8 +118,11 @@ export default function RegisterClubPage() {
         notes: data.notes,
         logoUrl: logoUrl,
       });
+      if (isSelfRegistration && session?.accountId) {
+        updateAccount(session.accountId, { clubId: editingClub.id, displayName: data.name });
+      }
       toast.success(`${data.name} updated successfully`);
-      router.push("/clubs");
+      router.push(isSelfRegistration ? "/clubs/register" : "/clubs");
       return;
     }
 
@@ -116,22 +138,27 @@ export default function RegisterClubPage() {
       phone: data.phone,
       affiliationNumber,
       expectedAthletes: data.expectedAthletes,
-      status: "Active",
+      status: isSelfRegistration ? "Pending" : "Active",
+      approvalStatus: isSelfRegistration ? "Pending" : "Approved",
+      accountId: isSelfRegistration ? session?.accountId : undefined,
       notes: data.notes,
       logoUrl: logoUrl,
     };
     
     addClub(newClub);
+    if (isSelfRegistration && session?.accountId) {
+      updateAccount(session.accountId, { clubId: newClub.id, displayName: data.name });
+    }
     
     toast.success(
       <div>
-        <p className="font-bold">Club Registered!</p>
+        <p className="font-bold">{isSelfRegistration ? "Club Submitted!" : "Club Registered!"}</p>
         <p className="text-sm font-mono mt-1">{data.name}</p>
       </div>,
       { duration: 5000 }
     );
     
-    router.push("/clubs");
+    router.push(isSelfRegistration ? "/clubs/register" : "/clubs");
   };
 
   return (
@@ -141,6 +168,20 @@ export default function RegisterClubPage() {
         title={editingClub ? "EDIT CLUB" : "NEW CLUB"}
         subtitle={editingClub ? `Editing: ${editingClub.name}` : "Register a club or national delegation"}
       />
+
+      {isSelfRegistration && ownClub && (
+        <div className="rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5">
+          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)] mb-2">Account notification</div>
+          <p className="font-bold text-white">
+            Club status: {(ownClub.approvalStatus ?? "Pending") === "Approved" ? "Approved by chief admin" : "Waiting for chief admin approval"}
+          </p>
+          <div className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
+            {clubUpcomingMatches.length > 0
+              ? clubUpcomingMatches.map(match => <p key={match.id}>Match #{match.matchNumber}: {match.redCornerName} vs {match.blueCornerName}, Mat {match.matNumber}</p>)
+              : <p>No generated combat is linked to this club yet.</p>}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         <IKFCard padding="lg">
@@ -221,7 +262,7 @@ export default function RegisterClubPage() {
         </IKFCard>
 
         <div className="flex gap-4 justify-end">
-          <IKFButton variant="ghost" type="button" onClick={() => router.push("/clubs")}>Cancel</IKFButton>
+          <IKFButton variant="ghost" type="button" onClick={() => router.push(isSelfRegistration ? "/clubs/register" : "/clubs")}>Cancel</IKFButton>
           <IKFButton
             type="submit"
             variant="gold"
@@ -230,7 +271,7 @@ export default function RegisterClubPage() {
             loading={isSubmitting || isUploading}
             disabled={isUploading}
           >
-            {isUploading ? "UPLOADING LOGO..." : isSubmitting ? (editingClub ? "SAVING CLUB..." : "REGISTERING CLUB...") : (editingClub ? "SAVE CLUB" : "REGISTER CLUB")}
+            {isUploading ? "UPLOADING LOGO..." : isSubmitting ? (editingClub ? "SAVING CLUB..." : "REGISTERING CLUB...") : (editingClub ? "SAVE CLUB" : isSelfRegistration ? "SUBMIT FOR APPROVAL" : "REGISTER CLUB")}
           </IKFButton>
         </div>
       </form>

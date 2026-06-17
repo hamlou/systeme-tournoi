@@ -4,12 +4,15 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, CheckCircle2, ShieldAlert, Swords, Trophy, Minus, ClipboardList } from "lucide-react";
+import toast from "react-hot-toast";
+import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { IKFBadge } from "@/components/ui";
 import { t } from "@/lib/i18n";
 import { formatMatchCategory, isYouthAgeGroup } from "@/lib/ageCategories";
 import { deriveLiveMatchTimers, FirebaseMatchState, useFirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
 import { saveJudgeScoreToDatabase, saveJudgingEventToDatabase, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
+import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 type MethodEventType = "decision" | "ko-tko" | "ippon-result" | "disqualification" | "draw";
 
@@ -86,7 +89,7 @@ function ScoreButton({
 export default function JudgeTabletView() {
   const { 
     matches, currentRound, roundTimer, timerMode, roundEvents,
-    judgeScores, setJudgeScore, submitJudgeScore, referees, settings, addRoundEvent
+    judgeScores, setJudgeScore, submitJudgeScore, referees, settings, addRoundEvent, addReferee
   } = useTournamentStore();
 
   const [selectedMatchId, setSelectedMatchId] = useState<string>("");
@@ -100,6 +103,16 @@ export default function JudgeTabletView() {
     type: MethodEventType;
   } | null>(null);
   const [fallbackAnchor, setFallbackAnchor] = useState({ mode: "idle", source: 0, startedAt: Date.now() });
+  const [session, setSession] = useState<ReturnType<typeof getStoredRoleSession>>(null);
+  const [profileName, setProfileName] = useState("");
+  const [profileCountry, setProfileCountry] = useState("");
+
+  useEffect(() => {
+    setSession(getStoredRoleSession());
+  }, []);
+
+  const isRefereeSession = session?.role === "central-referee" || session?.role === "corner-referee";
+  const lockedRefereeId = isRefereeSession ? session?.refereeId ?? "__unlinked_referee__" : undefined;
 
   const selectableMatches = useMemo(() => matches
     .filter(match =>
@@ -108,10 +121,11 @@ export default function JudgeTabletView() {
       Boolean(match.redCornerId) &&
       Boolean(match.blueCornerId) &&
       Boolean(match.assignedRefereeId) &&
-      (match.assignedJudgeIds?.length ?? 0) > 0
+      (match.assignedJudgeIds?.length ?? 0) > 0 &&
+      (!lockedRefereeId || match.assignedRefereeId === lockedRefereeId || match.assignedJudgeIds?.includes(lockedRefereeId))
     )
     .sort((a, b) => a.matchNumber - b.matchNumber),
-  [matches]);
+  [lockedRefereeId, matches]);
 
   const activeMatch = useMemo(
     () => matches.find(match => match.id === selectedMatchId) ?? null,
@@ -121,8 +135,9 @@ export default function JudgeTabletView() {
   const assignedOfficials = useMemo(() => {
     if (!activeMatch) return [];
     const ids = [activeMatch.assignedRefereeId, ...(activeMatch.assignedJudgeIds ?? [])].filter(Boolean) as string[];
-    return ids.map(id => referees.find(referee => referee.id === id)).filter(Boolean);
-  }, [activeMatch, referees]);
+    const officials = ids.map(id => referees.find(referee => referee.id === id)).filter(Boolean);
+    return lockedRefereeId ? officials.filter(official => official!.id === lockedRefereeId) : officials;
+  }, [activeMatch, lockedRefereeId, referees]);
 
   // Firebase sync for timer (cross-device)
   const [fbState, setFbState] = useState<FirebaseMatchState | null>(null);
@@ -164,6 +179,14 @@ export default function JudgeTabletView() {
   }, [selectedMatchId]);
 
   useEffect(() => {
+    if (assignedOfficials.length === 1) {
+      setSelectedJudgeId(assignedOfficials[0]!.id);
+    } else if (lockedRefereeId) {
+      setSelectedJudgeId("");
+    }
+  }, [assignedOfficials, lockedRefereeId]);
+
+  useEffect(() => {
     const id = window.setInterval(() => setTimerTick(tick => tick + 1), 1000);
     return () => window.clearInterval(id);
   }, []);
@@ -172,6 +195,76 @@ export default function JudgeTabletView() {
     scores.forEach(score => setJudgeScore(score));
     setDatabaseEvents(events);
   });
+
+  const pendingSelfProfile = isRefereeSession
+    ? referees.find(referee => referee.accountId === session?.accountId)
+    : null;
+
+  const submitRefereeProfile = () => {
+    if (!session || !isRefereeSession) return;
+    const name = profileName.trim();
+    if (name.length < 2) {
+      toast.error("Enter your referee name before submitting.");
+      return;
+    }
+    addReferee({
+      id: uuidv4(),
+      name,
+      role: session.role === "corner-referee" ? "Corner Judge" : "Central Referee",
+      country: profileCountry.trim() || "Pending country",
+      grade: "Submitted Official",
+      status: "Available",
+      approvalStatus: "Pending",
+      accountId: session.accountId,
+    });
+    setProfileName("");
+    setProfileCountry("");
+    toast.success("Referee profile submitted. The chief admin must approve it before judging access is active.");
+  };
+
+  if (isRefereeSession && !session?.refereeId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8" style={{ background: "linear-gradient(135deg, #050508 0%, #0a0015 100%)" }}>
+        <div className="w-full max-w-2xl rounded-3xl border border-[rgba(212,160,23,0.3)] bg-[rgba(255,255,255,0.04)] p-8 shadow-2xl">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-16 h-16 rounded-full bg-[rgba(212,160,23,0.1)] border border-[rgba(212,160,23,0.3)] flex items-center justify-center">
+              <ShieldAlert size={30} className="text-[var(--ikf-gold)]" />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--ikf-gold)] mb-1">Referee Access</div>
+              <h1 className="font-display text-4xl text-white">Submit Your Official Profile</h1>
+            </div>
+          </div>
+
+          {pendingSelfProfile ? (
+            <div className="rounded-2xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5">
+              <div className="text-sm font-bold text-white">{pendingSelfProfile.name}</div>
+              <div className="mt-1 text-xs font-bold uppercase tracking-widest text-[var(--ikf-gold)]">
+                Status: {pendingSelfProfile.approvalStatus ?? "Pending"}
+              </div>
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                Waiting for the chief admin to approve this referee profile. After approval, sign in again and your assigned match profile will be locked to this account.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">Full Name</span>
+                <input value={profileName} onChange={event => setProfileName(event.target.value)} className="w-full rounded-2xl border border-[rgba(255,255,255,0.1)] bg-black/25 px-5 py-4 text-white outline-none focus:border-[var(--ikf-gold)]" placeholder="Official referee name" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">Country</span>
+                <input value={profileCountry} onChange={event => setProfileCountry(event.target.value)} className="w-full rounded-2xl border border-[rgba(255,255,255,0.1)] bg-black/25 px-5 py-4 text-white outline-none focus:border-[var(--ikf-gold)]" placeholder="Country" />
+              </label>
+              <button type="button" onClick={submitRefereeProfile} className="h-14 w-full rounded-2xl bg-[var(--ikf-gold)] text-black font-black uppercase tracking-widest">
+                Submit For Chief Admin Approval
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (!activeMatch) {
     return (

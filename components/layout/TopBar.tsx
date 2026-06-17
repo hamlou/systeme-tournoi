@@ -6,11 +6,17 @@ import { useNavigationStore } from "@/store/navigationStore";
 import { IKFBadge } from "@/components/ui/IKFBadge";
 import { useSocket } from "@/components/providers/SocketProvider";
 import { useRouter } from "next/navigation";
+import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 export function Topbar() {
   const { activePage } = useNavigationStore();
   const { isConnected } = useSocket();
   const router = useRouter();
+  const [isAdmin, setIsAdmin] = React.useState(true);
+
+  React.useEffect(() => {
+    setIsAdmin((getStoredRoleSession()?.role ?? "admin") === "admin");
+  }, []);
 
   return (
     <header className="h-[56px] sm:h-[64px] bg-[var(--bg-secondary)]/95 backdrop-blur-md border-b border-[var(--border-default)] z-40 flex items-center justify-between gap-2 px-3 sm:px-6 flex-shrink-0">
@@ -38,7 +44,7 @@ export function Topbar() {
             const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true });
             window.dispatchEvent(event);
           }}
-          className="hidden lg:flex items-center gap-2 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-white hover:border-[rgba(255,255,255,0.15)] transition-all"
+          className={`${isAdmin ? "hidden lg:flex" : "hidden"} items-center gap-2 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-white hover:border-[rgba(255,255,255,0.15)] transition-all`}
           title="Global Search (Ctrl+K)"
         >
           <Search size={14} />
@@ -62,7 +68,7 @@ export function Topbar() {
         {/* Notification Dropdown Removed per user request */}
         <button
           onClick={() => router.push("/settings")}
-          className="w-9 h-9 rounded-full hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-secondary)] hover:text-white transition-colors"
+          className={`${isAdmin ? "flex" : "hidden"} w-9 h-9 rounded-full hover:bg-[var(--bg-elevated)] items-center justify-center text-[var(--text-secondary)] hover:text-white transition-colors`}
         >
           <Settings size={18} />
         </button>

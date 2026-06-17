@@ -179,7 +179,7 @@ function SyncBadge({ synced }: { synced: boolean }) {
 // ── Main TV Display ──────────────────────────────────────────────────────────
 export default function TVDisplay() {
   const { 
-    activeMatch, matches, athletes, currentRound, roundTimer, timerMode, roundEvents, settings, referees, judgeScores 
+    activeMatch, matches, athletes, clubs, brackets, currentRound, roundTimer, timerMode, roundEvents, settings, referees, judgeScores
   } = useTournamentStore();
 
   const [now, setNow] = useState(new Date());
@@ -189,6 +189,10 @@ export default function TVDisplay() {
   const [latestCard, setLatestCard] = useState<(RoundEvent | StoredJudgingEvent) | null>(null);
   const [latestMethod, setLatestMethod] = useState<(RoundEvent | StoredJudgingEvent) | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState("");
+  const [tvSection, setTvSection] = useState<"matches" | "brackets" | "registry">("matches");
+  const [tvGender, setTvGender] = useState("");
+  const [tvAge, setTvAge] = useState("");
+  const [tvWeight, setTvWeight] = useState("");
   const [liveMatchStates, setLiveMatchStates] = useState<Record<string, FirebaseMatchState>>({});
   const lastCardKeyRef = useRef("");
   const lastMethodKeyRef = useRef("");
@@ -414,6 +418,28 @@ export default function TVDisplay() {
     ...(displayMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)) ?? []),
   ].filter(Boolean);
 
+  const approvedClubs = useMemo(
+    () => clubs.filter(club => club.status === "Active" && (club.approvalStatus ?? "Approved") === "Approved"),
+    [clubs],
+  );
+  const approvedAthletes = useMemo(
+    () => athletes.filter(athlete => athlete.registrationStatus === "Active" && (athlete.approvalStatus ?? "Approved") === "Approved"),
+    [athletes],
+  );
+  const bracketFilterOptions = useMemo(() => ({
+    genders: Array.from(new Set(brackets.map(bracket => bracket.gender).filter(Boolean))).sort(),
+    ages: Array.from(new Set(brackets.map(bracket => bracket.ageGroup).filter(Boolean))).sort(),
+    weights: Array.from(new Set(brackets.map(bracket => bracket.weightCategory).filter(Boolean))).sort(),
+  }), [brackets]);
+  const visibleTvBrackets = useMemo(
+    () => brackets.filter(bracket =>
+      (!tvGender || bracket.gender === tvGender) &&
+      (!tvAge || bracket.ageGroup === tvAge) &&
+      (!tvWeight || bracket.weightCategory === tvWeight)
+    ),
+    [brackets, tvAge, tvGender, tvWeight],
+  );
+
   // Timer ring color by mode
   const ringColor = liveTimerMode === "rest" ? "var(--ikf-gold)"
     : liveTimerMode === "medical" ? "#0066cc"
@@ -436,49 +462,146 @@ export default function TVDisplay() {
             <SyncBadge synced={fbConnected} />
           </div>
 
-          {availableMatches.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-[rgba(255,255,255,0.14)] bg-white/[0.03] p-10 text-center text-[rgba(255,255,255,0.55)]">
-              No current scheduled or live matches are available for TV display.
+          <div className="flex flex-wrap gap-2 rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.035] p-2">
+            {[
+              ["matches", "Current Matches"],
+              ["brackets", "Brackets"],
+              ["registry", "Approved Clubs & Athletes"],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTvSection(id as typeof tvSection)}
+                className={`rounded-xl px-4 py-2 text-[11px] font-black uppercase tracking-widest transition-colors ${tvSection === id ? "bg-[var(--ikf-gold)] text-black" : "text-[rgba(255,255,255,0.55)] hover:bg-white/[0.06] hover:text-white"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {tvSection === "matches" && (
+            availableMatches.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-[rgba(255,255,255,0.14)] bg-white/[0.03] p-10 text-center text-[rgba(255,255,255,0.55)]">
+                No current scheduled or live matches are available for TV display.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {availableMatches.map(match => {
+                  const liveState = liveMatchStates[match.id];
+                  const isLive = match.status === "in-progress" || Boolean(liveState);
+                  return (
+                    <button
+                      key={match.id}
+                      type="button"
+                      onClick={() => setSelectedMatchId(match.id)}
+                      className="group rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.045)] p-5 text-left shadow-2xl transition-all hover:-translate-y-0.5 hover:border-[var(--ikf-gold)] hover:bg-[rgba(212,160,23,0.08)]"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--text-muted)]">Match #{match.matchNumber} - Mat {match.matNumber}</div>
+                          <div className="mt-2 font-display text-3xl leading-none text-white">{formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}</div>
+                        </div>
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isLive ? "border-green-500/50 bg-green-500/10 text-green-300" : "border-[var(--ikf-gold)]/40 bg-[var(--ikf-gold)]/10 text-[var(--ikf-gold)]"}`}>
+                          {isLive ? "Live" : "Ready"}
+                        </span>
+                      </div>
+                      <div className="mt-5 grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-red)]">Red</div>
+                          <div className="truncate text-lg font-bold text-white">{match.redCornerName}</div>
+                        </div>
+                        <div className="font-display text-xl text-[rgba(255,255,255,0.35)]">vs</div>
+                        <div className="min-w-0 text-right">
+                          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--corner-blue)]">Blue</div>
+                          <div className="truncate text-lg font-bold text-white">{match.blueCornerName}</div>
+                        </div>
+                      </div>
+                      <div className="mt-5 flex items-center justify-between border-t border-[rgba(255,255,255,0.07)] pt-4 text-xs font-bold uppercase tracking-widest text-[rgba(255,255,255,0.45)]">
+                        <span>Round {liveState?.currentRound ?? 1} / {liveState?.totalRounds ?? match.totalRounds ?? 3}</span>
+                        <span>{liveState ? formatTime(deriveLiveMatchTimers(liveState)?.roundTimer ?? liveState.roundTimer) : "Standby"}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )
+          )}
+
+          {tvSection === "brackets" && (
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <select value={tvGender} onChange={event => setTvGender(event.target.value)} className="rounded-xl border border-[rgba(255,255,255,0.1)] bg-black/35 px-4 py-3 text-sm font-bold text-white">
+                  <option value="">All genders</option>
+                  {bracketFilterOptions.genders.map(gender => <option key={gender} value={gender}>{gender}</option>)}
+                </select>
+                <select value={tvAge} onChange={event => setTvAge(event.target.value)} className="rounded-xl border border-[rgba(255,255,255,0.1)] bg-black/35 px-4 py-3 text-sm font-bold text-white">
+                  <option value="">All ages</option>
+                  {bracketFilterOptions.ages.map(age => <option key={age} value={age}>{age}</option>)}
+                </select>
+                <select value={tvWeight} onChange={event => setTvWeight(event.target.value)} className="rounded-xl border border-[rgba(255,255,255,0.1)] bg-black/35 px-4 py-3 text-sm font-bold text-white">
+                  <option value="">All weights</option>
+                  {bracketFilterOptions.weights.map(weight => <option key={weight} value={weight}>{weight}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {visibleTvBrackets.map(bracket => {
+                  const bracketMatches = matches.filter(match => bracket.matchIds.includes(match.id)).sort((a, b) => a.matchNumber - b.matchNumber);
+                  return (
+                    <div key={bracket.id} className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.045] p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--ikf-gold)]">Bracket</div>
+                          <div className="mt-2 font-display text-4xl leading-none text-white">{bracket.category}</div>
+                        </div>
+                        <div className="rounded-full border border-green-500/40 bg-green-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-green-300">{bracket.status ?? "in-progress"}</div>
+                      </div>
+                      <div className="mt-5 space-y-2">
+                        {bracketMatches.slice(0, 6).map(match => (
+                          <div key={match.id} className="grid grid-cols-[80px_1fr_auto_1fr] gap-3 rounded-xl bg-black/25 px-3 py-2 text-sm">
+                            <span className="font-mono text-[var(--text-muted)]">#{match.matchNumber}</span>
+                            <span className="truncate text-[var(--ikf-red)] font-bold">{match.redCornerName || "TBD"}</span>
+                            <span className="text-[rgba(255,255,255,0.3)]">vs</span>
+                            <span className="truncate text-right text-[var(--corner-blue)] font-bold">{match.blueCornerName || "TBD"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                {visibleTvBrackets.length === 0 && (
+                  <div className="md:col-span-2 rounded-3xl border border-dashed border-[rgba(255,255,255,0.14)] bg-white/[0.03] p-10 text-center text-[rgba(255,255,255,0.55)]">
+                    No admin-generated brackets match this TV filter.
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {availableMatches.map(match => {
-                const liveState = liveMatchStates[match.id];
-                const isLive = match.status === "in-progress" || Boolean(liveState);
-                return (
-                  <button
-                    key={match.id}
-                    type="button"
-                    onClick={() => setSelectedMatchId(match.id)}
-                    className="group rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.045)] p-5 text-left shadow-2xl transition-all hover:-translate-y-0.5 hover:border-[var(--ikf-gold)] hover:bg-[rgba(212,160,23,0.08)]"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--text-muted)]">Match #{match.matchNumber} - Mat {match.matNumber}</div>
-                        <div className="mt-2 font-display text-3xl leading-none text-white">{formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}</div>
-                      </div>
-                      <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isLive ? "border-green-500/50 bg-green-500/10 text-green-300" : "border-[var(--ikf-gold)]/40 bg-[var(--ikf-gold)]/10 text-[var(--ikf-gold)]"}`}>
-                        {isLive ? "Live" : "Ready"}
-                      </span>
+          )}
+
+          {tvSection === "registry" && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.045] p-5">
+                <div className="font-display text-4xl text-white">Approved Clubs</div>
+                <div className="mt-4 grid gap-2">
+                  {approvedClubs.map(club => (
+                    <div key={club.id} className="flex items-center justify-between rounded-xl bg-black/25 px-4 py-3">
+                      <span className="font-bold text-white">{club.name}</span>
+                      <span className="text-sm text-[rgba(255,255,255,0.5)]">{club.country}</span>
                     </div>
-                    <div className="mt-5 grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-red)]">Red</div>
-                        <div className="truncate text-lg font-bold text-white">{match.redCornerName}</div>
-                      </div>
-                      <div className="font-display text-xl text-[rgba(255,255,255,0.35)]">vs</div>
-                      <div className="min-w-0 text-right">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-[var(--corner-blue)]">Blue</div>
-                        <div className="truncate text-lg font-bold text-white">{match.blueCornerName}</div>
-                      </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.045] p-5">
+                <div className="font-display text-4xl text-white">Approved Athletes</div>
+                <div className="mt-4 grid gap-2">
+                  {approvedAthletes.slice(0, 30).map(athlete => (
+                    <div key={athlete.id} className="grid grid-cols-[1fr_auto_auto] gap-3 rounded-xl bg-black/25 px-4 py-3 text-sm">
+                      <span className="truncate font-bold text-white">{athlete.fullName}</span>
+                      <span className="text-[var(--ikf-gold)]">{athlete.gender}</span>
+                      <span className="text-[rgba(255,255,255,0.5)]">{formatMatchCategory(athlete.ageGroup, athlete.weightCategory)}</span>
                     </div>
-                    <div className="mt-5 flex items-center justify-between border-t border-[rgba(255,255,255,0.07)] pt-4 text-xs font-bold uppercase tracking-widest text-[rgba(255,255,255,0.45)]">
-                      <span>Round {liveState?.currentRound ?? 1} / {liveState?.totalRounds ?? match.totalRounds ?? 3}</span>
-                      <span>{liveState ? formatTime(deriveLiveMatchTimers(liveState)?.roundTimer ?? liveState.roundTimer) : "Standby"}</span>
-                    </div>
-                  </button>
-                );
-              })}
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

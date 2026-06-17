@@ -32,7 +32,10 @@ export default function BracketsPage() {
   const upcomingMatches = useMatchNotifications();
 
   const ageOptions: { value: AgeGroup; label: string }[] = AGE_GROUPS.map(value => ({ value, label: AGE_GROUP_LABELS[value] }));
-  const confirmed = useMemo(() => athletes.filter(a => a.registrationStatus === "Active").map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })), [athletes]);
+  const confirmed = useMemo(() => athletes
+    .filter(a => a.registrationStatus === "Active" && (a.approvalStatus ?? "Approved") === "Approved")
+    .map(a => ({ ...a, ageGroup: normalizeAgeGroup(a.ageGroup) })),
+  [athletes]);
   const [selectedGender, setSelectedGender] = useState<Gender>("Male");
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup | "">("Senior");
   const uniqueWeights = useMemo(() => {

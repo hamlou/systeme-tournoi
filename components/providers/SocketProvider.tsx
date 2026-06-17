@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { onValue, off, ref } from "firebase/database";
 import { db } from "@/lib/firebase";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, RoundEvent, TournamentReport, TournamentSettings } from "@/types/tournament";
+import type { Athlete, Club, WeighinRecord, Match, Bracket, Referee, JudgeScore, RoundEvent, TournamentReport, TournamentSettings, RoleAccount } from "@/types/tournament";
 
 interface SyncContextType {
   isConnected: boolean;
@@ -31,6 +31,9 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       // Sync each collection into the Zustand store
       if (data.settings) {
         store.setState({ settings: data.settings as TournamentSettings });
+      }
+      if (Array.isArray(data.accounts)) {
+        store.setState({ accounts: data.accounts as RoleAccount[] });
       }
       if (Array.isArray(data.athletes)) {
         store.setState({ athletes: data.athletes as Athlete[] });

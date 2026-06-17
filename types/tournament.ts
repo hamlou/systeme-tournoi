@@ -3,7 +3,8 @@
 export type AgeGroup = 'Mini' | 'Cadet' | 'Junior' | 'Senior';
 export type Gender = 'Male' | 'Female';
 export type WeighinStatus = 'Pending' | 'Confirmed' | 'Overweight';
-export type RegistrationStatus = 'Active' | 'Withdrawn' | 'Suspended';
+export type ApprovalStatus = 'Pending' | 'Approved' | 'Rejected';
+export type RegistrationStatus = 'Pending' | 'Active' | 'Withdrawn' | 'Suspended';
 export type MatchStatus = 'scheduled' | 'in-progress' | 'completed';
 export type TimerMode = 'idle' | 'round' | 'rest' | 'passivity' | 'medical';
 export type WinMethod = 'majority-decision' | 'unanimous-decision' | 'split-decision' | 'KO' | 'TKO' | 'ippon' | 'disqualification' | 'draw' | 'withdrawal';
@@ -11,6 +12,21 @@ export type RoundEventType = 'round-start' | 'round-end' | 'wosk-stop' | 'doctor
 export type ReportStatus = 'Draft' | 'Official' | 'Exported';
 export type RefRole = 'Chief Referee' | 'Central Referee' | 'Corner Judge';
 export type RefStatus = 'Available' | 'In Match' | 'On Break';
+export type UserRole = 'admin' | 'central-referee' | 'corner-referee' | 'athlete' | 'club' | 'tv';
+
+export interface RoleAccount {
+  id: string;
+  username: string;
+  password: string;
+  role: UserRole;
+  displayName: string;
+  approvalStatus: ApprovalStatus;
+  refereeId?: string;
+  athleteId?: string;
+  clubId?: string;
+  createdAt: string;
+  approvedAt?: string;
+}
 
 export interface Athlete {
   id: string;
@@ -28,6 +44,9 @@ export interface Athlete {
   medicalClearance: boolean;
   weighInStatus: WeighinStatus;
   registrationStatus: RegistrationStatus;
+  approvalStatus?: ApprovalStatus;
+  accountId?: string;
+  approvedAt?: string;
   photoUrl?: string;
 }
 
@@ -40,7 +59,10 @@ export interface Club {
   phone: string;
   affiliationNumber?: string;
   expectedAthletes: number;
-  status: 'Active' | 'Incomplete' | 'Suspended';
+  status: 'Pending' | 'Active' | 'Incomplete' | 'Suspended';
+  approvalStatus?: ApprovalStatus;
+  accountId?: string;
+  approvedAt?: string;
   logoUrl?: string;
   notes?: string;
 }
@@ -197,6 +219,9 @@ export interface Referee {
   country: string;
   grade: string;
   status: RefStatus;
+  approvalStatus?: ApprovalStatus;
+  accountId?: string;
+  approvedAt?: string;
   currentMatchId?: string;
   currentAssignment?: string;
 }

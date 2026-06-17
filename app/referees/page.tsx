@@ -23,7 +23,7 @@ function toDateTimeLocal(value?: string | null) {
 const REFEREE_ROLES: RefRole[] = ["Chief Referee", "Central Referee", "Corner Judge"];
 
 export default function RefereesPage() {
-  const { referees, matches, addReferee, deleteReferee, assignRefereeToMatch, settings } = useTournamentStore();
+  const { referees, matches, accounts, addReferee, deleteReferee, approveReferee, assignRefereeToMatch, settings } = useTournamentStore();
   const upcomingMatches = useMatchNotifications();
   const [searchTerm, setSearchTerm] = useState("");
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(false);
@@ -48,10 +48,14 @@ export default function RefereesPage() {
     Boolean(match.assignedRefereeId) && (match.assignedJudgeIds?.length ?? 0) === requiredJudgeCount;
 
   const canUseOfficialForMatch = (official: typeof referees[number], match: typeof matches[number]) => {
+    if ((official.approvalStatus ?? "Approved") !== "Approved") return false;
     if (official.currentMatchId === match.id || official.status === "Available") return true;
     const assignedMatch = matches.find(m => m.id === official.currentMatchId);
     return assignedMatch?.status !== "in-progress";
   };
+
+  const getRefereeAccount = (refereeId: string) =>
+    accounts.find(account => account.refereeId === refereeId);
 
   const filteredReferees = useMemo(
     () => referees.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.role.toLowerCase().includes(searchTerm.toLowerCase()) || r.country.toLowerCase().includes(searchTerm.toLowerCase())),
@@ -154,18 +158,36 @@ export default function RefereesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-[var(--bg-elevated)] text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
-              <tr><th className="py-3 px-4">Name</th><th className="py-3 px-4">Category</th><th className="py-3 px-4">Country</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Actions</th></tr>
+              <tr><th className="py-3 px-4">Name</th><th className="py-3 px-4">Category</th><th className="py-3 px-4">Login</th><th className="py-3 px-4">Country</th><th className="py-3 px-4">Approval</th><th className="py-3 px-4">Status</th><th className="py-3 px-4">Actions</th></tr>
             </thead>
             <tbody>
               {filteredReferees.map(ref => {
                 const isAssigned = matches.some(m => m.status !== "completed" && (m.assignedRefereeId === ref.id || m.assignedJudgeIds?.includes(ref.id)));
+                const account = getRefereeAccount(ref.id);
+                const approval = ref.approvalStatus ?? "Approved";
                 return (
                   <tr key={ref.id} className="border-b border-[rgba(255,255,255,0.04)] hover:bg-[rgba(255,255,255,0.03)]">
                     <td className="py-3 px-4 font-bold text-white">{ref.name}</td>
                     <td className="py-3 px-4">{getRoleBadge(ref.role)}</td>
+                    <td className="py-3 px-4">
+                      {account ? (
+                        <div className="space-y-0.5 font-mono text-[10px]">
+                          <div className="text-white">{account.username}</div>
+                          <div className="text-[var(--text-muted)]">{account.password}</div>
+                        </div>
+                      ) : <span className="text-[var(--text-muted)]">Not generated</span>}
+                    </td>
                     <td className="py-3 px-4 text-[var(--text-secondary)]">{ref.country}</td>
+                    <td className="py-3 px-4"><IKFBadge variant={approval === "Approved" ? "win" : approval === "Rejected" ? "cancelled" : "pending"} label={approval} size="sm" /></td>
                     <td className="py-3 px-4"><IKFBadge variant={ref.status === "Available" ? "win" : ref.status === "In Match" ? "live" : "pending"} label={ref.status} size="sm" /></td>
-                    <td className="py-3 px-4"><button disabled={isAssigned} onClick={() => deleteReferee(ref.id)} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--ikf-red)] disabled:opacity-30 disabled:cursor-not-allowed" title={isAssigned ? "Reassign or complete active match first" : "Remove referee"}><Trash2 size={15} /></button></td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1">
+                        {approval !== "Approved" && (
+                          <button onClick={() => approveReferee(ref.id)} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--status-win)]" title="Approve referee"><CheckCircle2 size={15} /></button>
+                        )}
+                        <button disabled={isAssigned} onClick={() => deleteReferee(ref.id)} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--ikf-red)] disabled:opacity-30 disabled:cursor-not-allowed" title={isAssigned ? "Reassign or complete active match first" : "Remove referee"}><Trash2 size={15} /></button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

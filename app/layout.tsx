@@ -58,13 +58,13 @@ export default function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <AuthGate>
-            <SocketProvider>
+          <SocketProvider>
+            <AuthGate>
               <AppShell>
                 {children}
               </AppShell>
-            </SocketProvider>
-          </AuthGate>
+            </AuthGate>
+          </SocketProvider>
 
           {/* Global notification system */}
           <Toaster

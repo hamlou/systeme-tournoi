@@ -21,38 +21,42 @@ import { useNavigationStore } from "@/store/navigationStore";
 import { useTournamentStore } from "@/store/tournamentStore";
 import { cn } from "@/lib/utils";
 import { t } from "@/lib/i18n";
-import { clearAdminSession, getStoredAdminSession } from "@/components/auth/AuthGate";
+import { clearRoleSession, getStoredRoleSession } from "@/components/auth/AuthGate";
+import { ROLE_LABELS } from "@/lib/roleAccess";
+import type { UserRole } from "@/types/tournament";
 
 const NAV_SECTIONS = [
   {
     label: "MANAGEMENT",
     items: [
-      { id: "Dashboard", route: "/dashboard", icon: LayoutDashboard },
-      { id: "Athlete Registration", route: "/athletes", icon: Users },
-      { id: "Club Registration", route: "/clubs", icon: Building2 },
+      { id: "Dashboard", route: "/dashboard", icon: LayoutDashboard, roles: ["admin"] },
+      { id: "Athlete Registration", route: "/athletes", icon: Users, roles: ["admin"] },
+      { id: "My Athlete Profile", route: "/athletes/register", icon: Users, roles: ["athlete"] },
+      { id: "Club Registration", route: "/clubs", icon: Building2, roles: ["admin"] },
+      { id: "My Club Profile", route: "/clubs/register", icon: Building2, roles: ["club"] },
     ],
   },
   {
     label: "COMPETITION",
     items: [
-      { id: "Draw & Brackets", route: "/brackets", icon: GitBranch },
-      { id: "Referee Management", route: "/referees", icon: Shield },
-      { id: "Round Management", route: "/rounds", icon: Timer },
+      { id: "Draw & Brackets", route: "/brackets", icon: GitBranch, roles: ["admin"] },
+      { id: "Referee Management", route: "/referees", icon: Shield, roles: ["admin"] },
+      { id: "Round Management", route: "/rounds", icon: Timer, roles: ["admin", "central-referee"] },
     ],
   },
   {
     label: "LIVE",
     items: [
-      { id: "Electronic Judging", route: "/judging/judge", icon: Swords },
-      { id: "TV Display", route: "/tv", icon: Monitor },
+      { id: "Electronic Judging", route: "/judging/judge", icon: Swords, roles: ["admin", "central-referee", "corner-referee"] },
+      { id: "TV Display", route: "/tv", icon: Monitor, roles: ["admin", "tv"] },
     ],
   },
   {
     label: "ANALYTICS",
     items: [
-      { id: "Instant Reports", route: "/reports", icon: FileText },
-      { id: "Tournament Statistics", route: "/statistics", icon: BarChart3 },
-      { id: "AI Analytics", route: "/ai", icon: Brain },
+      { id: "Instant Reports", route: "/reports", icon: FileText, roles: ["admin"] },
+      { id: "Tournament Statistics", route: "/statistics", icon: BarChart3, roles: ["admin"] },
+      { id: "AI Analytics", route: "/ai", icon: Brain, roles: ["admin"] },
     ],
   },
 ];
@@ -62,18 +66,28 @@ export function Sidebar() {
   const { settings } = useTournamentStore();
   const router = useRouter();
   const pathname = usePathname();
-  const [adminName, setAdminName] = React.useState("Admin");
+  const [userName, setUserName] = React.useState("User");
+  const [userRole, setUserRole] = React.useState<UserRole>("admin");
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
 
   React.useEffect(() => {
-    setAdminName(getStoredAdminSession()?.username ?? "Admin");
+    const session = getStoredRoleSession();
+    setUserName(session?.displayName ?? session?.username ?? "User");
+    setUserRole(session?.role ?? "admin");
   }, []);
 
   const handleLogout = () => {
-    clearAdminSession();
+    clearRoleSession();
     setShowLogoutConfirm(false);
     router.push("/dashboard");
   };
+
+  const visibleSections = NAV_SECTIONS
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => item.roles.includes(userRole)),
+    }))
+    .filter(section => section.items.length > 0);
 
   return (
     <aside className="w-[60px] sm:w-[76px] lg:w-[260px] flex-shrink-0 bg-[var(--bg-secondary)] border-r border-[var(--border-default)] flex flex-col z-50 transition-all duration-300">
@@ -93,7 +107,7 @@ export function Sidebar() {
 
       {/* ── Navigation ── */}
       <nav className="flex-1 overflow-y-auto px-1.5 sm:px-2 lg:px-4 pb-4 sm:pb-6 space-y-3 sm:space-y-6 custom-scrollbar">
-        {NAV_SECTIONS.map((section, idx) => {
+        {visibleSections.map((section, idx) => {
           const transSectionKey = section.label.toLowerCase() as keyof typeof import('@/lib/i18n').translations['en'];
           const transSectionLabel = t(transSectionKey, settings.language) || section.label;
 
@@ -171,10 +185,10 @@ export function Sidebar() {
           </div>
           <div className="flex-col hidden lg:flex min-w-0">
             <span className="text-sm font-semibold text-[var(--text-primary)] leading-tight truncate">
-              {adminName}
+              {userName}
             </span>
             <span className="text-[10px] text-[var(--text-muted)] font-medium mt-0.5">
-              IKF Admin Platform
+              {ROLE_LABELS[userRole]}
             </span>
           </div>
         </div>

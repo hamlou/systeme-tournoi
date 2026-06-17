@@ -16,6 +16,9 @@ export function MatchBox({ match, onClick, compact }: MatchBoxProps) {
   const isBlueWinner = match.result?.winnerCorner === "BLUE";
   const redScore = match.result?.redTotalScore;
   const blueScore = match.result?.blueTotalScore;
+  const isPlaceholder = (name?: string) => !name || ["BYE", "TBD", "Priority winner", "Semifinal winner", "WB Champion", "LB Champion"].includes(name);
+  const isRedStandaloneAdvance = !match.result && !isPlaceholder(match.redCornerName) && isPlaceholder(match.blueCornerName);
+  const isBlueStandaloneAdvance = !match.result && !isPlaceholder(match.blueCornerName) && isPlaceholder(match.redCornerName);
 
   const time = new Date(match.scheduledTime || 0).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -30,21 +33,23 @@ export function MatchBox({ match, onClick, compact }: MatchBoxProps) {
         <span>M#{match.matchNumber}</span>
       </div>
 
-      <div className={`p-3 border-l-4 border-[var(--ikf-red)] border-b border-[var(--border-default)] flex justify-between items-center transition-colors ${isRedWinner ? "bg-[rgba(200,16,46,0.1)]" : ""}`}>
+      <div className={`p-3 border-l-4 border-[var(--ikf-red)] border-b border-[var(--border-default)] flex justify-between items-center transition-colors ${isRedWinner ? "bg-[rgba(200,16,46,0.1)]" : isRedStandaloneAdvance ? "bg-[rgba(212,160,23,0.11)] ring-1 ring-inset ring-[rgba(212,160,23,0.28)]" : ""}`}>
         <span className={`font-semibold text-sm truncate pr-2 ${match.redCornerName === "BYE" ? "text-[var(--text-muted)] italic" : isBlueWinner ? "text-[var(--text-muted)] line-through" : isRedWinner ? "text-[var(--ikf-gold)]" : "text-white"}`}>
           {match.redCornerName || <span className="text-[var(--text-muted)] italic">TBD</span>}
         </span>
         <div className="flex items-center gap-2">
+          {isRedStandaloneAdvance && <span className="text-[8px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">Advanced</span>}
           {isRedWinner && <Trophy size={14} className="text-[var(--ikf-gold)]" />}
           {redScore !== undefined && <span className={`font-mono text-sm font-bold ${isRedWinner ? "text-[var(--ikf-gold)]" : "text-white"}`}>{redScore}</span>}
         </div>
       </div>
 
-      <div className={`p-3 border-l-4 border-[var(--corner-blue)] flex justify-between items-center transition-colors ${isBlueWinner ? "bg-[rgba(0,102,204,0.1)]" : ""}`}>
+      <div className={`p-3 border-l-4 border-[var(--corner-blue)] flex justify-between items-center transition-colors ${isBlueWinner ? "bg-[rgba(0,102,204,0.1)]" : isBlueStandaloneAdvance ? "bg-[rgba(212,160,23,0.11)] ring-1 ring-inset ring-[rgba(212,160,23,0.28)]" : ""}`}>
         <span className={`font-semibold text-sm truncate pr-2 ${match.blueCornerName === "BYE" ? "text-[var(--text-muted)] italic" : isRedWinner ? "text-[var(--text-muted)] line-through" : isBlueWinner ? "text-[var(--ikf-gold)]" : "text-white"}`}>
           {match.blueCornerName || <span className="text-[var(--text-muted)] italic">TBD</span>}
         </span>
         <div className="flex items-center gap-2">
+          {isBlueStandaloneAdvance && <span className="text-[8px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">Advanced</span>}
           {isBlueWinner && <Trophy size={14} className="text-[var(--ikf-gold)]" />}
           {blueScore !== undefined && <span className={`font-mono text-sm font-bold ${isBlueWinner ? "text-[var(--ikf-gold)]" : "text-white"}`}>{blueScore}</span>}
         </div>

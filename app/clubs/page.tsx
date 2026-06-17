@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Search, Building2, Edit2, User, Trash2 } from "lucide-react";
+import { Search, Building2, Edit2, User, Trash2, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, Club } from "@/types/tournament";
@@ -56,7 +56,7 @@ function RosterAthleteAvatar({ athlete }: { athlete: Athlete }) {
 
 export default function ClubsPage() {
   const router = useRouter();
-  const { clubs, athletes, settings, deleteClub } = useTournamentStore();
+  const { clubs, athletes, settings, deleteClub, approveClub } = useTournamentStore();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
 
@@ -131,8 +131,8 @@ export default function ClubsPage() {
               {/* Top right status badge */}
               <div className="absolute top-4 right-4 z-10">
                 <IKFBadge 
-                  variant={club.status === "Active" ? "win" : club.status === "Incomplete" ? "pending" : "cancelled"} 
-                  label={club.status === "Active" ? t('active', settings.language) : club.status === "Incomplete" ? t('pending', settings.language) : club.status} 
+                  variant={club.status === "Active" ? "win" : club.status === "Pending" || club.status === "Incomplete" ? "pending" : "cancelled"}
+                  label={club.status === "Active" ? t('active', settings.language) : club.status === "Pending" || club.status === "Incomplete" ? t('pending', settings.language) : club.status}
                   size="sm" 
                 />
               </div>
@@ -167,6 +167,11 @@ export default function ClubsPage() {
               </div>
 
               <div className="flex gap-2 mb-4">
+                {(club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending")) !== "Approved" && (
+                  <IKFButton variant="secondary" size="sm" leftIcon={<CheckCircle2 size={14} />} onClick={(event) => { event.stopPropagation(); approveClub(club.id); }}>
+                    Approve
+                  </IKFButton>
+                )}
                 <IKFButton variant="ghost" size="sm" leftIcon={<Edit2 size={14} />} onClick={(event) => { event.stopPropagation(); router.push(`/clubs/register?edit=${club.id}`); }}>
                   Edit Club
                 </IKFButton>
