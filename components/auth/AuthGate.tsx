@@ -93,6 +93,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const addAccount = useTournamentStore(state => state.addAccount);
   const addReferee = useTournamentStore(state => state.addReferee);
   const [isReady, setIsReady] = React.useState(false);
+  const [hydrationTimedOut, setHydrationTimedOut] = React.useState(false);
   const [session, setSession] = React.useState<RoleSession | null>(null);
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -119,6 +120,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       window.removeEventListener("ikf-admin-auth-change", syncSession);
     };
   }, []);
+
+  React.useEffect(() => {
+    if (isHydrated) {
+      setHydrationTimedOut(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      console.warn("[AuthGate] Sync hydration timed out. Rendering auth screen with current local state.");
+      setHydrationTimedOut(true);
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [isHydrated]);
 
   React.useEffect(() => {
     if (!session || !pathname) return;
@@ -248,7 +263,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setCreateRole("athlete");
   };
 
-  if (!isReady || !isHydrated) {
+  if (!isReady || (!isHydrated && !hydrationTimedOut)) {
     return (
       <div className="min-h-[100dvh] bg-[var(--bg-primary)] flex items-center justify-center">
         <div className="h-12 w-12 rounded-full border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--ikf-red)] animate-spin" />
