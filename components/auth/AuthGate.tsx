@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { LockKeyhole, ShieldCheck, Trophy, Sparkles } from "lucide-react";
+import { LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { v4 as uuidv4 } from "uuid";
@@ -273,140 +273,127 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (session) return <>{children}</>;
 
   return (
-    <main className="relative min-h-[100dvh] overflow-y-auto overflow-x-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(200,16,46,0.22),transparent_34%),radial-gradient(circle_at_80%_10%,rgba(212,160,23,0.16),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.035)_0,transparent_35%)]" />
-      <section className="relative z-10 grid min-h-[100dvh] grid-cols-1 lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="hidden lg:flex flex-col justify-between p-12 xl:p-16">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] shadow-[0_0_40px_rgba(212,160,23,0.12)]">
-              <Trophy className="text-[var(--ikf-gold)]" size={26} />
-            </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.45em] text-[var(--ikf-gold)]">IKF Kenshido</p>
-              <p className="text-sm text-[var(--text-secondary)]">One tournament site for every approved role</p>
-            </div>
-          </div>
+    <main className="login-cinematic relative h-screen min-h-[100dvh] overflow-hidden bg-black text-white">
+      <div className="fixed inset-0 bg-[url('/loginbackground.jpg')] bg-cover bg-center sm:bg-[center_58%]" />
+      <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.68)_0%,rgba(0,0,0,0.2)_46%,rgba(0,0,0,0.54)_100%)]" />
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,26,36,0.08),transparent_28%),linear-gradient(90deg,rgba(0,0,0,0.44),transparent_34%,transparent_66%,rgba(0,0,0,0.42))]" />
 
-          <div className="max-w-3xl">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-white/[0.03] px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[var(--text-secondary)]">
-              <Sparkles size={14} className="text-[var(--ikf-red)]" /> Secure role access
-            </div>
-            <h1 className="font-display text-7xl xl:text-8xl leading-[0.88] tracking-wide">
-              CONTROL THE <span className="text-[var(--ikf-red)] drop-shadow-[0_0_30px_rgba(200,16,46,0.35)]">ARENA</span>
-            </h1>
-            <p className="mt-8 max-w-xl text-lg leading-8 text-[var(--text-secondary)]">
-              Sign in as table chief, referee, athlete, club, or TV display. Each account opens only the section it owns.
-            </p>
-          </div>
-
-          <div className="grid max-w-2xl grid-cols-2 gap-4">
-            {["Live Sync", "Role Locked"].map((item) => (
-              <div key={item} className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-white/[0.03] p-4 backdrop-blur-xl">
-                <p className="font-display text-2xl text-white">{item}</p>
-                <div className="mt-3 h-1 rounded-full bg-gradient-to-r from-[var(--ikf-red)] to-[var(--ikf-gold)]" />
-              </div>
-            ))}
-          </div>
+      <section className="relative z-10 h-screen min-h-[100dvh] w-full max-w-full overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
+        <div className="login-phrase-left pointer-events-none fixed left-4 top-[18dvh] max-w-[12rem] sm:left-8 sm:top-[20dvh] sm:max-w-[19rem] lg:left-[6vw] lg:top-[22dvh] lg:max-w-[24rem]">
+          <p className="font-display text-[clamp(2.1rem,7vw,5.7rem)] leading-[0.88] text-white drop-shadow-[0_10px_36px_rgba(0,0,0,0.9)]">
+            TWO ENTER,<br />ONE LEAVES.
+          </p>
         </div>
 
-        <div className="flex items-center justify-center p-4 sm:p-10">
+        <div className="login-phrase-right pointer-events-none fixed right-4 top-[30dvh] max-w-[11rem] text-right sm:right-8 sm:top-[26dvh] sm:max-w-[18rem] lg:right-[6vw] lg:top-[31dvh] lg:max-w-[24rem]">
+          <p className="font-display text-[clamp(2rem,6.4vw,5.4rem)] leading-[0.88] text-white drop-shadow-[0_10px_36px_rgba(0,0,0,0.9)]">
+            EARN YOUR<br />VICTORY
+          </p>
+        </div>
+
+        <p className="login-kanji pointer-events-none fixed bottom-[7dvh] left-5 font-serif text-[clamp(2.4rem,7vw,6rem)] leading-none text-white/88 drop-shadow-[0_14px_38px_rgba(0,0,0,0.85)] sm:left-10 lg:left-[7vw]">
+          剣志道
+        </p>
+
+        <div className="login-panel-shell fixed left-1/2 top-[clamp(1rem,5dvh,3.8rem)] w-[calc(100vw-32px)] max-w-[350px] -translate-x-1/2 sm:max-w-[390px]">
           <form
             onSubmit={handleLogin}
-            className="w-full max-w-[470px] overflow-hidden rounded-3xl sm:rounded-[2rem] border border-[rgba(255,255,255,0.1)] bg-[rgba(17,19,24,0.82)] shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
+            className="login-panel w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/[0.13] text-white shadow-[0_28px_90px_rgba(0,0,0,0.56)] backdrop-blur-xl"
           >
-            <div className="relative p-6 sm:p-10">
-              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--ikf-red)] via-[var(--ikf-gold)] to-[var(--corner-blue)]" />
-              <div className="mb-7 sm:mb-9 text-center">
-                <div className="mx-auto mb-5 flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-3xl border border-[rgba(200,16,46,0.35)] bg-[rgba(200,16,46,0.1)] shadow-[0_0_60px_rgba(200,16,46,0.22)]">
-                  <LockKeyhole className="text-[var(--ikf-red)]" size={30} />
-                </div>
-                <h2 className="mt-3 font-display text-4xl sm:text-5xl tracking-wide text-white">Welcome Back</h2>
-                <p className="mt-3 text-sm text-[var(--text-secondary)]">Use your approved tournament account.</p>
-              </div>
+            <div className="border-b border-white/10 bg-white/[0.16] px-6 py-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+              <p className="text-sm font-semibold uppercase tracking-[0.34em] text-white/86 sm:text-base">Tournament Login</p>
+            </div>
 
-              <div className="space-y-5">
-                <label className="block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Login</span>
-                  <input
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 text-base font-semibold text-white outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]"
-                    placeholder="Username"
-                    autoComplete="username"
-                    required
-                  />
+            <div className="space-y-4 px-6 py-6 sm:px-8 sm:py-7">
+              <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
+                <Mail size={16} className="shrink-0 text-white/78" />
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/72"
+                  placeholder="Login"
+                  autoComplete="username"
+                  required
+                />
+              </label>
+
+              <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
+                <LockKeyhole size={16} className="shrink-0 text-white/78" />
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/72"
+                  placeholder="Password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+
+              <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
+                <UserRound size={16} className="shrink-0 text-white/78" />
+                <select
+                  value={loginRole}
+                  onChange={(event) => setLoginRole(event.target.value as UserRole)}
+                  className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none"
+                  required
+                >
+                  {Object.entries(ROLE_LABELS).map(([role, label]) => (
+                    <option key={role} value={role} className="bg-[#26262d] text-white">{label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex items-center justify-between gap-4 pt-1 text-[0.68rem] text-white/60">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" className="h-3 w-3 accent-white/70" />
+                  Remember me
                 </label>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Password</span>
-                  <input
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    type="password"
-                    className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 text-base font-semibold text-white outline-none transition-all placeholder:text-[var(--text-muted)] focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]"
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
-                    required
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">Role</span>
-                  <select
-                    value={loginRole}
-                    onChange={(event) => setLoginRole(event.target.value as UserRole)}
-                    className="h-14 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-5 text-base font-semibold text-white outline-none transition-all focus:border-[var(--ikf-red)] focus:shadow-[0_0_0_4px_rgba(200,16,46,0.12)]"
-                    required
-                  >
-                    {Object.entries(ROLE_LABELS).map(([role, label]) => (
-                      <option key={role} value={role}>{label}</option>
-                    ))}
-                  </select>
-                </label>
+                <span className="italic">Secure access</span>
               </div>
 
               <button
                 type="button"
                 onClick={() => setShowCreateAccount(value => !value)}
-                className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-[var(--ikf-gold)] hover:text-white"
+                className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/74 transition hover:text-white"
               >
                 {showCreateAccount ? "Hide sign up" : "Sign up"}
               </button>
 
               {showCreateAccount && (
-                <div className="mt-5 space-y-3 rounded-2xl border border-[rgba(212,160,23,0.24)] bg-[rgba(212,160,23,0.06)] p-4">
-                  <div className="grid grid-cols-1 gap-3">
-                    <input
-                      value={createName}
-                      onChange={(event) => setCreateName(event.target.value)}
-                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
-                      placeholder="Full name / club name"
-                    />
-                    <select
-                      value={createRole}
-                      onChange={(event) => setCreateRole(event.target.value as UserRole)}
-                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
-                    >
-                      {SELF_SERVICE_ROLES.map(role => (
-                        <option key={role} value={role}>{ROLE_LABELS[role]}</option>
-                      ))}
-                    </select>
-                    <input
-                      value={createUsername}
-                      onChange={(event) => setCreateUsername(event.target.value)}
-                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
-                      placeholder="Login"
-                    />
-                    <input
-                      value={createPassword}
-                      onChange={(event) => setCreatePassword(event.target.value)}
-                      type="password"
-                      className="h-11 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/25 px-4 text-sm font-semibold text-white outline-none focus:border-[var(--ikf-gold)]"
-                      placeholder="Password"
-                    />
-                  </div>
+                <div className="space-y-3 rounded-2xl border border-white/15 bg-black/20 p-4">
+                  <input
+                    value={createName}
+                    onChange={(event) => setCreateName(event.target.value)}
+                    className="h-10 w-full border-b border-white/30 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/60 focus:border-white"
+                    placeholder="Full name / club name"
+                  />
+                  <select
+                    value={createRole}
+                    onChange={(event) => setCreateRole(event.target.value as UserRole)}
+                    className="h-10 w-full border-b border-white/30 bg-transparent text-sm font-semibold text-white outline-none focus:border-white"
+                  >
+                    {SELF_SERVICE_ROLES.map(role => (
+                      <option key={role} value={role} className="bg-[#26262d] text-white">{ROLE_LABELS[role]}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={createUsername}
+                    onChange={(event) => setCreateUsername(event.target.value)}
+                    className="h-10 w-full border-b border-white/30 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/60 focus:border-white"
+                    placeholder="Login"
+                  />
+                  <input
+                    value={createPassword}
+                    onChange={(event) => setCreatePassword(event.target.value)}
+                    type="password"
+                    className="h-10 w-full border-b border-white/30 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/60 focus:border-white"
+                    placeholder="Password"
+                  />
                   <button
                     type="button"
                     onClick={handleCreateAccount}
-                    className="h-11 w-full rounded-xl bg-[var(--ikf-gold)] text-sm font-black uppercase tracking-widest text-black transition-all hover:bg-[#f0c84c]"
+                    className="h-10 w-full rounded-md bg-white/22 text-xs font-black uppercase tracking-[0.22em] text-white transition hover:bg-white/32"
                   >
                     Sign up
                   </button>
@@ -416,9 +403,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="mt-8 flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[var(--ikf-red)] to-[#e0344f] px-4 text-sm sm:text-base font-black uppercase tracking-[0.16em] sm:tracking-[0.2em] text-white shadow-[0_20px_45px_rgba(200,16,46,0.28)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(200,16,46,0.38)] disabled:cursor-not-allowed disabled:opacity-70"
+                className="mx-auto mt-2 flex h-12 w-[72%] min-w-44 items-center justify-center gap-2 rounded-md bg-white/24 px-4 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_35px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:bg-white/34 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isSubmitting ? "Checking..." : "Enter Platform"}<ShieldCheck size={19} />
+                {isSubmitting ? "Checking..." : "Login"}<ShieldCheck size={16} />
               </button>
             </div>
           </form>
