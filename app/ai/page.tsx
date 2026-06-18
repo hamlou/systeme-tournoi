@@ -8,6 +8,7 @@ import { PageHeader, IKFCard, SectionDivider, IKFBadge, IKFButton } from "@/comp
 import { useTournamentStore } from "@/store/tournamentStore";
 import { formatMatchCategory } from "@/lib/ageCategories";
 import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
+import { makeTableChiefOfficial, TABLE_CHIEF_LABEL } from "@/lib/officials";
 
 const AI_METHOD_EVENT_TYPES = new Set([
   "decision",
@@ -196,10 +197,10 @@ function buildInstantReportSnapshot(match: any, judgeScores: any[], events: any[
     recommendedWinner,
     recommendationReason,
     integrity: {
-      expectedScorecards: (match.assignedJudgeIds?.length ?? 0) + (match.assignedRefereeId ? 1 : 0),
+      expectedScorecards: match.assignedJudgeIds?.length ?? 0,
       totalRounds: match.totalRounds ?? 2,
       missingOfficials: [
-        ...(match.assignedRefereeId ? [] : ["central referee"]),
+        ...(match.assignedRefereeId ? [] : ["table chief"]),
         ...((match.assignedJudgeIds?.length ?? 0) === 0 ? ["corner judges"] : []),
       ],
     },
@@ -261,10 +262,10 @@ function buildPrompt(match: any, judgeScores: any[], events: any[], tournamentSt
   const eventSummary = summarizeEventCounts(events);
   const decisionSummary = summarizeJudgeDecisions(judgeScores, officials?.allReferees ?? []);
   const instantReportSnapshot = buildInstantReportSnapshot(match, judgeScores, events, officials);
-  return `You are the IKF Kenshido Chief Fight Analyst. Your output must feel like serious "ta7lil": sharp, reasoned, and useful to a chief referee, not a boring copy of the instant report.
+  return `You are the IKF Kenshido Table Chief Fight Analyst. Your output must feel like serious "ta7lil": sharp, reasoned, and useful to a table chief, not a boring copy of the instant report.
 
 Core mission:
-Analyze the match as if you are reviewing the official Instant Report after the bout. Give a clear analytical verdict, explain why, expose contradictions, and state what the chief referee should verify before the result is validated.
+Analyze the match as if you are reviewing the official Instant Report after the bout. Give a clear analytical verdict, explain why, expose contradictions, and state what the table chief should verify before the result is validated.
 
 Hard rules:
 - Do not copy the event log. Interpret it.
@@ -315,11 +316,11 @@ Required Markdown structure:
 - Analyze ${match.redCornerName} and ${match.blueCornerName} separately.
 - Discuss control, risk, discipline, momentum, and decision credibility.
 
-### 6. Data Integrity and Chief Referee Checks
+### 6. Data Integrity and Table Chief Checks
 - Flag missing, duplicated, contradictory, or suspicious records.
-- Say what the chief referee should verify before validation.
+- Say what the table chief should verify before validation.
 
-### 7. Final Chief Referee Note
+### 7. Final Table Chief Note
 - One concise operational conclusion: validate, review, or hold result pending missing data.
 - Explicitly state the athlete/corner that deserves the win according to your analysis.
 
@@ -362,7 +363,7 @@ Required structure:
 - Explain how referee/judge submissions and method calls affect this athlete.
 
 ### 6. Final Note
-- One practical note for the chief referee or coach.
+- One practical note for the table chief or coach.
 - Explicitly say if the athlete deserved to win, lose, draw, or if the data cannot support a firm decision.`;
 }
 
@@ -419,7 +420,7 @@ export default function AIPage() {
     blue: athletes.find(a => a.id === selectedMatch?.blueCornerId) ?? null,
   }), [athletes, selectedMatch?.blueCornerId, selectedMatch?.redCornerId]);
   const officialContext = useMemo(() => ({
-    centralReferee: referees.find(r => r.id === selectedMatch?.assignedRefereeId) ?? null,
+    tableChief: selectedMatch?.assignedRefereeId ? makeTableChiefOfficial(TABLE_CHIEF_LABEL) : null,
     cornerJudges: selectedMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) ?? [],
     allReferees: referees,
   }), [referees, selectedMatch?.assignedJudgeIds, selectedMatch?.assignedRefereeId]);

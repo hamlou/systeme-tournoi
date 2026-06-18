@@ -11,6 +11,7 @@ import { formatMatchCategory } from "@/lib/ageCategories";
 import { deriveLiveMatchTimers, useFirebaseLiveMatchStates, useFirebaseMatchState, FirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
 import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 import type { RoundEvent } from "@/types/tournament";
+import { makeTableChiefOfficial, TABLE_CHIEF_ASSIGNMENT_ID, TABLE_CHIEF_LABEL } from "@/lib/officials";
 
 // ── Hexagonal SVG background pattern ───────────────────────────────────────
 function HexBackground() {
@@ -102,17 +103,17 @@ function CornerCard({ side, name, club, country, score, label, yellowCards = 0, 
         </div>
 
         {/* Athlete and club images */}
-        <div className={`mb-5 flex items-center gap-4 ${isRed ? "" : "flex-row-reverse"}`}>
-          <div className="relative h-24 w-24 overflow-hidden rounded-3xl border border-white/20 bg-black/35 shadow-2xl">
+        <div className={`mb-5 flex items-center gap-6 ${isRed ? "" : "flex-row-reverse"}`}>
+          <div className="relative h-52 w-40 overflow-hidden rounded-[2rem] border border-white/20 bg-black/20 shadow-2xl">
             {athletePhotoUrl ? (
-              <Image src={athletePhotoUrl} alt={`${name} profile photo`} fill sizes="96px" className="object-cover" unoptimized />
+              <Image src={athletePhotoUrl} alt={`${name} profile photo`} fill sizes="180px" className="object-contain drop-shadow-[0_22px_34px_rgba(0,0,0,0.65)]" unoptimized />
             ) : (
               <div className="flex h-full w-full items-center justify-center font-display text-4xl text-white/35">{name.slice(0, 1) || "?"}</div>
             )}
           </div>
-          <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-white/15 bg-black/35">
+          <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-white/15 bg-black/35">
             {clubLogoUrl ? (
-              <Image src={clubLogoUrl} alt={`${club || "Club"} logo`} fill sizes="64px" className="object-cover" unoptimized />
+              <Image src={clubLogoUrl} alt={`${club || "Club"} logo`} fill sizes="96px" className="object-cover" unoptimized />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-xs font-black uppercase tracking-widest text-white/30">Club</div>
             )}
@@ -258,7 +259,7 @@ export default function TVDisplay() {
   const availableMatches = useMemo(
     () => matches
       .filter(match =>
-        match.status !== "completed" &&
+        (match.status !== "completed" || Boolean(match.result)) &&
         Boolean(match.redCornerId) &&
         Boolean(match.blueCornerId) &&
         !match.isBye
@@ -267,6 +268,7 @@ export default function TVDisplay() {
         const aLive = a.status === "in-progress" || Boolean(liveMatchStates[a.id]);
         const bLive = b.status === "in-progress" || Boolean(liveMatchStates[b.id]);
         if (aLive !== bLive) return aLive ? -1 : 1;
+        if (a.status === "completed" !== (b.status === "completed")) return a.status === "completed" ? 1 : -1;
         return a.matchNumber - b.matchNumber;
       }),
     [liveMatchStates, matches],
@@ -433,6 +435,8 @@ export default function TVDisplay() {
     : (displayMatch?.blueCornerName ?? t('blue_corner', settings.language).toUpperCase());
   const winnerColor = matchWinner === "RED" ? "var(--ikf-red)" : "var(--corner-blue)";
   const winnerParticleColor = matchWinner === "RED" ? "#c8102e" : "#0066cc";
+  const winnerAthleteForDisplay = matchWinner === "RED" ? redAthlete : matchWinner === "BLUE" ? blueAthlete : null;
+  const winnerClubForDisplay = matchWinner === "RED" ? redClub : matchWinner === "BLUE" ? blueClub : null;
 
   // Build ticker text from recent events
   const tickerEvents = useMemo(() => {
@@ -459,7 +463,7 @@ export default function TVDisplay() {
   const blueCards = scopedEvents.filter(e => e.corner === "BLUE" && e.type === "red-card").length;
 
   const assignedOfficials = [
-    displayMatch?.assignedRefereeId ? referees.find(r => r.id === displayMatch.assignedRefereeId) : null,
+    displayMatch?.assignedRefereeId === TABLE_CHIEF_ASSIGNMENT_ID ? makeTableChiefOfficial(TABLE_CHIEF_LABEL) : null,
     ...(displayMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)) ?? []),
   ].filter(Boolean) as typeof referees;
 
@@ -470,12 +474,13 @@ export default function TVDisplay() {
       (event as StoredJudgingEvent).officialId === official.id ||
       (event as StoredJudgingEvent).officialName === official.name
     );
+    const currentRoundEvents = officialEvents.filter(event => event.round === liveCurrentRound);
     const redYellow = officialEvents.filter(event => event.corner === "RED" && event.type === "yellow-card").length;
     const blueYellow = officialEvents.filter(event => event.corner === "BLUE" && event.type === "yellow-card").length;
     const redRed = officialEvents.filter(event => event.corner === "RED" && event.type === "red-card").length;
     const blueRed = officialEvents.filter(event => event.corner === "BLUE" && event.type === "red-card").length;
-    const methodCalls = officialEvents.filter(event => METHOD_EVENT_TYPES.has(event.type));
-    const latestAction = officialEvents[officialEvents.length - 1] ?? null;
+    const methodCalls = currentRoundEvents.filter(event => METHOD_EVENT_TYPES.has(event.type));
+    const latestAction = currentRoundEvents[currentRoundEvents.length - 1] ?? null;
     const submittedScores = officialScores.filter(score => score.submitted);
 
     return {
@@ -565,6 +570,10 @@ export default function TVDisplay() {
                 {availableMatches.map(match => {
                   const liveState = liveMatchStates[match.id];
                   const isLive = match.status === "in-progress" || Boolean(liveState);
+                  const winnerAthlete = match.result
+                    ? athletes.find(athlete => athlete.id === match.result?.winnerId)
+                    : null;
+                  const winnerClub = clubs.find(club => club.id === winnerAthlete?.clubId || club.name === winnerAthlete?.clubName);
                   return (
                     <button
                       key={match.id}
@@ -577,8 +586,8 @@ export default function TVDisplay() {
                           <div className="text-[10px] font-black uppercase tracking-[0.28em] text-[var(--text-muted)]">Match #{match.matchNumber} - Mat {match.matNumber}</div>
                           <div className="mt-2 font-display text-3xl leading-none text-white">{formatMatchCategory(match.ageGroup, match.weightCategory, match.gender)}</div>
                         </div>
-                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isLive ? "border-green-500/50 bg-green-500/10 text-green-300" : "border-[var(--ikf-gold)]/40 bg-[var(--ikf-gold)]/10 text-[var(--ikf-gold)]"}`}>
-                          {isLive ? "Live" : "Ready"}
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isLive ? "border-green-500/50 bg-green-500/10 text-green-300" : match.status === "completed" ? "border-[var(--ikf-gold)]/50 bg-[var(--ikf-gold)]/15 text-[var(--ikf-gold)]" : "border-[var(--ikf-gold)]/40 bg-[var(--ikf-gold)]/10 text-[var(--ikf-gold)]"}`}>
+                          {isLive ? "Live" : match.status === "completed" ? "Winner" : "Ready"}
                         </span>
                       </div>
                       <div className="mt-5 grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
@@ -596,6 +605,22 @@ export default function TVDisplay() {
                         <span>Round {liveState?.currentRound ?? 1} / {liveState?.totalRounds ?? match.totalRounds ?? 2}</span>
                         <span>{liveState ? formatTime(deriveLiveMatchTimers(liveState)?.roundTimer ?? liveState.roundTimer) : "Standby"}</span>
                       </div>
+                      {winnerAthlete && (
+                        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[rgba(212,160,23,0.24)] bg-[rgba(212,160,23,0.08)] p-3">
+                          <div className="relative h-16 w-14 overflow-hidden rounded-xl bg-black/30">
+                            {winnerAthlete.photoUrl ? (
+                              <Image src={winnerAthlete.photoUrl} alt={`${winnerAthlete.fullName} winner photo`} fill sizes="56px" className="object-contain" unoptimized />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center font-display text-xl text-white/35">{winnerAthlete.fullName.slice(0, 1)}</div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[9px] font-black uppercase tracking-[0.28em] text-[var(--ikf-gold)]">Confirmed winner</div>
+                            <div className="truncate text-lg font-black text-white">{winnerAthlete.fullName}</div>
+                            <div className="truncate text-xs font-bold text-[rgba(255,255,255,0.48)]">{winnerClub?.name ?? winnerAthlete.clubName}</div>
+                          </div>
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -872,7 +897,7 @@ export default function TVDisplay() {
                   </span>
                 ))}
                 {row.methodCalls.length === 0 && (
-                  <span className="rounded-full border border-[rgba(255,255,255,0.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">No central call</span>
+                  <span className="rounded-full border border-[rgba(255,255,255,0.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">No call this round</span>
                 )}
               </div>
 
@@ -1084,7 +1109,33 @@ export default function TVDisplay() {
             <Particles color={winnerParticleColor} />
 
             {/* Text content */}
-            <div className="relative z-10 text-center px-8">
+            <div className="relative z-10 flex flex-col items-center px-8 text-center">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.82, y: 40 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: 0.25, type: "spring", stiffness: 130 }}
+                className="mb-8 flex items-center gap-6 rounded-[2rem] border border-white/15 bg-white/[0.06] px-8 py-5 shadow-2xl backdrop-blur"
+              >
+                <div className="relative h-44 w-36 overflow-hidden rounded-[1.5rem] bg-black/25">
+                  {winnerAthleteForDisplay?.photoUrl ? (
+                    <Image src={winnerAthleteForDisplay.photoUrl} alt={`${winnerName} winner photo`} fill sizes="144px" className="object-contain drop-shadow-[0_20px_30px_rgba(0,0,0,0.75)]" unoptimized />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center font-display text-6xl text-white/35">{winnerName.slice(0, 1)}</div>
+                  )}
+                </div>
+                <div className="text-left">
+                  <div className="text-xs font-black uppercase tracking-[0.36em] text-[var(--ikf-gold)]">Winner profile</div>
+                  <div className="mt-2 font-display text-5xl leading-none text-white">{winnerName}</div>
+                  <div className="mt-3 flex items-center gap-3 text-lg font-black uppercase tracking-[0.18em] text-white/60">
+                    {winnerClubForDisplay?.logoUrl && (
+                      <span className="relative inline-block h-14 w-14 overflow-hidden rounded-xl bg-black/30 align-middle">
+                        <Image src={winnerClubForDisplay.logoUrl} alt={`${winnerClubForDisplay.name} logo`} fill sizes="56px" className="object-cover" unoptimized />
+                      </span>
+                    )}
+                    <span>{winnerClubForDisplay?.name ?? winnerAthleteForDisplay?.clubName ?? "Club pending"}</span>
+                  </div>
+                </div>
+              </motion.div>
               <motion.div
                 initial={{ opacity: 0, scale: 0.6 }}
                 animate={{ opacity: 1, scale: 1 }}

@@ -15,6 +15,7 @@ import { useTournamentStore } from "@/store/tournamentStore";
 import { t } from "@/lib/i18n";
 import { formatMatchCategory } from "@/lib/ageCategories";
 import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
+import { makeTableChiefOfficial, TABLE_CHIEF_ASSIGNMENT_ID, TABLE_CHIEF_LABEL } from "@/lib/officials";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type ReportType = "Match Report" | "Judge Scorecard" | "Table Official Report" | "Tournament Summary";
@@ -136,12 +137,14 @@ function MatchReportDocument({
   const matchEvents = Array.from(seenEvents.values()).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   const redAthlete = athletes.find(a => a.id === match.redCornerId);
   const blueAthlete = athletes.find(a => a.id === match.blueCornerId);
-  const centralReferee = referees.find(r => r.id === match.assignedRefereeId);
+  const tableChief = match.assignedRefereeId === TABLE_CHIEF_ASSIGNMENT_ID
+    ? makeTableChiefOfficial(TABLE_CHIEF_LABEL)
+    : referees.find(r => r.id === match.assignedRefereeId) ?? makeTableChiefOfficial(TABLE_CHIEF_LABEL);
   const cornerJudgeRecords = match.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) ?? [];
   const cornerJudges = cornerJudgeRecords.map(referee => referee!.name);
-  const assignedOfficialRecords = [centralReferee, ...cornerJudgeRecords].filter(Boolean);
+  const assignedOfficialRecords = [tableChief, ...cornerJudgeRecords].filter(Boolean);
   const officialAgeGroup = normalizeAgeGroup(match.ageGroup);
-  const generatedAt = report.generatedAt instanceof Date ? report.generatedAt : new Date(report.generatedAt);
+  const generatedAt = new Date();
   const validatedAt = match.result?.validatedAt ? new Date(match.result.validatedAt) : null;
   const submittedScores = matchScores.filter(score => score.submitted);
   const calculatedRedTotal = submittedScores.reduce((sum, score) => sum + score.redScore, 0);
@@ -426,8 +429,8 @@ function MatchReportDocument({
         <table className="w-full border-collapse text-sm">
           <tbody>
             <tr className="bg-white">
-              <td className="px-4 py-2 font-semibold text-gray-500 border border-gray-200 text-[11px] uppercase tracking-wider w-1/4">Central Referee</td>
-              <td className="px-4 py-2 border border-gray-200 font-bold">{centralReferee?.name ?? "Unassigned"}</td>
+              <td className="px-4 py-2 font-semibold text-gray-500 border border-gray-200 text-[11px] uppercase tracking-wider w-1/4">Table Chief</td>
+              <td className="px-4 py-2 border border-gray-200 font-bold">{tableChief.name}</td>
             </tr>
             <tr className="bg-gray-50">
               <td className="px-4 py-2 font-semibold text-gray-500 border border-gray-200 text-[11px] uppercase tracking-wider">Corner Judges</td>

@@ -97,9 +97,12 @@ export default function RegisterAthletePage() {
     if (!file) return;
     setIsUploading(true);
     try {
-      const { url, storedRemotely } = await uploadProfileImage(file, { maxSize: 640 });
+      const { url, storedRemotely, backgroundRemoved } = await uploadProfileImage(file, { maxSize: 900, removeBackground: true });
       setPhotoUrl(url);
-      toast.success(storedRemotely ? "Photo uploaded successfully" : "Photo saved directly to the database");
+      toast.success(backgroundRemoved
+        ? (storedRemotely ? "Photo uploaded with background removed" : "Photo saved with background removed")
+        : (storedRemotely ? "Photo uploaded successfully" : "Photo saved directly to the database")
+      );
     } catch (error) {
       toast.error("Photo upload failed. Please try again.");
     } finally {
@@ -191,7 +194,7 @@ export default function RegisterAthletePage() {
         <div className="rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5">
           <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)] mb-2">Account notification</div>
           <p className="font-bold text-white">
-            Profile status: {(ownAthlete.approvalStatus ?? "Pending") === "Approved" ? "Approved by chief admin" : "Waiting for chief admin approval"}
+            Profile status: {(ownAthlete.approvalStatus ?? "Pending") === "Approved" ? "Approved by table chief" : "Waiting for table chief approval"}
           </p>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             {nextCombat
@@ -206,7 +209,7 @@ export default function RegisterAthletePage() {
           <AlertTriangle className="text-[var(--ikf-gold)]" size={24} />
           <div>
             <p className="font-bold text-white">No approved clubs are available yet.</p>
-            <p className="text-sm text-[var(--text-secondary)]">A chief admin must approve at least one club before athlete registration can be submitted.</p>
+            <p className="text-sm text-[var(--text-secondary)]">A table chief must approve at least one club before athlete registration can be submitted.</p>
           </div>
         </div>
       )}
@@ -253,14 +256,14 @@ export default function RegisterAthletePage() {
             <label className="border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-elevated)] rounded-lg p-8 flex flex-col items-center justify-center text-center group cursor-pointer hover:border-[var(--ikf-gold)] transition-colors">
               <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploading} />
               {photoUrl ? (
-                <Image src={photoUrl} alt="Athlete" width={96} height={96} sizes="96px" className="h-24 w-24 object-cover rounded-full mb-3" unoptimized />
+                <Image src={photoUrl} alt="Athlete" width={96} height={96} sizes="96px" className="h-28 w-24 object-contain rounded-2xl mb-3 bg-black/20" unoptimized />
               ) : (
                 <div className="w-14 h-14 rounded-full bg-[rgba(255,255,255,0.05)] flex items-center justify-center mb-3 group-hover:scale-110 group-hover:bg-[rgba(212,160,23,0.1)] transition-all">
                   {isUploading ? <Loader2 size={24} className="text-[var(--ikf-gold)] animate-spin" /> : <UploadCloud size={24} className="text-[var(--text-muted)] group-hover:text-[var(--ikf-gold)]" />}
                 </div>
               )}
               <p className="text-sm font-medium text-[var(--text-secondary)]">{isUploading ? "Uploading..." : photoUrl ? "Click to replace photo" : "Click to upload a photo"}</p>
-              <p className="text-xs text-[var(--text-muted)] mt-1">PNG or JPG.</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">PNG or JPG. Athlete background is removed automatically when the browser supports it.</p>
             </label>
           </div>
         </IKFCard>

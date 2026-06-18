@@ -13,8 +13,7 @@ export type RoleSession = {
 };
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  admin: "Chief Admin",
-  "central-referee": "Central Referee",
+  admin: "Table Chief",
   "corner-referee": "Corner Referee",
   athlete: "Athlete",
   club: "Club",
@@ -27,7 +26,7 @@ export const DEFAULT_ROLE_ACCOUNTS: RoleAccount[] = [
     username: process.env.NEXT_PUBLIC_ADMIN_USERNAME ?? "admin",
     password: process.env.NEXT_PUBLIC_ADMIN_PASSWORD ?? "admin",
     role: "admin",
-    displayName: "Chief Admin",
+    displayName: "Table Chief",
     approvalStatus: "Approved",
     createdAt: "2026-01-01T00:00:00.000Z",
     approvedAt: "2026-01-01T00:00:00.000Z",
@@ -49,7 +48,7 @@ export const DEFAULT_ROLE_ACCOUNTS: RoleAccount[] = [
       username: `admin${accountNumber}`,
       password: `admin${accountNumber}password`,
       role: "admin" as const,
-      displayName: `Chief Admin ${accountNumber}`,
+      displayName: `Table Chief ${accountNumber}`,
       approvalStatus: "Approved" as const,
       createdAt: "2026-01-01T00:00:00.000Z",
       approvedAt: "2026-01-01T00:00:00.000Z",
@@ -59,7 +58,6 @@ export const DEFAULT_ROLE_ACCOUNTS: RoleAccount[] = [
 
 const ROLE_DEFAULT_ROUTE: Record<UserRole, string> = {
   admin: "/dashboard",
-  "central-referee": "/judging/judge",
   "corner-referee": "/judging/judge",
   athlete: "/athletes/register",
   club: "/clubs/register",
@@ -68,7 +66,6 @@ const ROLE_DEFAULT_ROUTE: Record<UserRole, string> = {
 
 const ROLE_ROUTE_PREFIXES: Record<UserRole, string[]> = {
   admin: ["/"],
-  "central-referee": ["/judging/judge", "/rounds"],
   "corner-referee": ["/judging/judge"],
   athlete: ["/athletes/register"],
   club: ["/clubs/register"],
@@ -87,7 +84,7 @@ export function canAccessRoute(role: UserRole, pathname: string | null | undefin
 }
 
 export function accountRequiresApproval(role: UserRole) {
-  return role === "central-referee" || role === "corner-referee";
+  return role === "corner-referee";
 }
 
 export function getUniqueAccounts(accounts: RoleAccount[]) {

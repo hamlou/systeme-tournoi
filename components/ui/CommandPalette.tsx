@@ -37,7 +37,7 @@ export function CommandPalette() {
       // Navigation shortcuts (only if no modal is open and not typing in an input)
       if (!isOpen && !showShortcuts && e.target === document.body) {
         switch (e.key.toLowerCase()) {
-          case "d": router.push("/dashboard"); break;          case "j": router.push("/judging/chief"); break;
+          case "d": router.push("/dashboard"); break;          case "j": router.push("/judging/judge"); break;
           case "t": router.push("/tv"); break;
           case "r": router.push("/reports"); break;
         }
@@ -132,7 +132,7 @@ export function CommandPalette() {
               <div className="space-y-4">
                 {[
                   { key: "D", label: "Dashboard" },
-                  { key: "J", label: "Electronic Judging (Chief)" },
+                  { key: "J", label: "Electronic Judging" },
                   { key: "T", label: "TV Display" },
                   { key: "R", label: "Instant Reports" },
                   { key: "Ctrl + K", label: "Global Search" },
