@@ -43,7 +43,25 @@ function dataUrlToFile(dataUrl: string, fileName: string): File {
   return new File([bytes], fileName, { type: mime });
 }
 
-async function resizeImageToDataUrl(file: File, maxSize: number, quality: number) {
+async function removeImageBackground(file: File) {
+  const loadModule = new Function("return import('https://esm.sh/@imgly/background-removal@1.7.0')");
+  const imgly = await loadModule() as {
+    default?: (image: File, configuration?: unknown) => Promise<Blob>;
+    removeBackground?: (image: File, configuration?: unknown) => Promise<Blob>;
+  };
+  const removeBackground = imgly.removeBackground ?? imgly.default;
+  if (!removeBackground) throw new Error("Background remover could not be loaded");
+  const blob = await removeBackground(file, {
+    model: "isnet_quint8",
+    output: {
+      format: "image/png",
+      quality: 0.9,
+    },
+  });
+  return new File([blob], file.name.replace(/\.[^.]+$/, ".png"), { type: "image/png" });
+}
+
+async function resizeImageToDataUrl(file: File, maxSize: number, quality: number, format: "image/jpeg" | "image/png" = "image/jpeg") {
   if (file.type === "image/svg+xml") return fileToDataUrl(file);
 
   return new Promise<string>((resolve, reject) => {
@@ -64,7 +82,7 @@ async function resizeImageToDataUrl(file: File, maxSize: number, quality: number
       }
       context.drawImage(image, 0, 0, width, height);
       URL.revokeObjectURL(objectUrl);
-      resolve(canvas.toDataURL("image/jpeg", quality));
+      resolve(canvas.toDataURL(format, quality));
     };
     image.onerror = () => {
       URL.revokeObjectURL(objectUrl);
@@ -74,17 +92,29 @@ async function resizeImageToDataUrl(file: File, maxSize: number, quality: number
   });
 }
 
-export async function uploadProfileImage(file: File, options?: { maxSize?: number }) {
+export async function uploadProfileImage(file: File, options?: { maxSize?: number; removeBackground?: boolean }) {
   if (!file.type.startsWith("image/")) {
     throw new Error("Please choose an image file");
   }
 
-  const dataUrl = await resizeImageToDataUrl(file, options?.maxSize ?? 640, 0.82);
-  const uploadFile = dataUrlToFile(dataUrl, file.name.replace(/\.[^.]+$/, ".jpg"));
+  let sourceFile = file;
+  let backgroundRemoved = false;
+  if (options?.removeBackground) {
+    try {
+      sourceFile = await removeImageBackground(file);
+      backgroundRemoved = true;
+    } catch (error) {
+      console.warn("[background-removal] Falling back to original athlete photo", error);
+    }
+  }
+
+  const outputFormat = backgroundRemoved ? "image/png" : "image/jpeg";
+  const dataUrl = await resizeImageToDataUrl(sourceFile, options?.maxSize ?? 640, 0.82, outputFormat);
+  const uploadFile = dataUrlToFile(dataUrl, sourceFile.name.replace(/\.[^.]+$/, backgroundRemoved ? ".png" : ".jpg"));
 
   try {
-    return { url: await uploadImageToImgBB(uploadFile), storedRemotely: true };
+    return { url: await uploadImageToImgBB(uploadFile), storedRemotely: true, backgroundRemoved };
   } catch {
-    return { url: dataUrl, storedRemotely: false };
+    return { url: dataUrl, storedRemotely: false, backgroundRemoved };
   }
 }

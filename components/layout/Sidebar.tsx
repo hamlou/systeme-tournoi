@@ -41,13 +41,13 @@ const NAV_SECTIONS = [
     items: [
       { id: "Draw & Brackets", route: "/brackets", icon: GitBranch, roles: ["admin"] },
       { id: "Referee Management", route: "/referees", icon: Shield, roles: ["admin"] },
-      { id: "Round Management", route: "/rounds", icon: Timer, roles: ["admin", "central-referee"] },
+      { id: "Round Management", route: "/rounds", icon: Timer, roles: ["admin"] },
     ],
   },
   {
     label: "LIVE",
     items: [
-      { id: "Electronic Judging", route: "/judging/judge", icon: Swords, roles: ["admin", "central-referee", "corner-referee"] },
+      { id: "Electronic Judging", route: "/judging/judge", icon: Swords, roles: ["admin", "corner-referee"] },
       { id: "TV Display", route: "/tv", icon: Monitor, roles: ["admin", "tv"] },
     ],
   },

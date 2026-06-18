@@ -137,7 +137,7 @@ export const useJudgingStore = create<JudgingState>((set: SetState, get: GetStat
       matchWinner: winner,
       matchEndReason: `Overridden: ${reason}`
     });
-    toast(`Result OVERRIDDEN by Chief Referee — ${winner} CORNER`, { duration: 5000, icon: "⚖️" });
+    toast(`Result OVERRIDDEN by Table Chief - ${winner} CORNER`, { duration: 5000, icon: "!" });
   },
 
   advanceRound: () => {

@@ -124,7 +124,7 @@ function MedalDots({ gold, silver, bronze }: { gold: number; silver: number; bro
 
 export default function StatisticsPage() {
   const router = useRouter();
-  const { matches, athletes, referees, settings, roundEvents } = useTournamentStore();
+  const { matches, athletes, clubs, referees, settings, roundEvents } = useTournamentStore();
   const [judgingBundles, setJudgingBundles] = useState<StoredJudgingBundle[]>([]);
 
   useFirebaseAllJudgingData(setJudgingBundles);
@@ -189,27 +189,38 @@ export default function StatisticsPage() {
     return Object.entries(counts).map(([cat, count]) => ({ cat, matches: count })).sort((a, b) => b.matches - a.matches);
   }, [matches]);
 
-  const COUNTRIES = useMemo(() => {
-    const stats: Record<string, { gold: number; silver: number; bronze: number; wins: number; bouts: number }> = {};
-    athletes.forEach(a => {
-      if (!stats[a.country]) stats[a.country] = { gold: 0, silver: 0, bronze: 0, wins: 0, bouts: 0 };
-    });
+  const CLUBS_DATA = useMemo(() => {
+    const stats: Record<string, { club: string; gold: number; silver: number; bronze: number; wins: number; bouts: number }> = {};
+    const ensureClub = (athlete?: typeof athletes[number]) => {
+      if (!athlete) return null;
+      const clubName = clubs.find(club => club.id === athlete.clubId)?.name ?? athlete.clubName ?? "Unassigned Club";
+      const key = athlete.clubId || clubName;
+      if (!stats[key]) stats[key] = { club: clubName, gold: 0, silver: 0, bronze: 0, wins: 0, bouts: 0 };
+      return stats[key];
+    };
+
+    athletes.forEach(a => ensureClub(a));
     completedMatches.forEach(m => {
       const red = athletes.find(a => a.id === m.redCornerId);
       const blue = athletes.find(a => a.id === m.blueCornerId);
       const winner = athletes.find(a => a.id === m.result?.winnerId);
       const loser = m.result?.winnerCorner === "RED" ? blue : red;
-      if (red) stats[red.country].bouts++;
-      if (blue) stats[blue.country].bouts++;
-      if (winner) {
-        stats[winner.country].wins++;
-        stats[winner.country].gold++;
+      const redClub = ensureClub(red);
+      const blueClub = ensureClub(blue);
+      const winnerClub = ensureClub(winner);
+      const loserClub = ensureClub(loser);
+      if (redClub) redClub.bouts++;
+      if (blueClub) blueClub.bouts++;
+      if (winnerClub) {
+        winnerClub.wins++;
+        winnerClub.gold++;
       }
-      if (loser) stats[loser.country].silver++;
+      if (loserClub) loserClub.silver++;
     });
     return Object.entries(stats)
-      .map(([country, s]) => ({
-        country,
+      .map(([id, s]) => ({
+        id,
+        club: s.club,
         gold: s.gold,
         silver: s.silver,
         bronze: Math.max(0, s.bouts - s.wins - s.silver),
@@ -220,9 +231,9 @@ export default function StatisticsPage() {
       .sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.wins - a.wins)
       .map((c, i) => ({ ...c, rank: i + 1 }))
       .slice(0, 8);
-  }, [athletes, completedMatches]);
+  }, [athletes, clubs, completedMatches]);
 
-  const GOLD_BARS = COUNTRIES.slice(0, 6).map(c => ({ country: c.country.split(" ")[0], gold: c.gold }));
+  const CLUB_GOLD_BARS = CLUBS_DATA.slice(0, 6).map(c => ({ club: c.club, gold: c.gold }));
 
   const TIMELINE = useMemo(() => {
     const buckets = new Map<string, number>();
@@ -364,18 +375,18 @@ export default function StatisticsPage() {
         </IKFCard>
       </AnimatedSection>
 
-      {COUNTRIES.length > 0 && (
+      {CLUBS_DATA.length > 0 && (
         <AnimatedSection delay={0.05}>
-          <SectionDivider label={t("country_performance", settings.language)} accent="gold" />
+          <SectionDivider label="CLUB PERFORMANCE" accent="gold" />
           <div className="mt-6 space-y-6">
             <IKFCard padding="none" className="overflow-hidden">
               <div className="grid grid-cols-[48px_1fr_auto_auto_auto] gap-x-6 px-6 py-3 bg-[var(--bg-elevated)] border-b border-[var(--border-default)] text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">
-                <div>#</div><div>{t("country", settings.language)}</div><div className="text-right">{t("medals", settings.language)}</div><div className="text-right">{t("wins", settings.language)}</div><div className="text-right">{t("win_pct", settings.language)}</div>
+                <div>#</div><div>Club</div><div className="text-right">{t("medals", settings.language)}</div><div className="text-right">{t("wins", settings.language)}</div><div className="text-right">{t("win_pct", settings.language)}</div>
               </div>
-              {COUNTRIES.map(c => (
-                <div key={c.rank} className="grid grid-cols-[48px_1fr_auto_auto_auto] gap-x-6 px-6 py-4 border-b border-[rgba(255,255,255,0.03)] items-center hover:bg-[rgba(255,255,255,0.02)] transition-colors">
+              {CLUBS_DATA.map(c => (
+                <div key={c.id} className="grid grid-cols-[48px_1fr_auto_auto_auto] gap-x-6 px-6 py-4 border-b border-[rgba(255,255,255,0.03)] items-center hover:bg-[rgba(255,255,255,0.02)] transition-colors">
                   <div className="font-display text-2xl" style={{ color: c.rank === 1 ? GOLD : c.rank === 2 ? "#b0b0b0" : c.rank === 3 ? "#b46432" : "rgba(255,255,255,0.3)" }}>{c.rank}</div>
-                  <div className="font-semibold text-white">{c.country}</div>
+                  <div className="font-semibold text-white">{c.club}</div>
                   <div><MedalDots gold={c.gold} silver={c.silver} bronze={c.bronze} /></div>
                   <div className="text-right font-mono font-bold text-white">{c.wins}</div>
                   <div className="text-right"><span className="font-mono font-bold text-sm" style={{ color: c.rate >= 80 ? GREEN : c.rate >= 65 ? GOLD : TEXT }}>{c.rate}%</span></div>
@@ -384,11 +395,11 @@ export default function StatisticsPage() {
             </IKFCard>
 
             <IKFCard padding="lg">
-              <h3 className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-widest mb-6">{t("gold_medals_by_country", settings.language)}</h3>
+              <h3 className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-widest mb-6">Gold medals by club</h3>
               <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={GOLD_BARS} margin={{ left: 0, right: 0 }}>
+                <BarChart data={CLUB_GOLD_BARS} margin={{ left: 0, right: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={MUTED} vertical={false} />
-                  <XAxis dataKey="country" tick={{ fill: TEXT, fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="club" tick={{ fill: TEXT, fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: TEXT, fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<DarkTooltip />} cursor={false} />
                   <Bar dataKey="gold" fill={GOLD} radius={[4, 4, 0, 0]}>

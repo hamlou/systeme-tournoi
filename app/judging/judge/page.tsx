@@ -18,6 +18,7 @@ import {
 import { formatMatchCategory } from "@/lib/ageCategories";
 import { isUnder14AgeGroup } from "@/lib/competitionRules";
 import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import { makeTableChiefOfficial, TABLE_CHIEF_ASSIGNMENT_ID, TABLE_CHIEF_LABEL } from "@/lib/officials";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { JudgeScore, Referee, RoundEvent, RoundEventType } from "@/types/tournament";
 
@@ -31,7 +32,7 @@ type Feedback = {
 };
 
 const POINT_VALUES = [10, 9, 8, 7];
-const CENTRAL_ACTIONS: Array<{ type: RoundEventType; label: string; cornerRequired?: boolean }> = [
+const TABLE_CHIEF_ACTIONS: Array<{ type: RoundEventType; label: string; cornerRequired?: boolean }> = [
   { type: "ko", label: "KO", cornerRequired: true },
   { type: "tko", label: "TKO", cornerRequired: true },
   { type: "disqualification", label: "Disqualification", cornerRequired: true },
@@ -222,7 +223,7 @@ export default function JudgeTabletView() {
     return () => window.clearInterval(id);
   }, []);
 
-  const isRefereeSession = session?.role === "central-referee" || session?.role === "corner-referee";
+  const isRefereeSession = session?.role === "corner-referee";
   const linkedReferee = useMemo(() => {
     if (!isRefereeSession) return null;
     return referees.find(referee =>
@@ -240,7 +241,7 @@ export default function JudgeTabletView() {
       Boolean(match.blueCornerId) &&
       Boolean(match.assignedRefereeId) &&
       (match.assignedJudgeIds?.length ?? 0) > 0 &&
-      (!lockedRefereeId || match.assignedRefereeId === lockedRefereeId || match.assignedJudgeIds?.includes(lockedRefereeId))
+      (!lockedRefereeId || match.assignedJudgeIds?.includes(lockedRefereeId))
     )
     .sort((a, b) => a.matchNumber - b.matchNumber),
   [lockedRefereeId, matches]);
@@ -252,14 +253,18 @@ export default function JudgeTabletView() {
 
   const assignedOfficials = useMemo(() => {
     if (!activeMatch) return [] as Referee[];
-    const ids = [activeMatch.assignedRefereeId, ...(activeMatch.assignedJudgeIds ?? [])].filter(Boolean) as string[];
-    const officials = ids.map(id => referees.find(referee => referee.id === id)).filter(Boolean) as Referee[];
+    const tableChief = makeTableChiefOfficial(session?.displayName ?? TABLE_CHIEF_LABEL);
+    const ids = (activeMatch.assignedJudgeIds ?? []).filter(Boolean) as string[];
+    const officials = [
+      ...(activeMatch.assignedRefereeId === TABLE_CHIEF_ASSIGNMENT_ID ? [tableChief] : []),
+      ...ids.map(id => referees.find(referee => referee.id === id)).filter(Boolean) as Referee[],
+    ];
     return lockedRefereeId ? officials.filter(official => official.id === lockedRefereeId) : officials;
-  }, [activeMatch, lockedRefereeId, referees]);
+  }, [activeMatch, lockedRefereeId, referees, session?.displayName]);
 
   const judge = useMemo(
-    () => referees.find(referee => referee.id === selectedJudgeId) ?? null,
-    [referees, selectedJudgeId],
+    () => assignedOfficials.find(referee => referee.id === selectedJudgeId) ?? null,
+    [assignedOfficials, selectedJudgeId],
   );
 
   useEffect(() => {
@@ -335,7 +340,7 @@ export default function JudgeTabletView() {
   const roleReady = !isRefereeSession || Boolean(linkedReferee);
   const roleApproved = !isRefereeSession || (linkedReferee?.approvalStatus ?? "Approved") === "Approved";
   const isCornerReferee = judge?.role === "Corner Judge";
-  const isCentralReferee = Boolean(judge) && judge?.role !== "Corner Judge";
+  const isTableChief = Boolean(judge) && judge?.id === TABLE_CHIEF_ASSIGNMENT_ID;
   const canAct = Boolean(activeMatch && judge && roleReady && roleApproved);
 
   const triggerFeedback = (label: string, corner?: Corner) => {
@@ -445,7 +450,7 @@ export default function JudgeTabletView() {
     addReferee({
       id: uuidv4(),
       name,
-      role: session.role === "corner-referee" ? "Corner Judge" : "Central Referee",
+      role: "Corner Judge",
       country: NATIONAL_COUNTRY,
       grade: "Submitted Official",
       status: "Available",
@@ -453,7 +458,7 @@ export default function JudgeTabletView() {
       accountId: session.accountId,
     });
     setProfileName("");
-    toast.success("Referee profile submitted. The chief admin must approve it before judging access is active.");
+    toast.success("Referee profile submitted. The table chief must approve it before judging access is active.");
   };
 
   if (isRefereeSession && !linkedReferee) {
@@ -464,7 +469,7 @@ export default function JudgeTabletView() {
             <ShieldAlert size={38} className="mb-5 text-[var(--ikf-gold)]" />
             <h1 className="font-display text-4xl">Submit referee profile</h1>
             <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
-              Your account exists, but it is not linked to an approved referee profile yet. Submit your profile and the chief admin will approve it.
+              Your account exists, but it is not linked to an approved referee profile yet. Submit your profile and the table chief will approve it.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <input
@@ -495,7 +500,7 @@ export default function JudgeTabletView() {
             <Clock size={42} className="mx-auto mb-5 text-[var(--ikf-gold)]" />
             <h1 className="font-display text-4xl">Waiting for approval</h1>
             <p className="mt-3 text-sm leading-7 text-[var(--text-secondary)]">
-              The chief admin must approve this referee profile before it can judge matches.
+              The table chief must approve this referee profile before it can judge matches.
             </p>
           </div>
         </div>
@@ -586,7 +591,7 @@ export default function JudgeTabletView() {
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--text-muted)]">Round</div>
                 <div className="font-display text-4xl text-[var(--ikf-gold)]">{liveRound} / {liveTotalRounds}</div>
                 <div className="mt-1 text-xs font-bold text-[var(--text-muted)]">{formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender)}</div>
-                {isUnder14Match && <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">Under-14 central judging enabled</div>}
+                {isUnder14Match && <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">Under-14 table chief judging enabled</div>}
               </div>
               <div className="text-left lg:text-right">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--corner-blue)]">Blue</div>
@@ -696,7 +701,7 @@ export default function JudgeTabletView() {
               </div>
             </div>
           </section>
-        ) : isCentralReferee ? (
+        ) : isTableChief ? (
           <section className="space-y-5">
             <div className="grid gap-5 xl:grid-cols-2">
               {(["RED", "BLUE"] as Corner[]).map(corner => (
@@ -706,7 +711,7 @@ export default function JudgeTabletView() {
                     <h2 className="mt-2 font-display text-3xl text-white">{corner === "RED" ? activeMatch.redCornerName : activeMatch.blueCornerName}</h2>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {CENTRAL_ACTIONS.filter(action => action.cornerRequired).map(action => (
+                    {TABLE_CHIEF_ACTIONS.filter(action => action.cornerRequired).map(action => (
                       <CentralActionButton
                         key={`${corner}-${action.type}`}
                         label={action.label}
@@ -735,9 +740,9 @@ export default function JudgeTabletView() {
 
             <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
               <div className="rounded-3xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.06)] p-5">
-                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Central actions</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Table chief actions</div>
                 <div className="mt-4 grid gap-3">
-                  {CENTRAL_ACTIONS.filter(action => !action.cornerRequired).map(action => (
+                  {TABLE_CHIEF_ACTIONS.filter(action => !action.cornerRequired).map(action => (
                     <CentralActionButton
                       key={action.type}
                       label={action.label}
@@ -749,7 +754,7 @@ export default function JudgeTabletView() {
               </div>
               <div className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-5">
                 <label className="block">
-                  <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.35em] text-[var(--text-muted)]">Central referee note</span>
+                  <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.35em] text-[var(--text-muted)]">Table chief note</span>
                   <textarea
                     value={noteText}
                     onChange={(event) => setNoteText(event.target.value)}
@@ -762,7 +767,7 @@ export default function JudgeTabletView() {
                   type="button"
                   disabled={!canAct || noteText.trim().length < 2}
                   onClick={() => {
-                    persistEvent("note", "Central referee note", undefined, noteText.trim());
+                    persistEvent("note", "Table chief note", undefined, noteText.trim());
                     setNoteText("");
                   }}
                   className="mt-4 h-14 w-full rounded-2xl bg-[var(--ikf-gold)] text-sm font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-[#f0c84c] disabled:cursor-not-allowed disabled:opacity-40"

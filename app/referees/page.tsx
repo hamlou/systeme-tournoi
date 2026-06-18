@@ -7,13 +7,13 @@ import toast from "react-hot-toast";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { useTournamentStore } from "@/store/tournamentStore";
-import type { RefRole } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFButton, SectionDivider, IKFEmptyState, IKFBadge } from "@/components/ui";
 import { t } from "@/lib/i18n";
 import { formatMatchCategory } from "@/lib/ageCategories";
 import { useMatchNotifications, isMatchStartingSoon } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import { TABLE_CHIEF_ASSIGNMENT_ID, TABLE_CHIEF_LABEL } from "@/lib/officials";
 
 function toDateTimeLocal(value?: string | null) {
   const date = value ? new Date(value) : new Date(Date.now() + 30 * 60 * 1000);
@@ -21,18 +21,14 @@ function toDateTimeLocal(value?: string | null) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-const REFEREE_ROLES: RefRole[] = ["Chief Referee", "Central Referee", "Corner Judge"];
-
 export default function RefereesPage() {
   const { referees, matches, accounts, addReferee, deleteReferee, approveReferee, assignRefereeToMatch, settings } = useTournamentStore();
   const upcomingMatches = useMatchNotifications();
   const [searchTerm, setSearchTerm] = useState("");
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(false);
   const [timeByMatch, setTimeByMatch] = useState<Record<string, string>>({});
-  const [centralByMatch, setCentralByMatch] = useState<Record<string, string>>({});
   const [judgesByMatch, setJudgesByMatch] = useState<Record<string, string[]>>({});
   const [newRefereeName, setNewRefereeName] = useState("");
-  const [newRefereeRole, setNewRefereeRole] = useState<RefRole>("Central Referee");
 
   const requiredJudgeCount = settings.defaultJudgesCount;
 
@@ -45,7 +41,7 @@ export default function RefereesPage() {
     !["BYE", "TBD"].includes(match.blueCornerName);
 
   const isFullyAssigned = (match: typeof matches[number]) =>
-    Boolean(match.assignedRefereeId) && (match.assignedJudgeIds?.length ?? 0) === requiredJudgeCount;
+    match.assignedRefereeId === TABLE_CHIEF_ASSIGNMENT_ID && (match.assignedJudgeIds?.length ?? 0) === requiredJudgeCount;
 
   const canUseOfficialForMatch = (official: typeof referees[number], match: typeof matches[number]) => {
     if ((official.approvalStatus ?? "Approved") !== "Approved") return false;
@@ -58,7 +54,9 @@ export default function RefereesPage() {
     accounts.find(account => account.refereeId === refereeId);
 
   const filteredReferees = useMemo(
-    () => referees.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.role.toLowerCase().includes(searchTerm.toLowerCase())),
+    () => referees
+      .filter(r => r.role === "Corner Judge")
+      .filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()) || r.role.toLowerCase().includes(searchTerm.toLowerCase())),
     [searchTerm, referees]
   );
 
@@ -74,8 +72,6 @@ export default function RefereesPage() {
   [matches]);
 
   const getRoleBadge = (role: string) => {
-    if (role === "Chief Referee") return <span className="bg-[rgba(212,160,23,0.1)] text-[var(--ikf-gold)] border border-[var(--ikf-gold)] px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase">Chief</span>;
-    if (role === "Central Referee") return <span className="bg-[rgba(200,16,46,0.1)] text-[var(--ikf-red)] border border-[var(--ikf-red)] px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase">Central</span>;
     return <span className="bg-[rgba(0,102,204,0.1)] text-[#0066cc] border border-[#0066cc] px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase">Corner</span>;
   };
 
@@ -86,13 +82,12 @@ export default function RefereesPage() {
     addReferee({
       id: uuidv4(),
       name,
-      role: newRefereeRole,
+      role: "Corner Judge",
       country: NATIONAL_COUNTRY,
       grade: "IKF Official",
       status: "Available",
     });
     setNewRefereeName("");
-    setNewRefereeRole("Central Referee");
   };
 
   const toggleJudge = (matchId: string, judgeId: string) => {
@@ -110,13 +105,10 @@ export default function RefereesPage() {
 
   const assignMatch = (matchId: string) => {
     const match = matches.find(m => m.id === matchId);
-    const centralRefereeId = centralByMatch[matchId] ?? match?.assignedRefereeId;
     const judgeIds = judgesByMatch[matchId] ?? match?.assignedJudgeIds ?? [];
-    if (!centralRefereeId) return toast.error("Central referee is required");
     if (judgeIds.length !== requiredJudgeCount) return toast.error(`Select exactly ${requiredJudgeCount} corner judges`);
-    if (judgeIds.includes(centralRefereeId)) return toast.error("Central referee cannot also be a corner judge");
     const localTime = timeByMatch[matchId] || toDateTimeLocal(match?.scheduledTime);
-    assignRefereeToMatch(matchId, centralRefereeId, judgeIds, new Date(localTime).toISOString());
+    assignRefereeToMatch(matchId, TABLE_CHIEF_ASSIGNMENT_ID, judgeIds, new Date(localTime).toISOString());
   };
 
   return (
@@ -131,12 +123,9 @@ export default function RefereesPage() {
       <SectionDivider label={t('referee_roster', settings.language)} accent="red" />
 
       <IKFCard padding="lg" className="space-y-4">
-        <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]"><UserPlus size={16} /> Add Referee</div>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_190px_150px_auto] gap-3">
+        <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-[var(--text-muted)]"><UserPlus size={16} /> Add Corner Referee</div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_170px_auto] gap-3">
           <input value={newRefereeName} onChange={e => setNewRefereeName(e.target.value)} placeholder="Referee name" className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--ikf-red)]" />
-          <select value={newRefereeRole} onChange={e => setNewRefereeRole(e.target.value as RefRole)} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-md px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--ikf-red)]">
-            {REFEREE_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
-          </select>
           <div className="bg-[rgba(212,160,23,0.05)] border border-[rgba(212,160,23,0.3)] rounded-md px-3 py-2.5 text-sm text-[var(--ikf-gold)] font-bold">
             {NATIONAL_COUNTRY}
           </div>
@@ -211,13 +200,13 @@ export default function RefereesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-[var(--bg-elevated)] text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
-              <tr><th className="py-3 px-3">Match #</th><th className="py-3 px-3">Category</th><th className="py-3 px-3">Red vs Blue</th><th className="py-3 px-3">Mat</th><th className="py-3 px-3">Time</th><th className="py-3 px-3">Referee</th><th className="py-3 px-3">Judges</th><th className="py-3 px-3">Action</th></tr>
+              <tr><th className="py-3 px-3">Match #</th><th className="py-3 px-3">Category</th><th className="py-3 px-3">Red vs Blue</th><th className="py-3 px-3">Mat</th><th className="py-3 px-3">Time</th><th className="py-3 px-3">Table Chief</th><th className="py-3 px-3">Corner Referees</th><th className="py-3 px-3">Action</th></tr>
             </thead>
             <tbody>
               {scheduledMatches.map(match => {
                 const selectedJudges = judgesByMatch[match.id] ?? match.assignedJudgeIds ?? [];
                 const startingSoon = isMatchStartingSoon(match);
-                const assigned = Boolean(match.assignedRefereeId);
+                const assigned = isFullyAssigned(match);
                 return (
                   <tr key={match.id} className={`border-b border-[rgba(255,255,255,0.04)] ${startingSoon ? 'bg-[rgba(200,16,46,0.18)]' : assigned ? 'bg-[rgba(46,204,113,0.08)]' : ''}`}>
                     <td className="py-3 px-3 font-mono text-white">#{match.matchNumber}{startingSoon && <div className="mt-1 text-[9px] text-[var(--ikf-gold)] font-bold flex items-center gap-1"><Clock size={10} /> STARTING SOON</div>}</td>
@@ -225,7 +214,7 @@ export default function RefereesPage() {
                     <td className="py-3 px-3"><span className="text-[var(--ikf-red)] font-bold">{match.redCornerName}</span><span className="text-[var(--text-muted)] mx-1">vs</span><span className="text-[var(--corner-blue)] font-bold">{match.blueCornerName}</span></td>
                     <td className="py-3 px-3 text-[var(--ikf-gold)] font-bold">{match.matNumber}</td>
                     <td className="py-3 px-3"><input type="datetime-local" value={timeByMatch[match.id] ?? toDateTimeLocal(match.scheduledTime)} onChange={e => setTimeByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white" /></td>
-                    <td className="py-3 px-3"><select value={centralByMatch[match.id] ?? match.assignedRefereeId ?? ""} onChange={e => setCentralByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white"><option value="">Central Referee</option>{referees.filter(r => (r.role === "Central Referee" || r.role === "Chief Referee") && canUseOfficialForMatch(r, match)).map(r => <option key={r.id} value={r.id}>{r.name}{r.role === "Chief Referee" ? " (Chief)" : ""}</option>)}</select></td>
+                    <td className="py-3 px-3"><span className="rounded border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] px-2 py-1 font-bold text-[var(--ikf-gold)]">{TABLE_CHIEF_LABEL}</span></td>
                     <td className="py-3 px-3"><div className="flex flex-wrap gap-1 max-w-[280px]">{referees.filter(r => r.role === "Corner Judge" && canUseOfficialForMatch(r, match)).map(r => <button type="button" key={r.id} onClick={() => toggleJudge(match.id, r.id)} className={`px-2 py-1 rounded border text-[10px] ${selectedJudges.includes(r.id) ? 'bg-[#0066cc]/20 border-[#0066cc] text-[#76b7ff]' : 'border-[var(--border-default)] text-[var(--text-muted)] hover:text-white'}`}>{selectedJudges.includes(r.id) && <CheckCircle2 size={10} className="inline mr-1" />}{r.name}</button>)}</div><div className="mt-1 text-[10px] text-[var(--text-muted)]">{selectedJudges.length}/{requiredJudgeCount}</div></td>
                     <td className="py-3 px-3"><IKFButton size="sm" variant={assigned ? "secondary" : "primary"} onClick={() => assignMatch(match.id)}>{assigned ? "Update" : "Assign"}</IKFButton></td>
                   </tr>
@@ -242,7 +231,6 @@ export default function RefereesPage() {
           <h3 className="text-sm font-bold text-[var(--text-muted)] tracking-widest uppercase">{t('current_assignments', settings.language)}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {assignedMatches.map(match => {
-              const centralRef = referees.find(r => r.id === match.assignedRefereeId);
               const cornerRefs = match.assignedJudgeIds?.map(id => referees.find(r => r.id === id)?.name).filter(Boolean) ?? [];
               const isLive = match.status === "in-progress";
               return (
@@ -266,11 +254,11 @@ export default function RefereesPage() {
 
                   <div className="space-y-2 bg-[var(--bg-elevated)] p-3 rounded-lg border border-[var(--border-default)]">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-[var(--text-muted)] font-semibold uppercase tracking-wider text-[9px]">Central Referee</span>
-                      <span className="text-white font-bold">{centralRef?.name ?? "Unassigned"}</span>
+                      <span className="text-[var(--text-muted)] font-semibold uppercase tracking-wider text-[9px]">Table Chief</span>
+                      <span className="text-white font-bold">{TABLE_CHIEF_LABEL}</span>
                     </div>
                     <div className="flex items-start justify-between text-xs">
-                      <span className="text-[var(--text-muted)] font-semibold uppercase tracking-wider text-[9px]">Corner Judges</span>
+                      <span className="text-[var(--text-muted)] font-semibold uppercase tracking-wider text-[9px]">Corner Referees</span>
                       <span className="text-white text-right max-w-[150px] leading-tight">{cornerRefs.join(", ") || "Unassigned"}</span>
                     </div>
                   </div>

@@ -172,7 +172,7 @@ export default function RegisterClubPage() {
         <div className="rounded-xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] p-5">
           <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)] mb-2">Account notification</div>
           <p className="font-bold text-white">
-            Club status: {(ownClub.approvalStatus ?? "Pending") === "Approved" ? "Approved by chief admin" : "Waiting for chief admin approval"}
+            Club status: {(ownClub.approvalStatus ?? "Pending") === "Approved" ? "Approved by table chief" : "Waiting for table chief approval"}
           </p>
           <div className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
             {clubUpcomingMatches.length > 0

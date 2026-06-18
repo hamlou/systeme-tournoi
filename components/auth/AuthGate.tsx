@@ -16,19 +16,32 @@ import {
   type RoleSession,
 } from "@/lib/roleAccess";
 import { NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
+import { useSocket } from "@/components/providers/SocketProvider";
 import type { RoleAccount, UserRole } from "@/types/tournament";
 
 const AUTH_STORAGE_KEY = "ikf_role_session";
 const LEGACY_AUTH_STORAGE_KEY = "ikf_admin_session";
-const SELF_SERVICE_ROLES: UserRole[] = ["athlete", "club", "central-referee", "corner-referee"];
+const SELF_SERVICE_ROLES: UserRole[] = ["athlete", "club", "corner-referee"];
 
 export function getStoredRoleSession(): RoleSession | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
     if (raw) {
-      const session = JSON.parse(raw) as RoleSession;
-      if (session.authenticated && session.username && session.role) return session;
+      const session = JSON.parse(raw) as Omit<RoleSession, "role"> & { role?: UserRole | "central-referee" };
+      if (session.authenticated && session.username && session.role === "central-referee") {
+        const migrated: RoleSession = {
+          authenticated: true,
+          accountId: session.accountId,
+          username: session.username,
+          role: "admin",
+          displayName: "Table Chief",
+          signedInAt: session.signedInAt ?? new Date().toISOString(),
+        };
+        window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+      if (session.authenticated && session.username && session.role) return session as RoleSession;
     }
 
     const legacyRaw = window.localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
@@ -75,6 +88,7 @@ export function clearAdminSession() {
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { isHydrated } = useSocket();
   const accounts = useTournamentStore(state => state.accounts);
   const addAccount = useTournamentStore(state => state.addAccount);
   const addReferee = useTournamentStore(state => state.addReferee);
@@ -155,7 +169,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
       if (accountRequiresApproval(account.role) && account.approvalStatus !== "Approved") {
         setIsSubmitting(false);
-        toast.error("This referee account is waiting for chief admin approval.");
+        toast.error("This referee account is waiting for table chief approval.");
         return;
       }
 
@@ -208,18 +222,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     };
     addAccount(account);
 
-    if (createRole === "central-referee" || createRole === "corner-referee") {
+    if (createRole === "corner-referee") {
       addReferee({
         id: uuidv4(),
         name: displayName,
-        role: createRole === "corner-referee" ? "Corner Judge" : "Central Referee",
+        role: "Corner Judge",
         country: NATIONAL_COUNTRY,
         grade: "Submitted Official",
         status: "Available",
         approvalStatus: "Pending",
         accountId,
       });
-      toast.success("Referee account submitted. The chief admin must approve it before login works.");
+      toast.success("Referee account submitted. The table chief must approve it before login works.");
     } else {
       toast.success("Account created. Log in with your role, then complete your profile.");
     }
@@ -234,7 +248,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setCreateRole("athlete");
   };
 
-  if (!isReady) {
+  if (!isReady || !isHydrated) {
     return (
       <div className="min-h-[100dvh] bg-[var(--bg-primary)] flex items-center justify-center">
         <div className="h-12 w-12 rounded-full border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--ikf-red)] animate-spin" />
@@ -267,7 +281,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               CONTROL THE <span className="text-[var(--ikf-red)] drop-shadow-[0_0_30px_rgba(200,16,46,0.35)]">ARENA</span>
             </h1>
             <p className="mt-8 max-w-xl text-lg leading-8 text-[var(--text-secondary)]">
-              Sign in as chief admin, referee, athlete, club, or TV display. Each account opens only the section it owns.
+              Sign in as table chief, referee, athlete, club, or TV display. Each account opens only the section it owns.
             </p>
           </motion.div>
 
@@ -343,7 +357,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 onClick={() => setShowCreateAccount(value => !value)}
                 className="mt-5 text-xs font-black uppercase tracking-[0.22em] text-[var(--ikf-gold)] hover:text-white"
               >
-                {showCreateAccount ? "Hide account request" : "Create personal account"}
+                {showCreateAccount ? "Hide sign up" : "Sign up"}
               </button>
 
               {showCreateAccount && (
@@ -383,7 +397,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     onClick={handleCreateAccount}
                     className="h-11 w-full rounded-xl bg-[var(--ikf-gold)] text-sm font-black uppercase tracking-widest text-black transition-all hover:bg-[#f0c84c]"
                   >
-                    Create Account
+                    Sign up
                   </button>
                 </div>
               )}

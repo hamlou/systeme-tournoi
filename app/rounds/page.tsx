@@ -14,7 +14,6 @@ import { useMatchNotifications } from "@/hooks/useMatchNotifications";
 import { UpcomingMatchAlert } from "@/components/UpcomingMatchAlert";
 import { pushMatchState, useFirebaseMatchState, deriveLiveMatchTimers } from "@/hooks/useFirebaseMatchSync";
 import { formatMatchCategory, getRoundDuration, totalRoundsForAgeGroup } from "@/lib/ageCategories";
-import { getStoredRoleSession } from "@/components/auth/AuthGate";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -39,13 +38,9 @@ export default function RoundManagementPage() {
   const [restTimeLeft, setRestTimeLeft] = useState(60);
   const [resumeMode, setResumeMode] = useState<"round" | "rest" | null>(null);
   const [firebaseSyncing, setFirebaseSyncing] = useState(false);
-  const [session, setSession] = useState<ReturnType<typeof getStoredRoleSession>>(null);
-  
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    setSession(getStoredRoleSession());
-  }, []);
+  const fightCountdownPlayedRef = useRef("");
+  const breakCountdownPlayedRef = useRef("");
 
   // ── Resume timer state from Firebase on mount ──────────────────────────────
   const [fbMatchState, setFbMatchState] = useState<any>(null);
@@ -80,15 +75,13 @@ export default function RoundManagementPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fbMatchState]);
 
-  const centralRefereeId = session?.role === "central-referee" ? session.refereeId ?? "__unlinked_referee__" : undefined;
   const activeMatches = matches.filter(m =>
     (m.status === "scheduled" || m.status === "in-progress") &&
     Boolean(m.assignedRefereeId) &&
     (m.assignedJudgeIds?.length ?? 0) === settings.defaultJudgesCount &&
     Boolean(m.redCornerId) &&
     Boolean(m.blueCornerId) &&
-    !m.isBye &&
-    (!centralRefereeId || m.assignedRefereeId === centralRefereeId)
+    !m.isBye
   );
 
   const { red: redScore, blue: blueScore } = useLiveAggregateScore();
@@ -195,6 +188,29 @@ export default function RoundManagementPage() {
     }
   }, [timerMode, woskTimeLeft, resumeMode, woskCorner, activeMatch?.matchNumber]);
 
+  const playCountdownSound = (src: string) => {
+    const audio = new Audio(src);
+    audio.volume = 0.9;
+    audio.play().catch(() => {
+      toast.error("Countdown sound was blocked by the browser. Click Start once more to allow audio.");
+    });
+  };
+
+  useEffect(() => {
+    if (!activeMatch || timerMode !== "round" || roundTimer !== 10) return;
+    const key = `${activeMatch.id}-${currentRound}-fight`;
+    if (fightCountdownPlayedRef.current === key) return;
+    fightCountdownPlayedRef.current = key;
+    playCountdownSound("/fight.mp3");
+  }, [activeMatch, currentRound, roundTimer, timerMode]);
+
+  useEffect(() => {
+    if (!activeMatch || timerMode !== "rest" || restTimeLeft !== 10) return;
+    const key = `${activeMatch.id}-${currentRound}-break`;
+    if (breakCountdownPlayedRef.current === key) return;
+    breakCountdownPlayedRef.current = key;
+    playCountdownSound("/break.mp3");
+  }, [activeMatch, currentRound, restTimeLeft, timerMode]);
 
   const handleSelectMatch = (m: Match) => {
     if (timerMode === "round" || timerMode === "rest" || timerMode === "passivity") {
@@ -283,27 +299,27 @@ export default function RoundManagementPage() {
       if (roundOneWinner && roundTwoWinner && roundOneWinner !== roundTwoWinner) {
         updateMatch(activeMatch.id, { totalRounds: 3 });
         setActiveMatch({ ...activeMatch, totalRounds: 3 });
-        setCurrentRound(3);
         setRoundTimer(maxTime);
-        setRestTimeLeft(0);
+        setRestTimeLeft(60);
+        setTimerMode("rest");
         setResumeMode(null);
-        toast("Draw after two rounds. Round 3 tiebreak opened.", { icon: "!", duration: 5000 });
-        addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} - Round 3 tiebreak opened because each athlete won one round` });
-        syncToFirebase({ timerMode: "idle", currentRound: 3, roundTimer: maxTime, restTimeLeft: 0 });
+        toast("Draw after two rounds. One-minute break before Round 3.", { icon: "!", duration: 5000 });
+        addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} - Round 3 tiebreak opened after the one-minute break because each athlete won one round` });
+        syncToFirebase({ timerMode: "rest", currentRound, roundTimer: maxTime, restTimeLeft: 60 });
         return;
       }
     }
 
     if (currentRound < maxRounds) {
-      const nextRound = currentRound + 1;
-      setCurrentRound(nextRound);
       setRoundTimer(maxTime);
-      setRestTimeLeft(0);
+      setRestTimeLeft(60);
+      setTimerMode("rest");
       setResumeMode(null);
-      syncToFirebase({ timerMode: "idle", currentRound: nextRound, roundTimer: maxTime, restTimeLeft: 0 });
+      addRoundEvent({ type: "round-end", details: `Match #${activeMatch.matchNumber} - One-minute break before Round ${currentRound + 1}` });
+      syncToFirebase({ timerMode: "rest", currentRound, roundTimer: maxTime, restTimeLeft: 60 });
     } else {
       toast("Match Complete. Awaiting Judge Validation.", { icon: "🏁", duration: 5000 });
-      addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} — All rounds completed. Awaiting chief referee validation.` });
+      addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} - All rounds completed. Awaiting table chief validation.` });
       setResumeMode(null);
       syncToFirebase({ timerMode: "idle" });
     }

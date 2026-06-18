@@ -24,6 +24,7 @@ import {
 import { DEFAULT_ROLE_ACCOUNTS, makeUsername } from "@/lib/roleAccess";
 import { DEFAULT_CHAMPIONSHIP, NATIONAL_COUNTRY } from "@/lib/nationalCompetition";
 import { normalizeWeightCategory } from "@/lib/competitionRules";
+import { TABLE_CHIEF_ASSIGNMENT_ID } from "@/lib/officials";
 
 // ─── Firebase Sync Helpers ────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ const DEFAULT_SETTINGS: TournamentSettings = {
   tournamentName: 'IKF Kenshido National Tournament',
   championshipName: DEFAULT_CHAMPIONSHIP,
   venue: 'Tunisia National Arena',
-  startDate: '2026-06-10',
+  startDate: new Date().toISOString().slice(0, 10),
   defaultJudgesCount: 3,
   roundDurations: {
     'Mini': 60, 'Cadet': 90, 'Junior': 120, 'Senior': 180,
@@ -62,12 +63,12 @@ function passwordFromId(prefix: string, id: string) {
 }
 
 function accountRoleForReferee(role: Referee["role"]): RoleAccount["role"] {
-  return role === "Corner Judge" ? "corner-referee" : "central-referee";
+  return "corner-referee";
 }
 
 function makeRefereeAccount(referee: Referee, existingAccounts: RoleAccount[]): RoleAccount {
   const role = accountRoleForReferee(referee.role);
-  const prefix = role === "corner-referee" ? "corner" : "central";
+  const prefix = "corner";
   const baseUsername = makeUsername(referee.name, prefix);
   let username = baseUsername;
   let index = 2;
@@ -414,7 +415,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       const current = s.matches.find(m => m.id === id);
       const completed = data.status === 'completed';
       const started = data.status === 'in-progress';
-      const assignedIds = current ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])].filter(Boolean) as string[] : [];
+      const assignedIds = current
+        ? [current.assignedRefereeId, ...(current.assignedJudgeIds ?? [])]
+            .filter((id): id is string => Boolean(id) && id !== TABLE_CHIEF_ASSIGNMENT_ID)
+        : [];
       updatedMatch = current
         ? {
             ...current,
@@ -892,7 +896,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   referees: [],
   addReferee: (r) => {
     const approvalStatus = r.approvalStatus ?? "Approved";
-    const referee: Referee = { ...r, approvalStatus };
+    const referee: Referee = { ...r, role: "Corner Judge", approvalStatus };
     let createdAccount: RoleAccount | null = null;
     set(s => {
       const existingLinkedAccount = referee.accountId
@@ -960,7 +964,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     syncToFirebase('accounts', get().accounts);
   },
   assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
-    const officials = get().referees.filter(r => r.id === refereeId || judgeIds.includes(r.id));
+    const officials = get().referees.filter(r => judgeIds.includes(r.id));
     if (officials.some(official => (official.approvalStatus ?? "Approved") !== "Approved")) {
       toast.error("Only approved officials can be assigned to a match");
       return;
@@ -968,12 +972,12 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     set(s => ({
       matches: s.matches.map(m => m.id === matchId ? {
         ...m,
-        assignedRefereeId: refereeId,
+        assignedRefereeId: TABLE_CHIEF_ASSIGNMENT_ID,
         assignedJudgeIds: judgeIds,
         ...(scheduledTime ? { scheduledTime } : {}),
       } : m),
       referees: s.referees.map(r =>
-        r.id === refereeId || judgeIds.includes(r.id)
+        judgeIds.includes(r.id)
           ? { ...r, currentMatchId: matchId, currentAssignment: `Match #${s.matches.find(m => m.id === matchId)?.matchNumber ?? '?'}` }
           : r
       ),
