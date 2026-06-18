@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { motion } from "framer-motion";
 import { LockKeyhole, ShieldCheck, Trophy, Sparkles } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -288,7 +287,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="max-w-3xl">
+          <div className="max-w-3xl">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-white/[0.03] px-4 py-2 text-xs font-bold uppercase tracking-[0.25em] text-[var(--text-secondary)]">
               <Sparkles size={14} className="text-[var(--ikf-red)]" /> Secure role access
             </div>
@@ -298,7 +297,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             <p className="mt-8 max-w-xl text-lg leading-8 text-[var(--text-secondary)]">
               Sign in as table chief, referee, athlete, club, or TV display. Each account opens only the section it owns.
             </p>
-          </motion.div>
+          </div>
 
           <div className="grid max-w-2xl grid-cols-2 gap-4">
             {["Live Sync", "Role Locked"].map((item) => (
@@ -311,10 +310,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex items-center justify-center p-4 sm:p-10">
-          <motion.form
-            initial={{ opacity: 0, scale: 0.96, y: 18 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.55 }}
+          <form
             onSubmit={handleLogin}
             className="w-full max-w-[470px] overflow-hidden rounded-3xl sm:rounded-[2rem] border border-[rgba(255,255,255,0.1)] bg-[rgba(17,19,24,0.82)] shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl"
           >
@@ -425,7 +421,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 {isSubmitting ? "Checking..." : "Enter Platform"}<ShieldCheck size={19} />
               </button>
             </div>
-          </motion.form>
+          </form>
         </div>
       </section>
     </main>
