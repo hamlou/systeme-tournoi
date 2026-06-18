@@ -267,7 +267,8 @@
 
 .login-kanji {
   opacity: 0;
-  color: #5f4612;
+  color: #876515;
+  z-index: 11;
   animation: login-kanji-reveal 1400ms cubic-bezier(0.16, 1, 0.3, 1) 4.55s both;
 }
 
