@@ -194,18 +194,65 @@
 @keyframes login-kanji-reveal {
   0% {
     opacity: 0;
-    transform: translateY(22px);
-    filter: blur(12px);
+    transform: translateX(96px);
+    filter: blur(8px);
+    text-shadow: 0 0 0 rgba(86, 57, 10, 0);
+  }
+  55% {
+    opacity: 1;
+    transform: translateX(-8px);
+    filter: blur(0);
+    text-shadow: 0 0 24px rgba(96, 65, 12, 0.32);
   }
   100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
     filter: blur(0);
+    text-shadow: 0 12px 34px rgba(0, 0, 0, 0.82), 0 0 18px rgba(86, 57, 10, 0.28);
+  }
+}
+
+@keyframes spark-rise {
+  from {
+    transform: translate3d(0, 22%, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  to {
+    transform: translate3d(2.5rem, -118%, 0);
+    opacity: 0;
   }
 }
 
 .login-panel {
   animation: login-panel-rise 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.login-auth-pane {
+  position: absolute;
+  inset: 1.5rem;
+  transition: opacity 520ms cubic-bezier(0.16, 1, 0.3, 1), transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.login-auth-pane--active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.login-auth-pane--hidden-left {
+  opacity: 0;
+  transform: translateX(-28px);
+  pointer-events: none;
+}
+
+.login-auth-pane--hidden-right {
+  opacity: 0;
+  transform: translateX(28px);
+  pointer-events: none;
 }
 
 .login-phrase-left {
@@ -220,7 +267,49 @@
 
 .login-kanji {
   opacity: 0;
-  animation: login-kanji-reveal 1200ms cubic-bezier(0.16, 1, 0.3, 1) 2.65s both;
+  color: #5f4612;
+  animation: login-kanji-reveal 1400ms cubic-bezier(0.16, 1, 0.3, 1) 4.55s both;
+}
+
+.login-sparks {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 55dvh;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+  mix-blend-mode: screen;
+  -webkit-mask-image: linear-gradient(to top, transparent 0%, rgba(0,0,0,0.1) 12%, black 28%, black 100%);
+  mask-image: linear-gradient(to top, transparent 0%, rgba(0,0,0,0.1) 12%, black 28%, black 100%);
+}
+
+.login-sparks::before,
+.login-sparks::after {
+  content: "";
+  position: absolute;
+  left: -8%;
+  right: -8%;
+  bottom: -22%;
+  height: 145%;
+  background-image:
+    radial-gradient(circle, rgba(255, 209, 89, 0.82) 0 1px, transparent 2px),
+    radial-gradient(circle, rgba(255, 114, 35, 0.72) 0 1.4px, transparent 2.8px),
+    radial-gradient(circle, rgba(255, 237, 160, 0.58) 0 0.9px, transparent 2px);
+  background-size: 9rem 12rem, 13rem 17rem, 17rem 21rem;
+  background-position: 7% 92%, 34% 100%, 71% 88%;
+  filter: drop-shadow(0 0 6px rgba(255, 118, 26, 0.4));
+  opacity: 0.52;
+  animation: spark-rise 8.5s linear infinite;
+}
+
+.login-sparks::after {
+  bottom: -34%;
+  transform: translateX(3rem);
+  background-size: 11rem 15rem, 16rem 19rem, 21rem 25rem;
+  background-position: 14% 100%, 49% 91%, 86% 98%;
+  opacity: 0.38;
+  animation-duration: 11s;
+  animation-delay: -4.5s;
 }
 
 @media (max-width: 640px) {
@@ -230,6 +319,10 @@
 
   .login-panel-shell {
     max-width: 300px;
+  }
+
+  .login-sparks {
+    height: 50dvh;
   }
 
   .login-phrase-left {
@@ -258,15 +351,18 @@
 
   .login-kanji {
     bottom: 3dvh;
-    font-size: clamp(2.3rem, 15vw, 3.5rem);
+    font-size: clamp(1.9rem, 10vw, 2.5rem);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .login-panel,
+  .login-auth-pane,
   .login-phrase-left,
   .login-phrase-right,
-  .login-kanji {
+  .login-kanji,
+  .login-sparks::before,
+  .login-sparks::after {
     animation-duration: 1ms;
     animation-delay: 1ms;
   }

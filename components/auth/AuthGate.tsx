@@ -22,6 +22,10 @@ const AUTH_STORAGE_KEY = "ikf_role_session";
 const LEGACY_AUTH_STORAGE_KEY = "ikf_admin_session";
 const SELF_SERVICE_ROLES: UserRole[] = ["athlete", "club", "corner-referee"];
 
+function isStrongPassword(value: string) {
+  return value.length >= 8 && /[A-Z]/.test(value) && /\d/.test(value);
+}
+
 export function getStoredRoleSession(): RoleSession | null {
   if (typeof window === "undefined") return null;
   try {
@@ -165,6 +169,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   const handleLogin = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (showCreateAccount) return;
     setIsSubmitting(true);
     window.setTimeout(() => {
       const normalizedUsername = username.trim();
@@ -212,8 +217,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const displayName = createName.trim();
     const nextUsername = createUsername.trim();
     const nextPassword = createPassword.trim();
-    if (displayName.length < 2 || nextUsername.length < 3 || nextPassword.length < 3) {
+    if (displayName.length < 2 || nextUsername.length < 3 || !nextPassword) {
       toast.error("Name, login, and password are required.");
+      return;
+    }
+    if (!isStrongPassword(nextPassword)) {
+      toast.error("Password must be 8+ characters with one uppercase letter and one number.");
       return;
     }
     if (loginAccounts.some(account => account.username.trim().toLowerCase() === nextUsername.toLowerCase())) {
@@ -262,6 +271,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setCreateRole("athlete");
   };
 
+  const passwordRulesMet = isStrongPassword(createPassword);
+
   if (!isReady || (!isHydrated && !hydrationTimedOut)) {
     return (
       <div className="min-h-[100dvh] bg-[var(--bg-primary)] flex items-center justify-center">
@@ -277,6 +288,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="fixed inset-0 bg-[url('/loginbackground.jpg')] bg-cover bg-center sm:bg-[center_58%]" />
       <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.68)_0%,rgba(0,0,0,0.2)_46%,rgba(0,0,0,0.54)_100%)]" />
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,26,36,0.08),transparent_28%),linear-gradient(90deg,rgba(0,0,0,0.44),transparent_34%,transparent_66%,rgba(0,0,0,0.42))]" />
+      <div className="login-sparks" aria-hidden="true" />
 
       <section className="relative z-10 h-screen min-h-[100dvh] w-full max-w-full overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
         <div className="login-phrase-left pointer-events-none fixed left-4 top-[18dvh] max-w-[12rem] sm:left-8 sm:top-[20dvh] sm:max-w-[19rem] lg:left-[6vw] lg:top-[22dvh] lg:max-w-[24rem]">
@@ -291,7 +303,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           </p>
         </div>
 
-        <p className="login-kanji pointer-events-none fixed bottom-[7dvh] left-5 font-serif text-[clamp(2.4rem,7vw,6rem)] leading-none text-white/88 drop-shadow-[0_14px_38px_rgba(0,0,0,0.85)] sm:left-10 lg:left-[7vw]">
+        <p className="login-kanji pointer-events-none fixed bottom-[7dvh] left-5 font-serif text-[clamp(1.75rem,4.8vw,4rem)] leading-none drop-shadow-[0_14px_38px_rgba(0,0,0,0.85)] sm:left-10 lg:left-[7vw]">
           剣志道
         </p>
 
@@ -301,67 +313,79 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             className="login-panel w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/[0.13] text-white shadow-[0_28px_90px_rgba(0,0,0,0.56)] backdrop-blur-xl"
           >
             <div className="border-b border-white/10 bg-white/[0.16] px-6 py-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
-              <p className="text-sm font-semibold uppercase tracking-[0.34em] text-white/86 sm:text-base">Tournament Login</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.34em] text-white/86 sm:text-base">
+                {showCreateAccount ? "Tournament Sign Up" : "Tournament Login"}
+              </p>
             </div>
 
-            <div className="space-y-4 px-6 py-6 sm:px-8 sm:py-7">
-              <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
-                <Mail size={16} className="shrink-0 text-white/78" />
-                <input
-                  value={username}
-                  onChange={(event) => setUsername(event.target.value)}
-                  className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/72"
-                  placeholder="Login"
-                  autoComplete="username"
-                  required
-                />
-              </label>
-
-              <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
-                <LockKeyhole size={16} className="shrink-0 text-white/78" />
-                <input
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  type="password"
-                  className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/72"
-                  placeholder="Password"
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-
-              <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
-                <UserRound size={16} className="shrink-0 text-white/78" />
-                <select
-                  value={loginRole}
-                  onChange={(event) => setLoginRole(event.target.value as UserRole)}
-                  className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none"
-                  required
-                >
-                  {Object.entries(ROLE_LABELS).map(([role, label]) => (
-                    <option key={role} value={role} className="bg-[#26262d] text-white">{label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="flex items-center justify-between gap-4 pt-1 text-[0.68rem] text-white/60">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="h-3 w-3 accent-white/70" />
-                  Remember me
+            <div className="relative h-[356px] overflow-hidden px-6 py-6 sm:h-[370px] sm:px-8 sm:py-7">
+              <div className={`login-auth-pane space-y-4 ${showCreateAccount ? "login-auth-pane--hidden-left" : "login-auth-pane--active"}`}>
+                <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
+                  <Mail size={16} className="shrink-0 text-white/78" />
+                  <input
+                    value={username}
+                    onChange={(event) => setUsername(event.target.value)}
+                    className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/72"
+                    placeholder="Login"
+                    autoComplete="username"
+                    required={!showCreateAccount}
+                  />
                 </label>
-                <span className="italic">Secure access</span>
+
+                <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
+                  <LockKeyhole size={16} className="shrink-0 text-white/78" />
+                  <input
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    type="password"
+                    className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/72"
+                    placeholder="Password"
+                    autoComplete="current-password"
+                    required={!showCreateAccount}
+                  />
+                </label>
+
+                <label className="group flex items-center gap-3 border-b border-white/42 pb-2 transition-colors focus-within:border-white">
+                  <UserRound size={16} className="shrink-0 text-white/78" />
+                  <select
+                    value={loginRole}
+                    onChange={(event) => setLoginRole(event.target.value as UserRole)}
+                    className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none"
+                    required={!showCreateAccount}
+                  >
+                    {Object.entries(ROLE_LABELS).map(([role, label]) => (
+                      <option key={role} value={role} className="bg-[#26262d] text-white">{label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="flex items-center justify-between gap-4 pt-1 text-[0.68rem] text-white/60">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" className="h-3 w-3 accent-white/70" />
+                    Remember me
+                  </label>
+                  <span className="italic">Secure access</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCreateAccount(true)}
+                  className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/74 transition hover:text-white"
+                >
+                  Sign up
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="mx-auto mt-2 flex h-12 w-[72%] min-w-44 items-center justify-center gap-2 rounded-md bg-white/24 px-4 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_35px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:bg-white/34 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isSubmitting ? "Checking..." : "Login"}<ShieldCheck size={16} />
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowCreateAccount(value => !value)}
-                className="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-white/74 transition hover:text-white"
-              >
-                {showCreateAccount ? "Hide sign up" : "Sign up"}
-              </button>
-
-              {showCreateAccount && (
-                <div className="space-y-3 rounded-2xl border border-white/15 bg-black/20 p-4">
+              <div className={`login-auth-pane space-y-3 ${showCreateAccount ? "login-auth-pane--active" : "login-auth-pane--hidden-right"}`}>
+                <div className="space-y-3">
                   <input
                     value={createName}
                     onChange={(event) => setCreateName(event.target.value)}
@@ -390,23 +414,27 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     className="h-10 w-full border-b border-white/30 bg-transparent text-sm font-semibold text-white outline-none placeholder:text-white/60 focus:border-white"
                     placeholder="Password"
                   />
-                  <button
-                    type="button"
-                    onClick={handleCreateAccount}
-                    className="h-10 w-full rounded-md bg-white/22 text-xs font-black uppercase tracking-[0.22em] text-white transition hover:bg-white/32"
-                  >
-                    Sign up
-                  </button>
+                  <p className={`text-[0.64rem] font-semibold leading-4 ${createPassword && !passwordRulesMet ? "text-red-200" : "text-white/55"}`}>
+                    Password: 8+ characters, one uppercase letter, and one number.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateAccount(false)}
+                      className="h-10 rounded-md border border-white/18 bg-white/[0.06] text-[0.65rem] font-black uppercase tracking-[0.18em] text-white/78 transition hover:bg-white/14 hover:text-white"
+                    >
+                      Login
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCreateAccount}
+                      className="h-10 rounded-md bg-white/22 text-[0.65rem] font-black uppercase tracking-[0.18em] text-white transition hover:bg-white/32"
+                    >
+                      Sign up
+                    </button>
+                  </div>
                 </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="mx-auto mt-2 flex h-12 w-[72%] min-w-44 items-center justify-center gap-2 rounded-md bg-white/24 px-4 text-xs font-black uppercase tracking-[0.18em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_35px_rgba(0,0,0,0.28)] transition hover:-translate-y-0.5 hover:bg-white/34 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isSubmitting ? "Checking..." : "Login"}<ShieldCheck size={16} />
-              </button>
+              </div>
             </div>
           </form>
         </div>
