@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Brain, Info, Lightbulb, Search, Sparkles, TrendingUp } from "lucide-react";
+import { AlertTriangle, Brain, Search, Sparkles } from "lucide-react";
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { PageHeader, IKFCard, SectionDivider, IKFBadge, IKFButton } from "@/components/ui";
 import { useTournamentStore } from "@/store/tournamentStore";
@@ -440,20 +440,24 @@ export default function AIPage() {
   }, [athletes.length, clubs.length, referees.length, matches, reports.length]);
 
   const radarData = useMemo(() => {
-    const redScore = selectedMatch?.result?.redTotalScore ?? 70;
-    const blueScore = selectedMatch?.result?.blueTotalScore ?? 70;
+    const submittedScores = selectedJudgeScores.filter(score => score.submitted);
+    const submittedRedTotal = submittedScores.reduce((sum, score) => sum + score.redScore, 0);
+    const submittedBlueTotal = submittedScores.reduce((sum, score) => sum + score.blueScore, 0);
+    const redScore = selectedMatch?.result?.redTotalScore ?? submittedRedTotal;
+    const blueScore = selectedMatch?.result?.blueTotalScore ?? submittedBlueTotal;
     const scoreGap = Math.abs(redScore - blueScore);
-    const redSubmitted = selectedJudgeScores.filter((score) => score.redScore >= score.blueScore).length;
-    const blueSubmitted = selectedJudgeScores.filter((score) => score.blueScore > score.redScore).length;
+    const redSubmitted = submittedScores.filter((score) => score.redScore >= score.blueScore).length;
+    const blueSubmitted = submittedScores.filter((score) => score.blueScore > score.redScore).length;
+    const dataConfidence = selectedMatch ? Math.min(100, submittedScores.length * 18 + selectedEvents.length * 4) : 0;
 
     return [
       { subject: "Score Control", red: Math.min(100, redScore), blue: Math.min(100, blueScore), fullMark: 100 },
-      { subject: "Judge Support", red: 55 + redSubmitted * 12, blue: 55 + blueSubmitted * 12, fullMark: 100 },
-      { subject: "Consistency", red: Math.max(45, 92 - scoreGap * 3), blue: Math.max(45, 92 - scoreGap * 3), fullMark: 100 },
-      { subject: "Activity", red: selectedMatch?.status === "completed" ? 82 : 64, blue: selectedMatch?.status === "completed" ? 78 : 64, fullMark: 100 },
-      { subject: "Readiness", red: selectedMatch?.redCornerName === "TBD" ? 30 : 88, blue: selectedMatch?.blueCornerName === "TBD" ? 30 : 88, fullMark: 100 },
+      { subject: "Judge Support", red: redSubmitted * 20, blue: blueSubmitted * 20, fullMark: 100 },
+      { subject: "Consistency", red: submittedScores.length ? Math.max(0, 100 - scoreGap * 4) : 0, blue: submittedScores.length ? Math.max(0, 100 - scoreGap * 4) : 0, fullMark: 100 },
+      { subject: "Action Evidence", red: dataConfidence, blue: dataConfidence, fullMark: 100 },
+      { subject: "Report Readiness", red: selectedMatch?.status === "completed" ? 100 : dataConfidence, blue: selectedMatch?.status === "completed" ? 100 : dataConfidence, fullMark: 100 },
     ];
-  }, [selectedMatch, selectedJudgeScores]);
+  }, [selectedEvents.length, selectedMatch, selectedJudgeScores]);
 
   const handleAnalyze = async (scope: "match" | "red" | "blue" = "match") => {
     if (!selectedMatch) return;
@@ -546,7 +550,7 @@ export default function AIPage() {
             <SectionDivider label="LIVE DATA FEED" accent="red" />
             <IKFCard padding="lg" className="h-[460px] flex flex-col justify-center">
               <ComparisonBar label="Official Score" redVal={selectedMatch?.result?.redTotalScore ?? 0} blueVal={selectedMatch?.result?.blueTotalScore ?? 0} redText={`${selectedMatch?.result?.redTotalScore ?? "—"}`} blueText={`${selectedMatch?.result?.blueTotalScore ?? "—"}`} />
-              <ComparisonBar label="Judge Cards" redVal={selectedJudgeScores.filter((s) => s.redScore >= s.blueScore).length} blueVal={selectedJudgeScores.filter((s) => s.blueScore > s.redScore).length} redText={`${selectedJudgeScores.filter((s) => s.redScore >= s.blueScore).length}`} blueText={`${selectedJudgeScores.filter((s) => s.blueScore > s.redScore).length}`} />
+              <ComparisonBar label="Judge Direction" redVal={selectedJudgeScores.filter((s) => s.submitted && s.redScore >= s.blueScore).length} blueVal={selectedJudgeScores.filter((s) => s.submitted && s.blueScore > s.redScore).length} redText={`${selectedJudgeScores.filter((s) => s.submitted && s.redScore >= s.blueScore).length}`} blueText={`${selectedJudgeScores.filter((s) => s.submitted && s.blueScore > s.redScore).length}`} />
               <ComparisonBar label="Submitted Scores" redVal={selectedJudgeScores.filter((s) => s.submitted).length} blueVal={Math.max(0, selectedJudgeScores.length - selectedJudgeScores.filter((s) => s.submitted).length)} redText={`${selectedJudgeScores.filter((s) => s.submitted).length} done`} blueText={`${Math.max(0, selectedJudgeScores.length - selectedJudgeScores.filter((s) => s.submitted).length)} pending`} />
               <div className="mt-4 rounded-xl border border-[var(--border-default)] bg-black/20 p-4">
                 <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)] font-bold mb-2">Selected match</p>
@@ -591,16 +595,6 @@ export default function AIPage() {
           </div>
         </div>
 
-        <div className="mt-8 space-y-6">
-          <SectionDivider label="SITE AUDIT NOTES — AI SECTION" accent="gold" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { icon: <Info size={20} />, label: "Fixed Logic", text: "Match selector now uses real store matches instead of fake IDs." },
-              { icon: <TrendingUp size={20} />, label: "Real Context", text: "Prompt includes fighters, assigned officials, every submitted judge decision, events, and tournament totals." },
-              { icon: <Lightbulb size={20} />, label: "Safe Fallback", text: "Local analysis keeps the section usable if the provider is unavailable." },
-            ].map((item) => <div key={item.label} className="bg-[var(--bg-card)] border border-[var(--border-default)] rounded-xl p-6"><div className="text-[var(--ikf-gold)] mb-4">{item.icon}</div><p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2">{item.label}</p><p className="text-sm font-semibold text-white leading-relaxed">{item.text}</p></div>)}
-          </div>
-        </div>
       </div>
     </div>
   );

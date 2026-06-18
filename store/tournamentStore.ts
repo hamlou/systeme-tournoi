@@ -265,8 +265,19 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         ? s.accounts.find(account => account.id === readyAthlete.accountId)
         : null;
       linkedAccount = existing
-        ? { ...existing, athleteId: readyAthlete.id, role: "athlete", displayName: readyAthlete.fullName, approvalStatus: "Approved", approvedAt: nowIso() }
-        : makeLinkedAccount({ id: readyAthlete.id, name: readyAthlete.fullName }, "athlete", s.accounts);
+        ? {
+            ...existing,
+            athleteId: readyAthlete.id,
+            role: "athlete",
+            displayName: readyAthlete.fullName,
+            approvalStatus,
+            ...(approvalStatus === "Approved" ? { approvedAt: existing.approvedAt ?? nowIso() } : { approvedAt: undefined }),
+          }
+        : {
+            ...makeLinkedAccount({ id: readyAthlete.id, name: readyAthlete.fullName }, "athlete", s.accounts),
+            approvalStatus,
+            ...(approvalStatus === "Approved" ? {} : { approvedAt: undefined }),
+          };
       return {
         athletes: [{ ...readyAthlete, accountId: linkedAccount.id }, ...s.athletes],
         accounts: existing
@@ -332,8 +343,19 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         ? s.accounts.find(account => account.id === club.accountId)
         : null;
       linkedAccount = existing
-        ? { ...existing, clubId: club.id, role: "club", displayName: club.name, approvalStatus: "Approved", approvedAt: nowIso() }
-        : makeLinkedAccount({ id: club.id, name: club.name }, "club", s.accounts);
+        ? {
+            ...existing,
+            clubId: club.id,
+            role: "club",
+            displayName: club.name,
+            approvalStatus,
+            ...(approvalStatus === "Approved" ? { approvedAt: existing.approvedAt ?? nowIso() } : { approvedAt: undefined }),
+          }
+        : {
+            ...makeLinkedAccount({ id: club.id, name: club.name }, "club", s.accounts),
+            approvalStatus,
+            ...(approvalStatus === "Approved" ? {} : { approvedAt: undefined }),
+          };
       return {
         clubs: [{ ...club, accountId: linkedAccount.id }, ...s.clubs],
         accounts: existing

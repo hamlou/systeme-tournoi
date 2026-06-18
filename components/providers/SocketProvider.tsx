@@ -35,10 +35,24 @@ type TournamentSnapshot = Partial<{
   accounts: RoleAccount[];
   judgeScores: JudgeScore[];
   events: RoundEvent[] | Record<string, RoundEvent>;
+  judging: Record<string, {
+    scores?: Record<string, { rounds?: Record<string, JudgeScore> }>;
+    events?: Record<string, RoundEvent>;
+  }>;
   roundEvents: RoundEvent[];
   reports: TournamentReport[];
   activeMatch: Match | null;
+  live: {
+    matchState?: {
+      matchId?: string | null;
+      currentRound?: number;
+      roundTimer?: number;
+      timerMode?: "idle" | "round" | "rest" | "passivity" | "medical";
+      updatedAt?: number;
+    };
+  };
 }>;
+type LiveMatchSnapshot = NonNullable<TournamentSnapshot["live"]>["matchState"];
 
 const LOCAL_SNAPSHOT_KEY = "ikf_tournament_snapshot_v2";
 
@@ -66,6 +80,13 @@ function normalizeMatch(match: Match): Match {
     weightCategory: normalizeWeightCategory(match.weightCategory),
     totalRounds: match.totalRounds && match.totalRounds > baseRounds ? match.totalRounds : baseRounds,
   };
+}
+
+function deriveRoundTimer(state?: LiveMatchSnapshot) {
+  if (!state || typeof state.roundTimer !== "number") return undefined;
+  if (state.timerMode !== "round") return state.roundTimer;
+  const elapsed = Math.max(0, Math.floor((Date.now() - (state.updatedAt ?? Date.now())) / 1000));
+  return Math.max(0, state.roundTimer - elapsed);
 }
 
 function normalizeAccount(account: LegacyRoleAccount): RoleAccount {
@@ -122,6 +143,32 @@ function stateToSnapshot(state: ReturnType<typeof useTournamentStore.getState>):
   };
 }
 
+function flattenJudgingData(judging?: TournamentSnapshot["judging"]) {
+  const scores: JudgeScore[] = [];
+  const events: RoundEvent[] = [];
+  if (!judging) return { scores, events };
+
+  Object.values(judging).forEach(bundle => {
+    Object.values(bundle?.scores ?? {}).forEach(judgeRecord => {
+      Object.values(judgeRecord?.rounds ?? {}).forEach(score => {
+        if (score?.matchId && score?.judgeId) scores.push(score as JudgeScore);
+      });
+    });
+    Object.values(bundle?.events ?? {}).forEach(event => {
+      if (event?.type && event?.timestamp) events.push(event as RoundEvent);
+    });
+  });
+
+  return { scores, events };
+}
+
+function mergeByKey<T>(base: T[], incoming: T[], getKey: (item: T) => string) {
+  const merged = new Map<string, T>();
+  base.forEach(item => merged.set(getKey(item), item));
+  incoming.forEach(item => merged.set(getKey(item), item));
+  return Array.from(merged.values());
+}
+
 function ensureProfileAccount(
   accounts: RoleAccount[],
   profile: {
@@ -135,7 +182,7 @@ function ensureProfileAccount(
 ) {
   const now = new Date().toISOString();
   const prefix = profile.role === "athlete" ? "athlete" : profile.role === "club" ? "club" : profile.role === "corner-referee" ? "corner" : "official";
-  const accountStatus = profile.role === "athlete" || profile.role === "club" ? "Approved" : profile.approvalStatus ?? "Approved";
+  const accountStatus = profile.approvalStatus ?? "Approved";
   const existing = accounts.find(account => account.id === profile.accountId) ?? accounts.find(account => account[profile.linkKey] === profile.id);
 
   if (existing) {
@@ -181,6 +228,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const hasHydratedRef = useRef(false);
+  const latestLiveStateRef = useRef<LiveMatchSnapshot | null>(null);
 
   useEffect(() => {
     const rootRef = ref(db, "tournament");
@@ -214,7 +262,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             role: "athlete",
             linkKey: "athleteId",
             accountId: athlete.accountId,
-            approvalStatus: "Approved",
+            approvalStatus,
           });
           normalizedAccounts = linked.accounts;
           return {
@@ -239,7 +287,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             role: "club",
             linkKey: "clubId",
             accountId: club.accountId,
-            approvalStatus: "Approved",
+            approvalStatus,
           });
           normalizedAccounts = linked.accounts;
           return {
@@ -313,8 +361,32 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
           : Object.values(data.events as Record<string, RoundEvent>);
         store.setState({ roundEvents: events as RoundEvent[] });
       }
+      if (data.judging) {
+        const { scores, events } = flattenJudgingData(data.judging);
+        store.setState(state => ({
+          judgeScores: mergeByKey(
+            state.judgeScores,
+            scores,
+            score => `${score.matchId}-${score.judgeId}-${score.round}`,
+          ),
+          roundEvents: mergeByKey(
+            state.roundEvents,
+            events,
+            event => event.id ?? `${event.timestamp}-${event.type}-${event.corner ?? ""}-${event.details}`,
+          ),
+        }));
+      }
       if (Array.isArray(data.reports)) {
         store.setState({ reports: data.reports as TournamentReport[] });
+      }
+      if (data.live?.matchState) {
+        const liveState = data.live.matchState;
+        latestLiveStateRef.current = liveState;
+        store.setState({
+          currentRound: liveState.currentRound ?? store.getState().currentRound,
+          roundTimer: deriveRoundTimer(liveState) ?? store.getState().roundTimer,
+          timerMode: liveState.timerMode ?? store.getState().timerMode,
+        });
       }
       if (data.activeMatch) {
         const normalizedActive = normalizeMatch(data.activeMatch as Match);
@@ -362,6 +434,21 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       off(rootRef, "value", handler);
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const liveState = latestLiveStateRef.current;
+      if (!liveState || liveState.timerMode !== "round") return;
+      const roundTimer = deriveRoundTimer(liveState);
+      if (roundTimer === undefined) return;
+      useTournamentStore.setState({
+        currentRound: liveState.currentRound ?? useTournamentStore.getState().currentRound,
+        roundTimer,
+        timerMode: liveState.timerMode,
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
   }, []);
 
   return (
