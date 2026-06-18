@@ -76,7 +76,11 @@ export function useFirebaseJudgingData(
       callbackRef.current({ scores, events });
     };
 
-    onValue(dbRef, handler);
+    const handleError = (error: Error) => {
+      console.warn("[FirebaseJudging] match judging subscription failed:", error);
+      callbackRef.current({ scores: [], events: [] });
+    };
+    onValue(dbRef, handler, handleError);
     return () => off(dbRef, "value", handler);
   }, [matchId]);
 }
@@ -101,7 +105,11 @@ export function useFirebaseAllJudgingData(
       callbackRef.current(bundles);
     };
 
-    onValue(dbRef, handler);
+    const handleError = (error: Error) => {
+      console.warn("[FirebaseJudging] all judging subscription failed:", error);
+      callbackRef.current([]);
+    };
+    onValue(dbRef, handler, handleError);
     return () => off(dbRef, "value", handler);
   }, []);
 }

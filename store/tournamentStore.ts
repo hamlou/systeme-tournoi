@@ -31,15 +31,28 @@ import { TABLE_CHIEF_ASSIGNMENT_ID } from "@/lib/officials";
 const fbPath = (path: string) => ref(db, `tournament/${path}`);
 
 function syncToFirebase(path: string, data: unknown) {
-  try { set(fbPath(path), data); } catch (e) { console.warn('[FB sync]', path, e); }
+  try {
+    void set(fbPath(path), data).catch(e => console.warn('[FB sync]', path, e));
+  } catch (e) {
+    console.warn('[FB sync]', path, e);
+  }
 }
 
 function pushToFirebase(path: string, data: Record<string, unknown>) {
-  try { const r = push(fbPath(path)); set(r, { ...data, id: r.key ?? crypto.randomUUID() }); } catch (e) { console.warn('[FB push]', path, e); }
+  try {
+    const r = push(fbPath(path));
+    void set(r, { ...data, id: r.key ?? crypto.randomUUID() }).catch(e => console.warn('[FB push]', path, e));
+  } catch (e) {
+    console.warn('[FB push]', path, e);
+  }
 }
 
 function patchFirebase(path: string, data: Record<string, unknown>) {
-  try { update(fbPath(path), data); } catch (e) { console.warn('[FB patch]', path, e); }
+  try {
+    void update(fbPath(path), data).catch(e => console.warn('[FB patch]', path, e));
+  } catch (e) {
+    console.warn('[FB patch]', path, e);
+  }
 }
 
 // ─── Default Settings ─────────────────────────────────────────────────────────

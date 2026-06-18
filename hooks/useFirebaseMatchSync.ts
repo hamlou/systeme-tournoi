@@ -71,7 +71,10 @@ export function useFirebaseMatchState(
       const data = snapshot.val();
       if (data) callbackRef.current(data as FirebaseMatchState);
     };
-    onValue(dbRef, handler);
+    const handleError = (error: Error) => {
+      console.warn("[FirebaseSync] match state subscription failed:", error);
+    };
+    onValue(dbRef, handler, handleError);
     return () => off(dbRef, "value", handler);
   }, []);
 }
@@ -88,7 +91,11 @@ export function useFirebaseLiveMatchStates(
     const handler = (snapshot: any) => {
       callbackRef.current((snapshot.val() ?? {}) as Record<string, FirebaseMatchState>);
     };
-    onValue(dbRef, handler);
+    const handleError = (error: Error) => {
+      console.warn("[FirebaseSync] live matches subscription failed:", error);
+      callbackRef.current({});
+    };
+    onValue(dbRef, handler, handleError);
     return () => off(dbRef, "value", handler);
   }, []);
 }

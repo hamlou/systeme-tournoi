@@ -233,6 +233,10 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const rootRef = ref(db, "tournament");
     let connected = false;
+    const markHydrated = () => {
+      hasHydratedRef.current = true;
+      setIsHydrated(true);
+    };
 
     const hydrateFromData = (rawData: TournamentSnapshot) => {
       const data = rawData;
@@ -399,8 +403,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
           },
         });
       }
-      hasHydratedRef.current = true;
-      setIsHydrated(true);
+      markHydrated();
     };
 
     const handler = (snapshot: { val: () => Record<string, unknown> | null }) => {
@@ -409,8 +412,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       if (!data) {
         const localSnapshot = readLocalSnapshot();
         if (localSnapshot) hydrateFromData(localSnapshot);
-        hasHydratedRef.current = true;
-        setIsHydrated(true);
+        markHydrated();
         return;
       }
       hydrateFromData(data);
@@ -420,17 +422,25 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       console.warn("[FirebaseSync] Falling back to local snapshot", error);
       const localSnapshot = readLocalSnapshot();
       if (localSnapshot) hydrateFromData(localSnapshot);
-      hasHydratedRef.current = true;
       setIsConnected(false);
-      setIsHydrated(true);
+      markHydrated();
     };
 
     onValue(rootRef, handler, handleError);
+    const hydrationTimeout = window.setTimeout(() => {
+      if (hasHydratedRef.current) return;
+      console.warn("[FirebaseSync] Hydration timed out. Showing login with local/default data.");
+      const localSnapshot = readLocalSnapshot();
+      if (localSnapshot) hydrateFromData(localSnapshot);
+      setIsConnected(false);
+      markHydrated();
+    }, 5000);
     const unsubscribe = useTournamentStore.subscribe(state => {
       if (!hasHydratedRef.current) return;
       writeLocalSnapshot(stateToSnapshot(state));
     });
     return () => {
+      window.clearTimeout(hydrationTimeout);
       off(rootRef, "value", handler);
       unsubscribe();
     };
