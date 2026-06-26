@@ -148,7 +148,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!session) return;
     const liveAccount = loginAccounts.find(account => account.id === session.accountId);
-    if (!liveAccount) return;
+    if (!liveAccount || liveAccount.approvalStatus === "Rejected") {
+      clearRoleSession();
+      setSession(null);
+      toast.error("This account was deleted by the table chief.");
+      return;
+    }
     if (
       liveAccount.refereeId === session.refereeId &&
       liveAccount.athleteId === session.athleteId &&
@@ -183,6 +188,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       if (!account) {
         setIsSubmitting(false);
         toast.error("Access denied. Check login, password, and role.");
+        return;
+      }
+
+      if (account.approvalStatus === "Rejected") {
+        setIsSubmitting(false);
+        toast.error("This account was deleted by the table chief.");
         return;
       }
 
@@ -288,7 +299,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="fixed inset-0 bg-[url('/loginbackground.jpg')] bg-cover bg-center sm:bg-[center_58%]" />
       <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.68)_0%,rgba(0,0,0,0.2)_46%,rgba(0,0,0,0.54)_100%)]" />
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,26,36,0.08),transparent_28%),linear-gradient(90deg,rgba(0,0,0,0.44),transparent_34%,transparent_66%,rgba(0,0,0,0.42))]" />
-      <div className="login-sparks" aria-hidden="true" />
+      <div className="login-sparks login-sparks-a" aria-hidden="true" />
+      <div className="login-sparks login-sparks-b" aria-hidden="true" />
+      <div className="login-sparks login-sparks-c" aria-hidden="true" />
 
       <section className="relative z-10 h-screen min-h-[100dvh] w-full max-w-full overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
         <div className="login-phrase-left pointer-events-none fixed left-4 top-[18dvh] max-w-[12rem] sm:left-8 sm:top-[20dvh] sm:max-w-[19rem] lg:left-[6vw] lg:top-[22dvh] lg:max-w-[24rem]">
@@ -303,8 +316,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           </p>
         </div>
 
-        <p className="login-kanji pointer-events-none fixed bottom-[7dvh] left-5 font-serif text-[clamp(1.75rem,4.8vw,4rem)] leading-none drop-shadow-[0_14px_38px_rgba(0,0,0,0.85)] sm:left-10 lg:left-[7vw]">
-          剣志道
+        <p className="login-kanji pointer-events-none fixed bottom-[7dvh] left-5 font-serif text-[clamp(1.75rem,4.8vw,4rem)] leading-none drop-shadow-[0_14px_38px_rgba(0,0,0,0.85)] sm:left-10 lg:left-[7vw]" aria-label="剣志道">
+          <span className="login-kanji-char">剣</span>
+          <span className="login-kanji-char">志</span>
+          <span className="login-kanji-char">道</span>
         </p>
 
         <div className="login-panel-shell fixed left-1/2 top-[clamp(1rem,5dvh,3.8rem)] w-[calc(100vw-32px)] max-w-[350px] -translate-x-1/2 sm:max-w-[390px]">
@@ -312,7 +327,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             onSubmit={handleLogin}
             className="login-panel w-full overflow-hidden rounded-[28px] border border-white/20 bg-white/[0.13] text-white shadow-[0_28px_90px_rgba(0,0,0,0.56)] backdrop-blur-xl"
           >
-            <div className="border-b border-white/10 bg-white/[0.16] px-6 py-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
+            <div className="border-b border-white/10 bg-black/70 px-6 py-5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
               <p className="text-sm font-semibold uppercase tracking-[0.34em] text-white/86 sm:text-base">
                 {showCreateAccount ? "Tournament Sign Up" : "Tournament Login"}
               </p>

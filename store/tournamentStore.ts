@@ -991,9 +991,19 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     toast.success(`${referee.name} approved for judging access`);
   },
   deleteReferee: (id) => {
+    const referee = get().referees.find(r => r.id === id);
     set(s => ({
       referees: s.referees.filter(r => r.id !== id),
-      accounts: s.accounts.filter(account => account.refereeId !== id),
+      accounts: s.accounts.map(account =>
+        account.refereeId === id || account.id === referee?.accountId
+          ? {
+              ...account,
+              refereeId: undefined,
+              approvalStatus: "Rejected" as const,
+              displayName: account.displayName || referee?.name || "Deleted referee",
+            }
+          : account
+      ),
     }));
     syncToFirebase('referees', get().referees);
     syncToFirebase('accounts', get().accounts);

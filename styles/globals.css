@@ -191,38 +191,27 @@
   }
 }
 
-@keyframes login-kanji-reveal {
+@keyframes login-kanji-write {
   0% {
     opacity: 0;
-    transform: translateX(96px);
-    filter: blur(8px);
-    text-shadow: 0 0 0 rgba(86, 57, 10, 0);
-  }
-  55% {
-    opacity: 1;
-    transform: translateX(-8px);
-    filter: blur(0);
-    text-shadow: 0 0 24px rgba(96, 65, 12, 0.32);
+    transform: translateX(-0.55em);
+    clip-path: inset(0 100% 0 0);
+    filter: blur(6px);
   }
   100% {
     opacity: 1;
     transform: translateX(0);
+    clip-path: inset(0 0 0 0);
     filter: blur(0);
-    text-shadow: 0 12px 34px rgba(0, 0, 0, 0.82), 0 0 18px rgba(86, 57, 10, 0.28);
   }
 }
 
 @keyframes spark-rise {
   from {
-    transform: translate3d(0, 22%, 0);
-    opacity: 0;
-  }
-  12% {
-    opacity: 0.9;
+    transform: translate3d(0, 16vh, 0);
   }
   to {
-    transform: translate3d(2.5rem, -118%, 0);
-    opacity: 0;
+    transform: translate3d(2rem, -112vh, 0);
   }
 }
 
@@ -255,62 +244,145 @@
   pointer-events: none;
 }
 
+.login-panel-shell {
+  z-index: 20;
+}
+
 .login-phrase-left {
   opacity: 0;
-  animation: login-left-reveal 1100ms cubic-bezier(0.16, 1, 0.3, 1) 2s both;
+  z-index: 12;
+  animation: login-left-reveal 900ms cubic-bezier(0.16, 1, 0.3, 1) 1s both;
 }
 
 .login-phrase-right {
   opacity: 0;
-  animation: login-right-reveal 1100ms cubic-bezier(0.16, 1, 0.3, 1) 3.2s both;
+  z-index: 12;
+  animation: login-right-reveal 900ms cubic-bezier(0.16, 1, 0.3, 1) 1.9s both;
 }
 
 .login-kanji {
-  opacity: 0;
-  color: #876515;
+  color: #ffffff;
   z-index: 11;
-  animation: login-kanji-reveal 1400ms cubic-bezier(0.16, 1, 0.3, 1) 4.55s both;
+  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.85), 0 0 18px rgba(255, 255, 255, 0.18);
+}
+
+.login-kanji-char {
+  display: inline-block;
+  opacity: 0;
+  animation: login-kanji-write 820ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.login-kanji-char:nth-child(1) {
+  animation-delay: 2.55s;
+}
+
+.login-kanji-char:nth-child(2) {
+  animation-delay: 3.14s;
+}
+
+.login-kanji-char:nth-child(3) {
+  animation-delay: 3.73s;
 }
 
 .login-sparks {
   position: fixed;
-  inset: 0 0 auto 0;
-  height: 55dvh;
+  inset: 0;
   pointer-events: none;
   overflow: hidden;
   z-index: 1;
   mix-blend-mode: screen;
-  -webkit-mask-image: linear-gradient(to top, transparent 0%, rgba(0,0,0,0.1) 12%, black 28%, black 100%);
-  mask-image: linear-gradient(to top, transparent 0%, rgba(0,0,0,0.1) 12%, black 28%, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 66%, rgba(0,0,0,0.2) 76%, transparent 87%);
+  mask-image: linear-gradient(to bottom, black 0%, black 66%, rgba(0,0,0,0.2) 76%, transparent 87%);
 }
 
 .login-sparks::before,
 .login-sparks::after {
   content: "";
   position: absolute;
-  left: -8%;
-  right: -8%;
-  bottom: -22%;
-  height: 145%;
+  left: -10%;
+  right: -10%;
+  bottom: -12vh;
+  height: 135vh;
   background-image:
-    radial-gradient(circle, rgba(255, 209, 89, 0.82) 0 1px, transparent 2px),
-    radial-gradient(circle, rgba(255, 114, 35, 0.72) 0 1.4px, transparent 2.8px),
-    radial-gradient(circle, rgba(255, 237, 160, 0.58) 0 0.9px, transparent 2px);
-  background-size: 9rem 12rem, 13rem 17rem, 17rem 21rem;
-  background-position: 7% 92%, 34% 100%, 71% 88%;
-  filter: drop-shadow(0 0 6px rgba(255, 118, 26, 0.4));
-  opacity: 0.52;
-  animation: spark-rise 8.5s linear infinite;
+    radial-gradient(circle, rgba(255, 221, 118, 0.95) 0 1px, transparent 2.2px),
+    radial-gradient(circle, rgba(255, 132, 43, 0.9) 0 1.5px, transparent 3px),
+    radial-gradient(circle, rgba(255, 244, 190, 0.66) 0 0.9px, transparent 2.1px),
+    radial-gradient(circle, rgba(255, 84, 18, 0.62) 0 1.2px, transparent 2.7px);
+  background-size: 4.8rem 7.2rem, 6.2rem 8.8rem, 7.6rem 10.5rem, 9rem 12rem;
+  background-position: 5% 92%, 28% 100%, 56% 88%, 82% 96%;
+  filter: drop-shadow(0 0 7px rgba(255, 118, 26, 0.5));
+  opacity: 0.7;
+  animation: spark-rise 5.6s linear infinite;
+  animation-delay: -5.6s;
+  will-change: transform;
 }
 
 .login-sparks::after {
-  bottom: -34%;
+  bottom: -20vh;
   transform: translateX(3rem);
-  background-size: 11rem 15rem, 16rem 19rem, 21rem 25rem;
-  background-position: 14% 100%, 49% 91%, 86% 98%;
-  opacity: 0.38;
-  animation-duration: 11s;
-  animation-delay: -4.5s;
+  background-size: 5.5rem 8rem, 7rem 9.5rem, 8.8rem 11rem, 10rem 13rem;
+  background-position: 13% 100%, 39% 91%, 68% 98%, 91% 86%;
+  opacity: 0.62;
+  animation-duration: 6.8s;
+  animation-delay: -3.4s;
+}
+
+.login-sparks-b {
+  opacity: 0.74;
+  transform: translateX(-2rem);
+}
+
+.login-sparks-b::before {
+  animation-duration: 6.2s;
+  animation-delay: -1.55s;
+  background-position: 2% 86%, 22% 98%, 47% 92%, 73% 100%;
+}
+
+.login-sparks-b::after {
+  animation-duration: 7.4s;
+  animation-delay: -5.55s;
+  background-position: 18% 96%, 44% 84%, 66% 100%, 94% 92%;
+}
+
+.login-sparks-c {
+  opacity: 0.56;
+  transform: translateX(2.5rem);
+}
+
+.login-sparks-c::before {
+  animation-duration: 4.8s;
+  animation-delay: -3.2s;
+  background-size: 4.2rem 6.7rem, 5.4rem 7.8rem, 6.6rem 9rem, 8rem 10rem;
+}
+
+.login-sparks-c::after {
+  animation-duration: 8.6s;
+  animation-delay: -6.45s;
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .login-phrase-left {
+    left: 1.4rem !important;
+    top: 45dvh !important;
+    max-width: 12rem !important;
+  }
+
+  .login-phrase-right {
+    right: 1.4rem !important;
+    top: 48dvh !important;
+    max-width: 12rem !important;
+  }
+
+  .login-phrase-left p,
+  .login-phrase-right p {
+    font-size: clamp(2.15rem, 6vw, 3.2rem) !important;
+    line-height: 0.9 !important;
+  }
+
+  .login-kanji {
+    bottom: 5.5dvh !important;
+    font-size: clamp(2rem, 5.4vw, 3.1rem) !important;
+  }
 }
 
 @media (max-width: 640px) {
@@ -320,10 +392,6 @@
 
   .login-panel-shell {
     max-width: 300px;
-  }
-
-  .login-sparks {
-    height: 50dvh;
   }
 
   .login-phrase-left {
