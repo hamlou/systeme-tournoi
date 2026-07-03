@@ -39,7 +39,7 @@ function warnSyncFailed(path: string, error: unknown) {
   if (/permission_denied|PERMISSION_DENIED|not authorized/i.test(msg)) {
     toast.error('⚠️ Firebase: Permission denied — real-time sync is OFF.\nGo to Firebase Console → Database → Rules and set .read/.write to true.', { duration: 10000, id: 'fb-perm' });
   } else {
-    toast('⚠️ Cloud sync failed. Data is saved locally only.', { icon: '🔴', duration: 6000, id: 'fb-sync-fail' });
+    toast(`⚠️ Cloud sync failed: ${msg}`, { icon: '🔴', duration: 6000, id: 'fb-sync-fail' });
   }
 }
 
