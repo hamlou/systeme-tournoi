@@ -27,28 +27,30 @@ function isStrongPassword(value: string) {
 }
 
 function deletedAccountMessage(role?: UserRole) {
-  const label = role ? ROLE_LABELS[role].toLowerCase() : "account";
-  return `This ${label} account was deleted by the table chief.`;
+  if (role === "athlete") return "Your athlete account has been removed by the table chief. Please contact the tournament organizer.";
+  if (role === "club") return "Your club account has been removed by the table chief. Please contact the tournament organizer.";
+  if (role === "corner-referee") return "Your referee account has been removed by the table chief. Please contact the tournament organizer.";
+  return "This account has been removed by the table chief. Please contact the tournament organizer.";
 }
 
 function pendingAccountMessage(role: UserRole) {
-  if (role === "corner-referee") return "This corner referee account is waiting for table chief approval.";
-  if (role === "athlete") return "This athlete profile is waiting for table chief approval.";
-  if (role === "club") return "This club profile is waiting for table chief approval.";
+  if (role === "corner-referee") return "Your corner referee account is waiting for table chief approval. Please wait for confirmation before logging in.";
+  if (role === "athlete") return "Your athlete profile is waiting for table chief approval. Please wait — you will be able to log in once the table chief approves your account.";
+  if (role === "club") return "Your club profile is waiting for table chief approval. Please wait — you will be able to log in once the table chief approves your club.";
   return "This account is waiting for table chief approval.";
 }
 
 function routeErrorMessage(role: UserRole) {
   if (role === "athlete") {
-    return "The athlete page could not load. Your athlete profile may be missing, deleted by the table chief, or waiting for profile data to sync.";
+    return "Your athlete dashboard could not load. This can happen if your profile was deleted by the table chief, or if the data is still syncing. Try signing out and back in.";
   }
   if (role === "club") {
-    return "The club page could not load. Your club profile may be missing, deleted by the table chief, or waiting for profile data to sync.";
+    return "Your club dashboard could not load. This can happen if your club was deleted by the table chief, or if the data is still syncing. Try signing out and back in.";
   }
   if (role === "corner-referee") {
-    return "The referee judging page could not load. Your referee profile may be missing, deleted by the table chief, or not assigned correctly.";
+    return "The referee judging page could not load. Your referee profile may be missing or not yet assigned. Please contact the table chief.";
   }
-  return "This section could not load. Please refresh or sign in again.";
+  return "This section could not load. Please refresh or sign out and sign in again.";
 }
 
 class RoleRouteErrorBoundary extends React.Component<
@@ -76,7 +78,7 @@ class RoleRouteErrorBoundary extends React.Component<
     return (
       <main className="min-h-[100dvh] bg-[var(--bg-primary)] px-4 py-10 text-white">
         <div className="mx-auto max-w-xl rounded-xl border border-[rgba(200,16,46,0.35)] bg-[rgba(200,16,46,0.08)] p-6 shadow-[var(--shadow-card)]">
-          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-red)]">Account problem detected</div>
+          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-red)]">Page Error</div>
           <h1 className="mt-3 font-display text-3xl">This page could not load</h1>
           <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{this.props.message}</p>
           {this.state.errorMessage && (
@@ -104,6 +106,41 @@ class RoleRouteErrorBoundary extends React.Component<
       </main>
     );
   }
+}
+
+function PendingApprovalScreen({ role, onSignOut }: { role: UserRole; onSignOut: () => void }) {
+  const roleLabel = ROLE_LABELS[role] ?? "Account";
+  const detail =
+    role === "athlete"
+      ? "Your athlete profile has been submitted. The table chief must review and approve it before you can access the tournament system."
+      : role === "club"
+      ? "Your club registration has been submitted. The table chief must review and approve it before you can access the tournament system."
+      : role === "corner-referee"
+      ? "Your referee account has been submitted. The table chief must review and approve it before you can access the judging panel."
+      : "Your account is pending review by the table chief.";
+  return (
+    <main className="min-h-[100dvh] bg-[var(--bg-primary)] px-4 py-16 text-white flex items-center justify-center">
+      <div className="mx-auto max-w-lg text-center">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-[rgba(212,160,23,0.4)] bg-[rgba(212,160,23,0.08)]">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--ikf-gold)]">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">Awaiting Approval</div>
+        <h1 className="mb-4 font-display text-4xl">{roleLabel} Profile Pending</h1>
+        <p className="leading-7 text-[var(--text-secondary)]">{detail}</p>
+        <p className="mt-4 text-sm text-[var(--text-muted)]">You will be notified once the table chief approves your account. Please check back later.</p>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="mt-8 rounded-md border border-white/15 px-6 py-2.5 text-xs font-black uppercase tracking-widest text-white/70 transition hover:border-white/30 hover:text-white"
+        >
+          Sign out
+        </button>
+      </div>
+    </main>
+  );
 }
 
 export function getStoredRoleSession(): RoleSession | null {
@@ -373,6 +410,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (session) {
+    // Pending athlete/club: show a friendly waiting screen instead of crashing their page
+    const liveAccount = loginAccounts.find(a => a.id === session.accountId);
+    if (liveAccount && accountRequiresApproval(session.role) && liveAccount.approvalStatus !== "Approved") {
+      return (
+        <PendingApprovalScreen
+          role={session.role}
+          onSignOut={() => {
+            clearRoleSession();
+            setSession(null);
+            router.replace("/");
+          }}
+        />
+      );
+    }
     return (
       <RoleRouteErrorBoundary
         message={routeErrorMessage(session.role)}

@@ -30,28 +30,41 @@ import { TABLE_CHIEF_ASSIGNMENT_ID } from "@/lib/officials";
 
 const fbPath = (path: string) => ref(db, `tournament/${path}`);
 
+let _fbErrTimer: ReturnType<typeof setTimeout> | null = null;
+function warnSyncFailed(path: string, error: unknown) {
+  const msg = error instanceof Error ? error.message : String(error);
+  console.warn('[FB sync]', path, error);
+  if (_fbErrTimer) return; // de-bounce: show at most once per 10s
+  _fbErrTimer = setTimeout(() => { _fbErrTimer = null; }, 10_000);
+  if (/permission_denied|PERMISSION_DENIED|not authorized/i.test(msg)) {
+    toast.error('⚠️ Firebase: Permission denied — real-time sync is OFF.\nGo to Firebase Console → Database → Rules and set .read/.write to true.', { duration: 10000, id: 'fb-perm' });
+  } else {
+    toast('⚠️ Cloud sync failed. Data is saved locally only.', { icon: '🔴', duration: 6000, id: 'fb-sync-fail' });
+  }
+}
+
 function syncToFirebase(path: string, data: unknown) {
   try {
-    void set(fbPath(path), data).catch(e => console.warn('[FB sync]', path, e));
+    void set(fbPath(path), data).catch(e => warnSyncFailed(path, e));
   } catch (e) {
-    console.warn('[FB sync]', path, e);
+    warnSyncFailed(path, e);
   }
 }
 
 function pushToFirebase(path: string, data: Record<string, unknown>) {
   try {
     const r = push(fbPath(path));
-    void set(r, { ...data, id: r.key ?? crypto.randomUUID() }).catch(e => console.warn('[FB push]', path, e));
+    void set(r, { ...data, id: r.key ?? crypto.randomUUID() }).catch(e => warnSyncFailed(path, e));
   } catch (e) {
-    console.warn('[FB push]', path, e);
+    warnSyncFailed(path, e);
   }
 }
 
 function patchFirebase(path: string, data: Record<string, unknown>) {
   try {
-    void update(fbPath(path), data).catch(e => console.warn('[FB patch]', path, e));
+    void update(fbPath(path), data).catch(e => warnSyncFailed(path, e));
   } catch (e) {
-    console.warn('[FB patch]', path, e);
+    warnSyncFailed(path, e);
   }
 }
 

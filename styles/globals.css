@@ -207,17 +207,83 @@
 }
 
 @keyframes spark-rise {
-  from {
-    transform: translate3d(-0.6rem, 14vh, 0) rotate(-0.6deg);
+  0% {
+    transform: translate3d(-0.4rem, 12vh, 0) rotate(-0.4deg);
+    opacity: 0;
   }
-  42% {
-    transform: translate3d(0.9rem, -34vh, 0) rotate(0.35deg);
+  6% {
+    opacity: 1;
   }
-  73% {
-    transform: translate3d(-0.25rem, -76vh, 0) rotate(-0.2deg);
+  28% {
+    transform: translate3d(0.6rem, -22vh, 0) rotate(0.28deg);
+  }
+  51% {
+    transform: translate3d(-0.8rem, -54vh, 0) rotate(-0.18deg);
+  }
+  77% {
+    transform: translate3d(1.1rem, -84vh, 0) rotate(0.32deg);
+    opacity: 0.85;
+  }
+  94% {
+    opacity: 0.2;
   }
   to {
-    transform: translate3d(1.4rem, -112vh, 0) rotate(0.45deg);
+    transform: translate3d(0.7rem, -112vh, 0) rotate(-0.1deg);
+    opacity: 0;
+  }
+}
+
+@keyframes spark-rise-b {
+  0% {
+    transform: translate3d(0.5rem, 10vh, 0) rotate(0.5deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.9;
+  }
+  33% {
+    transform: translate3d(-1.1rem, -28vh, 0) rotate(-0.3deg);
+  }
+  58% {
+    transform: translate3d(0.3rem, -61vh, 0) rotate(0.15deg);
+  }
+  80% {
+    transform: translate3d(-0.9rem, -88vh, 0) rotate(-0.25deg);
+    opacity: 0.7;
+  }
+  96% {
+    opacity: 0.1;
+  }
+  to {
+    transform: translate3d(1.2rem, -112vh, 0) rotate(0.4deg);
+    opacity: 0;
+  }
+}
+
+@keyframes spark-rise-c {
+  0% {
+    transform: translate3d(-1rem, 16vh, 0) rotate(-0.7deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.75;
+  }
+  41% {
+    transform: translate3d(0.8rem, -38vh, 0) rotate(0.4deg);
+  }
+  66% {
+    transform: translate3d(-0.4rem, -70vh, 0) rotate(-0.12deg);
+  }
+  88% {
+    transform: translate3d(0.6rem, -96vh, 0) rotate(0.3deg);
+    opacity: 0.5;
+  }
+  98% {
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(-0.3rem, -112vh, 0) rotate(-0.5deg);
+    opacity: 0;
   }
 }
 
@@ -267,9 +333,9 @@
 }
 
 .login-kanji {
-  color: #6f520f;
+  color: #b8892a;
   z-index: 11;
-  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.88), 0 0 18px rgba(120, 82, 16, 0.34);
+  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.88), 0 0 22px rgba(184, 137, 42, 0.45), 0 0 6px rgba(212, 160, 23, 0.22);
 }
 
 .login-kanji-char {
@@ -317,9 +383,9 @@
   background-size: 5.1rem 8.4rem, 7.3rem 10.9rem, 9.4rem 13.2rem, 12.7rem 16.9rem;
   background-position: 3% 91%, 31% 98%, 59% 86%, 88% 103%;
   filter: drop-shadow(0 0 7px rgba(255, 118, 26, 0.5));
-  opacity: 0.62;
-  animation: spark-rise 13.5s ease-in-out infinite;
-  animation-delay: -10.4s;
+  opacity: 0.55;
+  animation: spark-rise 28s ease-in infinite;
+  animation-delay: -17s;
   will-change: transform;
 }
 
@@ -328,44 +394,46 @@
   transform: translateX(3rem);
   background-size: 6.2rem 9.7rem, 8.9rem 12.1rem, 11.3rem 15.8rem, 15.6rem 19.4rem;
   background-position: 11% 105%, 43% 89%, 72% 99%, 96% 82%;
-  opacity: 0.54;
-  animation-duration: 16.8s;
-  animation-delay: -6.9s;
+  opacity: 0.46;
+  animation: spark-rise-b 36s ease-in-out infinite;
+  animation-delay: -8.5s;
 }
 
 .login-sparks-b {
-  opacity: 0.68;
+  opacity: 0.6;
   transform: translateX(-2rem);
 }
 
 .login-sparks-b::before {
-  animation-duration: 18.2s;
-  animation-delay: -3.55s;
+  animation: spark-rise-c 33s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation-delay: -22s;
   background-position: 1% 83%, 24% 101%, 51% 91%, 78% 106%;
 }
 
 .login-sparks-b::after {
-  animation-duration: 21.4s;
-  animation-delay: -15.55s;
+  animation: spark-rise 41s ease-in-out infinite;
+  animation-delay: -30s;
   background-position: 17% 98%, 46% 82%, 69% 104%, 92% 90%;
+  opacity: 0.4;
 }
 
 .login-sparks-c {
-  opacity: 0.48;
+  opacity: 0.42;
   transform: translateX(2.5rem);
 }
 
 .login-sparks-c::before {
-  animation-duration: 15.6s;
-  animation-delay: -8.2s;
+  animation: spark-rise-b 44s cubic-bezier(0.3, 0, 0.7, 1) infinite;
+  animation-delay: -11s;
   background-size: 5.8rem 8.9rem, 7.8rem 11.4rem, 10.6rem 14.7rem, 14.2rem 18.6rem;
   background-position: 8% 107%, 36% 84%, 64% 96%, 83% 88%;
 }
 
 .login-sparks-c::after {
-  animation-duration: 24.6s;
-  animation-delay: -18.45s;
+  animation: spark-rise-c 52s ease-in infinite;
+  animation-delay: -38s;
   background-position: 6% 92%, 34% 108%, 57% 85%, 89% 101%;
+  opacity: 0.32;
 }
 
 @media (min-width: 641px) and (max-width: 1024px) {

@@ -84,7 +84,7 @@ export function canAccessRoute(role: UserRole, pathname: string | null | undefin
 }
 
 export function accountRequiresApproval(role: UserRole) {
-  return role === "corner-referee";
+  return role === "corner-referee" || role === "athlete" || role === "club";
 }
 
 export function getUniqueAccounts(accounts: RoleAccount[]) {
