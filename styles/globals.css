@@ -470,18 +470,9 @@
     max-width: 300px;
   }
 
-  .login-phrase-left {
-    left: 1rem;
-    top: 57dvh;
-    max-width: 9.5rem;
-  }
-
+  .login-phrase-left,
   .login-phrase-right {
-    left: 61vw;
-    right: auto;
-    top: 64dvh;
-    max-width: 7rem;
-    text-align: left;
+    display: none !important;
   }
 
   .login-phrase-left p {
