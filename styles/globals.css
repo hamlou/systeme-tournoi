@@ -208,10 +208,16 @@
 
 @keyframes spark-rise {
   from {
-    transform: translate3d(0, 16vh, 0);
+    transform: translate3d(-0.6rem, 14vh, 0) rotate(-0.6deg);
+  }
+  42% {
+    transform: translate3d(0.9rem, -34vh, 0) rotate(0.35deg);
+  }
+  73% {
+    transform: translate3d(-0.25rem, -76vh, 0) rotate(-0.2deg);
   }
   to {
-    transform: translate3d(2rem, -112vh, 0);
+    transform: translate3d(1.4rem, -112vh, 0) rotate(0.45deg);
   }
 }
 
@@ -261,9 +267,9 @@
 }
 
 .login-kanji {
-  color: #ffffff;
+  color: #6f520f;
   z-index: 11;
-  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.85), 0 0 18px rgba(255, 255, 255, 0.18);
+  text-shadow: 0 12px 34px rgba(0, 0, 0, 0.88), 0 0 18px rgba(120, 82, 16, 0.34);
 }
 
 .login-kanji-char {
@@ -308,56 +314,58 @@
     radial-gradient(circle, rgba(255, 132, 43, 0.9) 0 1.5px, transparent 3px),
     radial-gradient(circle, rgba(255, 244, 190, 0.66) 0 0.9px, transparent 2.1px),
     radial-gradient(circle, rgba(255, 84, 18, 0.62) 0 1.2px, transparent 2.7px);
-  background-size: 4.8rem 7.2rem, 6.2rem 8.8rem, 7.6rem 10.5rem, 9rem 12rem;
-  background-position: 5% 92%, 28% 100%, 56% 88%, 82% 96%;
+  background-size: 5.1rem 8.4rem, 7.3rem 10.9rem, 9.4rem 13.2rem, 12.7rem 16.9rem;
+  background-position: 3% 91%, 31% 98%, 59% 86%, 88% 103%;
   filter: drop-shadow(0 0 7px rgba(255, 118, 26, 0.5));
-  opacity: 0.7;
-  animation: spark-rise 5.6s linear infinite;
-  animation-delay: -5.6s;
+  opacity: 0.62;
+  animation: spark-rise 13.5s ease-in-out infinite;
+  animation-delay: -10.4s;
   will-change: transform;
 }
 
 .login-sparks::after {
   bottom: -20vh;
   transform: translateX(3rem);
-  background-size: 5.5rem 8rem, 7rem 9.5rem, 8.8rem 11rem, 10rem 13rem;
-  background-position: 13% 100%, 39% 91%, 68% 98%, 91% 86%;
-  opacity: 0.62;
-  animation-duration: 6.8s;
-  animation-delay: -3.4s;
+  background-size: 6.2rem 9.7rem, 8.9rem 12.1rem, 11.3rem 15.8rem, 15.6rem 19.4rem;
+  background-position: 11% 105%, 43% 89%, 72% 99%, 96% 82%;
+  opacity: 0.54;
+  animation-duration: 16.8s;
+  animation-delay: -6.9s;
 }
 
 .login-sparks-b {
-  opacity: 0.74;
+  opacity: 0.68;
   transform: translateX(-2rem);
 }
 
 .login-sparks-b::before {
-  animation-duration: 6.2s;
-  animation-delay: -1.55s;
-  background-position: 2% 86%, 22% 98%, 47% 92%, 73% 100%;
+  animation-duration: 18.2s;
+  animation-delay: -3.55s;
+  background-position: 1% 83%, 24% 101%, 51% 91%, 78% 106%;
 }
 
 .login-sparks-b::after {
-  animation-duration: 7.4s;
-  animation-delay: -5.55s;
-  background-position: 18% 96%, 44% 84%, 66% 100%, 94% 92%;
+  animation-duration: 21.4s;
+  animation-delay: -15.55s;
+  background-position: 17% 98%, 46% 82%, 69% 104%, 92% 90%;
 }
 
 .login-sparks-c {
-  opacity: 0.56;
+  opacity: 0.48;
   transform: translateX(2.5rem);
 }
 
 .login-sparks-c::before {
-  animation-duration: 4.8s;
-  animation-delay: -3.2s;
-  background-size: 4.2rem 6.7rem, 5.4rem 7.8rem, 6.6rem 9rem, 8rem 10rem;
+  animation-duration: 15.6s;
+  animation-delay: -8.2s;
+  background-size: 5.8rem 8.9rem, 7.8rem 11.4rem, 10.6rem 14.7rem, 14.2rem 18.6rem;
+  background-position: 8% 107%, 36% 84%, 64% 96%, 83% 88%;
 }
 
 .login-sparks-c::after {
-  animation-duration: 8.6s;
-  animation-delay: -6.45s;
+  animation-duration: 24.6s;
+  animation-delay: -18.45s;
+  background-position: 6% 92%, 34% 108%, 57% 85%, 89% 101%;
 }
 
 @media (min-width: 641px) and (max-width: 1024px) {

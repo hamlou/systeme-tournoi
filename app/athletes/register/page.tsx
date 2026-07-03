@@ -54,6 +54,14 @@ function calculateAgeGroup(dobString: string): AgeGroup {
 }
 
 export default function RegisterAthletePage() {
+  return (
+    <React.Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><div className="h-8 w-8 rounded-full border-2 border-[var(--border-default)] border-t-[var(--ikf-red)] animate-spin" /></div>}>
+      <RegisterAthleteContent />
+    </React.Suspense>
+  );
+}
+
+function RegisterAthleteContent() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get("edit");

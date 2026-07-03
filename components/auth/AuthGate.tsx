@@ -26,6 +26,86 @@ function isStrongPassword(value: string) {
   return value.length >= 8 && /[A-Z]/.test(value) && /\d/.test(value);
 }
 
+function deletedAccountMessage(role?: UserRole) {
+  const label = role ? ROLE_LABELS[role].toLowerCase() : "account";
+  return `This ${label} account was deleted by the table chief.`;
+}
+
+function pendingAccountMessage(role: UserRole) {
+  if (role === "corner-referee") return "This corner referee account is waiting for table chief approval.";
+  if (role === "athlete") return "This athlete profile is waiting for table chief approval.";
+  if (role === "club") return "This club profile is waiting for table chief approval.";
+  return "This account is waiting for table chief approval.";
+}
+
+function routeErrorMessage(role: UserRole) {
+  if (role === "athlete") {
+    return "The athlete page could not load. Your athlete profile may be missing, deleted by the table chief, or waiting for profile data to sync.";
+  }
+  if (role === "club") {
+    return "The club page could not load. Your club profile may be missing, deleted by the table chief, or waiting for profile data to sync.";
+  }
+  if (role === "corner-referee") {
+    return "The referee judging page could not load. Your referee profile may be missing, deleted by the table chief, or not assigned correctly.";
+  }
+  return "This section could not load. Please refresh or sign in again.";
+}
+
+class RoleRouteErrorBoundary extends React.Component<
+  { children: React.ReactNode; message: string; onSignOut: () => void },
+  { hasError: boolean; errorMessage?: string }
+> {
+  state = { hasError: false, errorMessage: undefined };
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      hasError: true,
+      errorMessage: error instanceof Error ? error.message : "Unknown client-side error",
+    };
+  }
+
+  componentDidUpdate(previousProps: { message: string }) {
+    if (previousProps.message !== this.props.message && this.state.hasError) {
+      this.setState({ hasError: false, errorMessage: undefined });
+    }
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <main className="min-h-[100dvh] bg-[var(--bg-primary)] px-4 py-10 text-white">
+        <div className="mx-auto max-w-xl rounded-xl border border-[rgba(200,16,46,0.35)] bg-[rgba(200,16,46,0.08)] p-6 shadow-[var(--shadow-card)]">
+          <div className="text-[10px] font-black uppercase tracking-widest text-[var(--ikf-red)]">Account problem detected</div>
+          <h1 className="mt-3 font-display text-3xl">This page could not load</h1>
+          <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{this.props.message}</p>
+          {this.state.errorMessage && (
+            <p className="mt-4 rounded-lg bg-black/30 p-3 font-mono text-xs text-red-100">
+              Technical detail: {this.state.errorMessage}
+            </p>
+          )}
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-md bg-white/12 px-4 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-white/20"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={this.props.onSignOut}
+              className="rounded-md border border-white/15 px-4 py-2 text-xs font-black uppercase tracking-widest text-white/75 hover:text-white"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+}
+
 export function getStoredRoleSession(): RoleSession | null {
   if (typeof window === "undefined") return null;
   try {
@@ -151,7 +231,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (!liveAccount || liveAccount.approvalStatus === "Rejected") {
       clearRoleSession();
       setSession(null);
-      toast.error("This account was deleted by the table chief.");
+      toast.error(deletedAccountMessage(session.role));
       return;
     }
     if (
@@ -193,13 +273,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
       if (account.approvalStatus === "Rejected") {
         setIsSubmitting(false);
-        toast.error("This account was deleted by the table chief.");
+        toast.error(deletedAccountMessage(account.role));
         return;
       }
 
       if (accountRequiresApproval(account.role) && account.approvalStatus !== "Approved") {
         setIsSubmitting(false);
-        toast.error("This referee account is waiting for table chief approval.");
+        toast.error(pendingAccountMessage(account.role));
         return;
       }
 
@@ -292,7 +372,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (session) return <>{children}</>;
+  if (session) {
+    return (
+      <RoleRouteErrorBoundary
+        message={routeErrorMessage(session.role)}
+        onSignOut={() => {
+          clearRoleSession();
+          setSession(null);
+          router.replace("/");
+        }}
+      >
+        {children}
+      </RoleRouteErrorBoundary>
+    );
+  }
 
   return (
     <main className="login-cinematic relative h-screen min-h-[100dvh] overflow-hidden bg-black text-white">

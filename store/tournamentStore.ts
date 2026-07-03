@@ -326,10 +326,20 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     toast.success("Athlete approved");
   },
   deleteAthlete: (id) => set(s => {
+    const athlete = s.athletes.find(a => a.id === id);
     const matchIds = new Set(s.matches.filter(m => m.redCornerId === id || m.blueCornerId === id).map(m => m.id));
     const next = {
       athletes: s.athletes.filter(a => a.id !== id),
-      accounts: s.accounts.map(account => account.athleteId === id ? { ...account, athleteId: undefined } : account),
+      accounts: s.accounts.map(account =>
+        account.athleteId === id || account.id === athlete?.accountId
+          ? {
+              ...account,
+              athleteId: undefined,
+              approvalStatus: "Rejected" as const,
+              displayName: account.displayName || athlete?.fullName || "Deleted athlete",
+            }
+          : account
+      ),
       weighinRecords: s.weighinRecords.filter(r => r.athleteId !== id),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
@@ -402,11 +412,21 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     toast.success("Club approved");
   },
   deleteClub: (id) => set(s => {
+    const club = s.clubs.find(c => c.id === id);
     const athleteIds = new Set(s.athletes.filter(a => a.clubId === id).map(a => a.id));
     const matchIds = new Set(s.matches.filter(m => athleteIds.has(m.redCornerId) || athleteIds.has(m.blueCornerId)).map(m => m.id));
     const next = {
       clubs: s.clubs.filter(c => c.id !== id),
-      accounts: s.accounts.map(account => account.clubId === id ? { ...account, clubId: undefined } : account),
+      accounts: s.accounts.map(account =>
+        account.clubId === id || account.id === club?.accountId
+          ? {
+              ...account,
+              clubId: undefined,
+              approvalStatus: "Rejected" as const,
+              displayName: account.displayName || club?.name || "Deleted club",
+            }
+          : account
+      ),
       athletes: s.athletes.filter(a => a.clubId !== id),
       weighinRecords: s.weighinRecords.filter(r => !athleteIds.has(r.athleteId)),
       matches: s.matches.filter(m => !matchIds.has(m.id)),

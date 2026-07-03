@@ -30,6 +30,14 @@ const clubSchema = z.object({
 type ClubFormValues = z.infer<typeof clubSchema>;
 
 export default function RegisterClubPage() {
+  return (
+    <React.Suspense fallback={<div className="flex items-center justify-center min-h-[50vh]"><div className="h-8 w-8 rounded-full border-2 border-[var(--border-default)] border-t-[var(--ikf-red)] animate-spin" /></div>}>
+      <RegisterClubContent />
+    </React.Suspense>
+  );
+}
+
+function RegisterClubContent() {
   const router = useRouter();
   const params = useSearchParams();
   const editId = params?.get("edit");
