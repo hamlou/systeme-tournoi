@@ -38,6 +38,8 @@ function LiveTimer({ initialSeconds = 180 }: { initialSeconds?: number }) {
 export default function DashboardPage() {
   const router = useRouter();
   const { athletes, clubs, matches, settings, updateSettings, activeMatch, roundTimer } = useTournamentStore();
+  const [currentDate, setCurrentDate] = useState("");
+  useEffect(() => { setCurrentDate(format(new Date(), "dd MMM yyyy")); }, []);
   const approvedAthletes = athletes.filter(a => a.registrationStatus === "Active" && (a.approvalStatus ?? "Approved") === "Approved");
   const approvedClubs = clubs.filter(c => c.status === "Active" && (c.approvalStatus ?? "Approved") === "Approved");
 
@@ -74,7 +76,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-6 text-[var(--text-secondary)] font-body text-sm font-medium">
                 <span className="flex items-center gap-2"><MapPin size={18} className="text-[var(--ikf-red)]" />{settings.venue}</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)]" />
-                <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{format(new Date(), "dd MMM yyyy")}</span>
+                <span className="flex items-center gap-2"><Calendar size={18} className="text-[var(--ikf-red)]" />{currentDate}</span>
               </div>
               <div className="mt-5 max-w-sm">
                 <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-[var(--text-muted)]">National Competition</label>
