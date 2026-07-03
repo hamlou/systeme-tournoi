@@ -43,9 +43,20 @@ function warnSyncFailed(path: string, error: unknown) {
   }
 }
 
+function cleanForFirebase(obj: any): any {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(cleanForFirebase);
+  const cleaned: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) cleaned[k] = cleanForFirebase(v);
+  }
+  return cleaned;
+}
+
 function syncToFirebase(path: string, data: unknown) {
   try {
-    void set(fbPath(path), data).catch(e => warnSyncFailed(path, e));
+    void set(fbPath(path), cleanForFirebase(data)).catch(e => warnSyncFailed(path, e));
   } catch (e) {
     warnSyncFailed(path, e);
   }
@@ -54,7 +65,7 @@ function syncToFirebase(path: string, data: unknown) {
 function pushToFirebase(path: string, data: Record<string, unknown>) {
   try {
     const r = push(fbPath(path));
-    void set(r, { ...data, id: r.key ?? crypto.randomUUID() }).catch(e => warnSyncFailed(path, e));
+    void set(r, cleanForFirebase({ ...data, id: r.key ?? crypto.randomUUID() })).catch(e => warnSyncFailed(path, e));
   } catch (e) {
     warnSyncFailed(path, e);
   }
@@ -62,7 +73,7 @@ function pushToFirebase(path: string, data: Record<string, unknown>) {
 
 function patchFirebase(path: string, data: Record<string, unknown>) {
   try {
-    void update(fbPath(path), data).catch(e => warnSyncFailed(path, e));
+    void update(fbPath(path), cleanForFirebase(data)).catch(e => warnSyncFailed(path, e));
   } catch (e) {
     warnSyncFailed(path, e);
   }
