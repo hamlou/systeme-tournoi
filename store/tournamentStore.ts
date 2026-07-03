@@ -45,13 +45,9 @@ function warnSyncFailed(path: string, error: unknown) {
 
 function cleanForFirebase(obj: any): any {
   if (obj === undefined) return null;
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(cleanForFirebase);
-  const cleaned: Record<string, any> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v !== undefined) cleaned[k] = cleanForFirebase(v);
-  }
-  return cleaned;
+  // Use native JSON serialization to completely and recursively strip any `undefined` properties
+  // which might be hiding in getters, prototypes, or complex nested arrays.
+  return JSON.parse(JSON.stringify(obj));
 }
 
 function syncToFirebase(path: string, data: unknown) {
