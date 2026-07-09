@@ -90,8 +90,13 @@ function RegisterAthleteContent() {
       .sort((a, b) => a.matchNumber - b.matchNumber)[0] ?? null;
   }, [matches, ownAthlete]);
 
-  const licenseNumber = React.useMemo(() =>
-    editingAthlete?.licenseNumber ?? `IKF-26-${Math.floor(1000 + Math.random() * 9000)}`, [editingAthlete]);
+  // Safely generate license number on the client side only to avoid SSR hydration crashes
+  const [licenseNumber, setLicenseNumber] = React.useState(editingAthlete?.licenseNumber ?? "");
+  React.useEffect(() => {
+    if (!licenseNumber) {
+      setLicenseNumber(`IKF-26-${Math.floor(1000 + Math.random() * 9000)}`);
+    }
+  }, [licenseNumber]);
 
   const [photoUrl, setPhotoUrl] = React.useState(editingAthlete?.photoUrl ?? "");
   const [isUploading, setIsUploading] = React.useState(false);
@@ -183,12 +188,49 @@ function RegisterAthleteContent() {
         updateAccount(session.accountId, { athleteId: newAthlete.id, displayName: data.fullName });
       }
       toast.success(
-        <div><p className="font-bold">{isSelfRegistration ? "Athlete Submitted!" : "Athlete Registered!"}</p><p className="text-sm font-mono mt-1">{data.fullName} - {licenseNumber}</p></div>,
-        { duration: 4000 }
+        <div><p className="font-bold">{isSelfRegistration ? "Registration request submitted!" : "Athlete Registered!"}</p><p className="text-sm font-mono mt-1">{isSelfRegistration ? "Waiting for Table Chef approval." : `${data.fullName} - ${licenseNumber}`}</p></div>,
+        { duration: 6000 }
       );
     }
     router.push(isSelfRegistration ? "/athletes/register" : "/athletes");
   };
+
+  // ── If athlete already submitted their profile, show status instead of blank form ──
+  if (isSelfRegistration && ownAthlete && !editId) {
+    return (
+      <div className="p-8 max-w-[700px] mx-auto animate-fade-in">
+        <PageHeader category="MY PROFILE" title="REGISTRATION STATUS" subtitle={`Hello, ${ownAthlete.fullName}`} />
+        <div className={`rounded-xl border p-6 mt-6 ${ownAthlete.approvalStatus === "Approved" ? "border-[rgba(46,204,113,0.35)] bg-[rgba(46,204,113,0.07)]" : "border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)]"}`}>
+          <div className={`text-[10px] font-black uppercase tracking-widest mb-2 ${ownAthlete.approvalStatus === "Approved" ? "text-[var(--status-win)]" : "text-[var(--ikf-gold)]"}`}>
+            {ownAthlete.approvalStatus === "Approved" ? "✅ Approved by Table Chef" : "⏳ Waiting for Table Chef Approval"}
+          </div>
+          <h2 className="text-xl font-bold text-white mb-1">{ownAthlete.fullName}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mb-4">
+            License: <span className="font-mono text-white">{ownAthlete.licenseNumber}</span> &nbsp;·&nbsp;
+            {ownAthlete.weightCategory} &nbsp;·&nbsp; {ownAthlete.ageGroup}
+          </p>
+          {ownAthlete.approvalStatus === "Approved" ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Your profile has been <strong className="text-[var(--status-win)]">approved by the Table Chef</strong>.
+              {nextCombat ? ` Your next match: #${nextCombat.matchNumber} — ${nextCombat.redCornerName} vs ${nextCombat.blueCornerName}, Mat ${nextCombat.matNumber}.` : " No combat has been generated for you yet."}
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Your registration has been submitted and is <strong className="text-[var(--ikf-gold)]">waiting for the Table Chef to review and approve it</strong>.
+              You will be notified once your account is approved.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push(`/athletes/register?edit=${ownAthlete.id}`)}
+            className="mt-5 rounded-md border border-white/20 px-5 py-2 text-xs font-black uppercase tracking-widest text-white/70 hover:text-white hover:border-white/40 transition"
+          >
+            Edit My Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-[1200px] mx-auto space-y-8 animate-fade-in pb-20">

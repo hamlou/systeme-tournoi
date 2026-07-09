@@ -43,7 +43,8 @@ export const IKFInput = forwardRef<HTMLInputElement, IKFInputProps>(
     },
     ref
   ) => {
-    const inputId = id ?? `ikf-input-${Math.random().toString(36).slice(2, 7)}`;
+    const generatedId = React.useId();
+    const inputId = id ?? generatedId;
     const hasError = Boolean(error);
 
     return (

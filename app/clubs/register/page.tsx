@@ -168,6 +168,42 @@ function RegisterClubContent() {
     router.push(isSelfRegistration ? "/clubs/register" : "/clubs");
   };
 
+  // ── If club already submitted their profile, show status instead of blank form ──
+  if (isSelfRegistration && ownClub && !editId) {
+    return (
+      <div className="p-8 max-w-[700px] mx-auto animate-fade-in">
+        <PageHeader category="MY CLUB" title="REGISTRATION STATUS" subtitle={`Welcome, ${ownClub.name}`} />
+        <div className={`rounded-xl border p-6 mt-6 ${ownClub.approvalStatus === "Approved" ? "border-[rgba(46,204,113,0.35)] bg-[rgba(46,204,113,0.07)]" : "border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)]"}`}>
+          <div className={`text-[10px] font-black uppercase tracking-widest mb-2 ${ownClub.approvalStatus === "Approved" ? "text-[var(--status-win)]" : "text-[var(--ikf-gold)]"}`}>
+            {ownClub.approvalStatus === "Approved" ? "✅ Approved by Table Chef" : "⏳ Waiting for Table Chef Approval"}
+          </div>
+          <h2 className="text-xl font-bold text-white mb-1">{ownClub.name}</h2>
+          <p className="text-sm text-[var(--text-secondary)] mb-4">
+            Affiliation: <span className="font-mono text-white">{ownClub.affiliationNumber}</span> &nbsp;·&nbsp; {ownClub.country}
+          </p>
+          {ownClub.approvalStatus === "Approved" ? (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Your club has been <strong className="text-[var(--status-win)]">approved by the Table Chef</strong>. Athletes can now register under your club.
+              {clubUpcomingMatches.length > 0 ? ` You have ${clubUpcomingMatches.length} upcoming match(es) in the system.` : ""}
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--text-secondary)]">
+              Your club registration has been submitted and is <strong className="text-[var(--ikf-gold)]">waiting for the Table Chef to review and approve it</strong>.
+              Once approved, your athletes will be able to register under your club.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push(`/clubs/register?edit=${ownClub.id}`)}
+            className="mt-5 rounded-md border border-white/20 px-5 py-2 text-xs font-black uppercase tracking-widest text-white/70 hover:text-white hover:border-white/40 transition"
+          >
+            Edit Club Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 max-w-[800px] mx-auto space-y-8 animate-fade-in pb-20">
       <PageHeader 

@@ -51,7 +51,8 @@ export const IKFSelect = forwardRef<HTMLSelectElement, IKFSelectProps>(
     },
     ref
   ) => {
-    const selectId = id ?? `ikf-select-${Math.random().toString(36).slice(2, 7)}`;
+    const generatedId = React.useId();
+    const selectId = id ?? generatedId;
     const hasError = Boolean(error);
 
     return (

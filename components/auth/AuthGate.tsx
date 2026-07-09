@@ -263,7 +263,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [pathname, router, session]);
 
   React.useEffect(() => {
-    if (!session) return;
+    if (!session || !isHydrated) return;
     const liveAccount = loginAccounts.find(account => account.id === session.accountId);
     if (!liveAccount || liveAccount.approvalStatus === "Rejected") {
       clearRoleSession();
@@ -384,9 +384,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         approvalStatus: "Pending",
         accountId,
       });
-      toast.success("Referee account submitted. The table chief must approve it before login works.");
+      toast.success("Your referee account is waiting for Table Chef approval. You will be notified once approved.", { duration: 6000 });
+    } else if (createRole === "club") {
+      toast.success("Account created! Please log in and complete your club profile — it will be sent to the Table Chef for approval.", { duration: 7000 });
     } else {
-      toast.success("Account created. Log in with your role, then complete your profile.");
+      toast.success("Account created! Please log in and fill in your athlete profile — it will be submitted to the Table Chef for approval.", { duration: 7000 });
     }
 
     setUsername(nextUsername);
@@ -424,6 +426,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         />
       );
     }
+    if (!canAccessRoute(session.role, pathname)) {
+      return (
+        <div className="min-h-[100dvh] bg-[var(--bg-primary)] flex items-center justify-center">
+          <div className="h-12 w-12 rounded-full border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--ikf-red)] animate-spin" />
+        </div>
+      );
+    }
+
     return (
       <RoleRouteErrorBoundary
         message={routeErrorMessage(session.role)}

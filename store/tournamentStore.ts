@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import toast from 'react-hot-toast';
-import { ref, set, update, push } from 'firebase/database';
+import { ref, set, update, push, remove } from 'firebase/database';
 import { db } from '@/lib/firebase';
 import type {
   Athlete, Club, WeighinRecord, Match, Bracket, Referee,
@@ -58,13 +58,66 @@ function syncToFirebase(path: string, data: unknown) {
   }
 }
 
+// Writes a SINGLE record by its ID — the safe way to sync without overwriting other devices' data
+function syncRecordToFirebase(collection: string, record: { id: string }) {
+  try {
+    void set(ref(db, `tournament/${collection}/${record.id}`), cleanForFirebase(record))
+      .catch(e => warnSyncFailed(`${collection}/${record.id}`, e));
+  } catch (e) {
+    warnSyncFailed(`${collection}/${record.id}`, e);
+  }
+}
+
+// Removes a SINGLE record from Firebase by collection + id
+function removeFromFirebase(collection: string, id: string) {
+  try {
+    void remove(ref(db, `tournament/${collection}/${id}`))
+      .catch(e => warnSyncFailed(`${collection}/${id}`, e));
+  } catch (e) {
+    warnSyncFailed(`${collection}/${id}`, e);
+  }
+}
+
 function pushToFirebase(path: string, data: Record<string, unknown>) {
   try {
     const r = push(fbPath(path));
-    void set(r, cleanForFirebase({ ...data, id: r.key ?? crypto.randomUUID() })).catch(e => warnSyncFailed(path, e));
+    const key = r.key ?? crypto.randomUUID();
+    void set(r, cleanForFirebase({ ...data, id: key })).catch(e => warnSyncFailed(path, e));
+    return key;
   } catch (e) {
     warnSyncFailed(path, e);
+    return null;
   }
+}
+
+const MAX_EVENTS = 200;
+// Trim the `tournament/events` node to the most recent MAX_EVENTS entries so it
+// does not grow unbounded over a long tournament (the root node is subscribed
+// via onValue by SocketProvider, so a bloated events list slows every device).
+function trimEventsNode() {
+  try {
+    const eventsRef = fbPath('events');
+    onValueOnce(eventsRef, (snapshot: any) => {
+      const val = snapshot.val();
+      if (!val || typeof val !== 'object') return;
+      const keys = Object.keys(val);
+      if (keys.length <= MAX_EVENTS) return;
+      // push keys are chronologically ordered — oldest first
+      const toRemove = keys.slice(0, keys.length - MAX_EVENTS);
+      toRemove.forEach(k => {
+        void remove(ref(db, `tournament/events/${k}`)).catch(() => {});
+      });
+    });
+  } catch {
+    /* best-effort cleanup */
+  }
+}
+
+// Lightweight one-shot read helper (avoids pulling in onValue subscription)
+function onValueOnce(dbRef: any, cb: (snapshot: any) => void) {
+  import('firebase/database').then(({ get }: any) => {
+    void get(dbRef).then(cb).catch(() => {});
+  }).catch(() => {});
 }
 
 function patchFirebase(path: string, data: Record<string, unknown>) {
@@ -248,20 +301,23 @@ interface TournamentStore {
 export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   accounts: DEFAULT_ROLE_ACCOUNTS,
   addAccount: (account) => {
+    let added = false;
     set(s => {
       const exists = s.accounts.some(existing =>
         existing.id === account.id ||
         existing.username.trim().toLowerCase() === account.username.trim().toLowerCase()
       );
+      added = !exists;
       return { accounts: exists ? s.accounts : [account, ...s.accounts] };
     });
-    syncToFirebase('accounts', get().accounts);
+    if (added) syncRecordToFirebase('accounts', account);
   },
   updateAccount: (id, data) => {
     set(s => ({
       accounts: s.accounts.map(account => account.id === id ? { ...account, ...data } : account),
     }));
-    syncToFirebase('accounts', get().accounts);
+    const updated = get().accounts.find(a => a.id === id);
+    if (updated) syncRecordToFirebase('accounts', updated);
   },
 
   settings: DEFAULT_SETTINGS,
@@ -318,21 +374,24 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : [linkedAccount, ...s.accounts],
       };
     });
-    syncToFirebase('athletes', get().athletes);
-    syncToFirebase('accounts', get().accounts);
-    get().addNotification("New Athlete Registered", `${readyAthlete.fullName} added to ${readyAthlete.weightCategory}${approvalStatus === "Pending" ? " and is waiting for approval" : ""}`);
+    // Write only the new athlete + affected account (never overwrite other records)
+    const addedAthlete = get().athletes.find(a => a.id === readyAthlete.id);
+    if (addedAthlete) syncRecordToFirebase('athletes', addedAthlete);
+    if (linkedAccount) syncRecordToFirebase('accounts', linkedAccount);
+    get().addNotification("New Athlete Registered", `${readyAthlete.fullName} (${readyAthlete.weightCategory}) is waiting for Table Chef approval.`);
     toast.success(
       approvalStatus === "Pending"
-        ? `Athlete ${readyAthlete.fullName} submitted for admin approval`
+        ? `Registration submitted! Waiting for Table Chef approval.`
         : `Athlete ${readyAthlete.fullName} registered successfully`,
-      { style: { background: approvalStatus === "Pending" ? '#d4a017' : '#27ae60', color: approvalStatus === "Pending" ? '#000' : '#fff' } },
+      { style: { background: approvalStatus === "Pending" ? '#d4a017' : '#27ae60', color: approvalStatus === "Pending" ? '#000' : '#fff' }, duration: 5000 },
     );
   },
   updateAthlete: (id, data) => {
     set(s => ({
       athletes: s.athletes.map(a => a.id === id ? { ...a, ...data, country: NATIONAL_COUNTRY, weightCategory: normalizeWeightCategory(data.weightCategory ?? a.weightCategory) } : a)
     }));
-    syncToFirebase('athletes', get().athletes);
+    const updated = get().athletes.find(a => a.id === id);
+    if (updated) syncRecordToFirebase('athletes', updated);
   },
   approveAthlete: (id) => {
     const athlete = get().athletes.find(a => a.id === id);
@@ -340,8 +399,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       athletes: s.athletes.map(a => a.id === id ? { ...a, approvalStatus: "Approved", registrationStatus: "Active", approvedAt: nowIso() } : a),
       accounts: s.accounts.map(account => account.athleteId === id || account.id === athlete?.accountId ? { ...account, athleteId: id, displayName: athlete?.fullName ?? account.displayName, approvalStatus: "Approved", approvedAt: nowIso() } : account),
     }));
-    syncToFirebase('athletes', get().athletes);
-    syncToFirebase('accounts', get().accounts);
+    const approvedAthlete = get().athletes.find(a => a.id === id);
+    if (approvedAthlete) syncRecordToFirebase('athletes', approvedAthlete);
+    const approvedAccount = get().accounts.find(a => a.athleteId === id || a.id === athlete?.accountId);
+    if (approvedAccount) syncRecordToFirebase('accounts', approvedAccount);
     if (athlete) get().addNotification("Athlete Approved", `${athlete.fullName} can now appear in brackets, TV lists, and match assignment data.`);
     toast.success("Athlete approved");
   },
@@ -364,9 +425,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
     };
-    syncToFirebase('athletes', next.athletes);
-    syncToFirebase('accounts', next.accounts);
-    syncToFirebase('matches', next.matches);
+    // Remove deleted athlete from Firebase; update touched accounts
+    removeFromFirebase('athletes', id);
+    next.accounts.forEach(acc => { if (acc.athleteId === undefined && (acc.id === athlete?.accountId)) syncRecordToFirebase('accounts', acc); });
+    matchIds.forEach(mid => removeFromFirebase('matches', mid));
     return next;
   }),
 
@@ -406,19 +468,21 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : [linkedAccount, ...s.accounts],
       };
     });
-    syncToFirebase('clubs', get().clubs);
-    syncToFirebase('accounts', get().accounts);
-    get().addNotification("New Club Registered", `${club.name} (${club.country}) ${approvalStatus === "Pending" ? "is waiting for approval." : "joined the tournament."}`);
+    const addedClub = get().clubs.find(c => c.id === club.id);
+    if (addedClub) syncRecordToFirebase('clubs', addedClub);
+    if (linkedAccount) syncRecordToFirebase('accounts', linkedAccount);
+    get().addNotification("New Club Registered", `${club.name} (${club.country}) ${approvalStatus === "Pending" ? "is waiting for Table Chef approval." : "joined the tournament."}`);
     toast.success(
-      approvalStatus === "Pending" ? `Club ${club.name} submitted for admin approval` : `Club ${club.name} registered successfully`,
-      { style: { background: approvalStatus === "Pending" ? '#d4a017' : '#27ae60', color: approvalStatus === "Pending" ? '#000' : '#fff' } },
+      approvalStatus === "Pending" ? `Club registration submitted! Waiting for Table Chef approval.` : `Club ${club.name} registered successfully`,
+      { style: { background: approvalStatus === "Pending" ? '#d4a017' : '#27ae60', color: approvalStatus === "Pending" ? '#000' : '#fff' }, duration: 5000 },
     );
   },
   updateClub: (id, data) => {
     set(s => ({
       clubs: s.clubs.map(c => c.id === id ? { ...c, ...data, country: NATIONAL_COUNTRY } : c)
     }));
-    syncToFirebase('clubs', get().clubs);
+    const updatedClub = get().clubs.find(c => c.id === id);
+    if (updatedClub) syncRecordToFirebase('clubs', updatedClub);
   },
   approveClub: (id) => {
     const club = get().clubs.find(c => c.id === id);
@@ -426,8 +490,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       clubs: s.clubs.map(c => c.id === id ? { ...c, approvalStatus: "Approved", status: "Active", approvedAt: nowIso() } : c),
       accounts: s.accounts.map(account => account.clubId === id || account.id === club?.accountId ? { ...account, clubId: id, displayName: club?.name ?? account.displayName, approvalStatus: "Approved", approvedAt: nowIso() } : account),
     }));
-    syncToFirebase('clubs', get().clubs);
-    syncToFirebase('accounts', get().accounts);
+    const approvedClub = get().clubs.find(c => c.id === id);
+    if (approvedClub) syncRecordToFirebase('clubs', approvedClub);
+    const approvedClubAccount = get().accounts.find(a => a.clubId === id || a.id === club?.accountId);
+    if (approvedClubAccount) syncRecordToFirebase('accounts', approvedClubAccount);
     if (club) get().addNotification("Club Approved", `${club.name} can now appear in public TV lists and athlete registration.`);
     toast.success("Club approved");
   },
@@ -452,10 +518,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       matches: s.matches.filter(m => !matchIds.has(m.id)),
       judgeScores: s.judgeScores.filter(score => !matchIds.has(score.matchId)),
     };
-    syncToFirebase('clubs', next.clubs);
-    syncToFirebase('accounts', next.accounts);
-    syncToFirebase('athletes', next.athletes);
-    syncToFirebase('matches', next.matches);
+    removeFromFirebase('clubs', id);
+    athleteIds.forEach(aid => removeFromFirebase('athletes', aid));
+    next.accounts.forEach(acc => { if (acc.clubId === undefined && (acc.id === club?.accountId)) syncRecordToFirebase('accounts', acc); });
+    matchIds.forEach(mid => removeFromFirebase('matches', mid));
     return next;
   }),
 
@@ -463,7 +529,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   weighinRecords: [],
   addWeighinRecord: (r) => {
     set(s => ({ weighinRecords: [r, ...s.weighinRecords] }));
-    syncToFirebase('weighinRecords', get().weighinRecords);
+    syncRecordToFirebase('weighinRecords', r);
   },
   updateAthleteWeighinStatus: (athleteId, status, newCategory) => {
     set(s => ({
@@ -473,7 +539,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : a
       )
     }));
-    syncToFirebase('athletes', get().athletes);
+    const updatedWeighIn = get().athletes.find(a => a.id === athleteId);
+    if (updatedWeighIn) syncRecordToFirebase('athletes', updatedWeighIn);
   },
 
   // ── Matches & Brackets ──
@@ -481,7 +548,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   brackets: [],
   addMatch: (m) => {
     set(s => ({ matches: [...s.matches, { ...m, weightCategory: normalizeWeightCategory(m.weightCategory), totalRounds: matchTotalRounds(m, m.totalRounds) }] }));
-    syncToFirebase('matches', get().matches);
+    const newMatch = get().matches.find(match => match.id === m.id);
+    if (newMatch) syncRecordToFirebase('matches', newMatch);
     toast.success("Match saved successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
   updateMatch: (id, data) => {
@@ -522,8 +590,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : s.referees,
       };
     });
-    if (updatedMatch) syncToFirebase(`matches`, get().matches);
-    syncToFirebase('referees', get().referees);
+    if (updatedMatch) syncRecordToFirebase('matches', updatedMatch);
+    get().referees.filter(r => r.currentMatchId === id || r.id === updatedMatch?.assignedRefereeId).forEach(r => syncRecordToFirebase('referees', r));
     toast.success("Match updated successfully", { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -634,8 +702,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       brackets: [...s.brackets, bracket],
     }));
 
-    syncToFirebase('matches', get().matches);
-    syncToFirebase('brackets', get().brackets);
+    newMatches.forEach(m => syncRecordToFirebase('matches', m));
+    syncRecordToFirebase('brackets', bracket);
     toast.success(`Bracket generated: ${category} (${fmt})`, { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -657,7 +725,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         return m;
       }),
     }));
-    syncToFirebase('matches', get().matches);
+    get().matches.filter(m => categoryMatches.some(cm => cm.id === m.id)).forEach(m => syncRecordToFirebase('matches', m));
     toast.success(`Fight order randomized for ${category}`, { style: { background: '#27ae60', color: '#fff' } });
   },
 
@@ -668,8 +736,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       brackets: s.brackets.filter(b => b.id !== bracketId),
       matches: s.matches.filter(m => !matchIds.has(m.id)),
     };
-    syncToFirebase('brackets', next.brackets);
-    syncToFirebase('matches', next.matches);
+    removeFromFirebase('brackets', bracketId);
+    matchIds.forEach(mid => removeFromFirebase('matches', mid));
     return next;
   }),
 
@@ -678,7 +746,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
       matches: s.matches.map(m => m.id === matchId ? { ...m, status: 'completed', result } : m),
       activeMatch: s.activeMatch?.id === matchId ? { ...s.activeMatch, status: 'completed', result } : s.activeMatch,
     }));
-    syncToFirebase('matches', get().matches);
+    const updatedResultMatch = get().matches.find(m => m.id === matchId);
+    if (updatedResultMatch) syncRecordToFirebase('matches', updatedResultMatch);
   },
 
   advanceWinner: (matchId, winnerId, winnerName) => {
@@ -703,7 +772,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
             : { ...m, blueCornerId: winnerId, blueCornerName: winnerName, isBye: false };
         }),
       }));
-      syncToFirebase('matches', get().matches);
+      const tgt = get().matches.find(m => m.id === targetMatchId);
+      if (tgt) syncRecordToFirebase('matches', tgt);
     };
 
     const eventBelongsToMatch = (event: RoundEvent, match: Match) => {
@@ -813,7 +883,7 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           return m;
         }),
       }));
-      syncToFirebase('matches', get().matches);
+      get().matches.filter(m => [semifinal.id, finalMatch.id].includes(m.id)).forEach(m => syncRecordToFirebase('matches', m));
 
       toast.success(`${priorityWinner.winnerName} advanced automatically by clean-card priority. The other two winners were mapped to the semifinal.`, {
         duration: 6000,
@@ -898,7 +968,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     set(s => ({
       brackets: s.brackets.map(b => b.id === bracketId ? { ...b, standings } : b),
     }));
-    syncToFirebase('brackets', get().brackets);
+    const updatedBracket = get().brackets.find(b => b.id === bracketId);
+    if (updatedBracket) syncRecordToFirebase('brackets', updatedBracket);
   },
 
   advancePoolWinners: (bracketId) => {
@@ -939,8 +1010,9 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         eliminationUnlocked: true,
       } : b),
     }));
-    syncToFirebase('matches', get().matches);
-    syncToFirebase('brackets', get().brackets);
+    eliminationMatches.forEach(m => syncRecordToFirebase('matches', m));
+    const advancedBracket = get().brackets.find(b => b.id === bracketId);
+    if (advancedBracket) syncRecordToFirebase('brackets', advancedBracket);
     toast.success('Pool winners advanced to elimination stage');
   },
 
@@ -964,7 +1036,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         } : t),
       })),
     }));
-    syncToFirebase('brackets', get().brackets);
+    const updatedTeamBracket = get().brackets.find(b => b.id === get().brackets.find(b => (b.teamMatchups ?? []).some(t => t.id === teamMatchupId))?.id);
+    if (updatedTeamBracket) syncRecordToFirebase('brackets', updatedTeamBracket);
   },
 
   // ── Referees ──
@@ -995,8 +1068,9 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : [createdAccount, ...s.accounts],
       };
     });
-    syncToFirebase('referees', get().referees);
-    syncToFirebase('accounts', get().accounts);
+    const newRef = get().referees.find(ref => ref.id === referee.id);
+    if (newRef) syncRecordToFirebase('referees', newRef);
+    if (createdAccount) syncRecordToFirebase('accounts', createdAccount);
     const accountForToast = get().accounts.find(account => account.refereeId === r.id || account.id === r.accountId);
     toast.success(
       accountForToast
@@ -1009,7 +1083,8 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     set(s => ({
       referees: s.referees.map(r => r.id === id ? { ...r, ...data, country: NATIONAL_COUNTRY } : r)
     }));
-    syncToFirebase('referees', get().referees);
+    const updatedRef = get().referees.find(r => r.id === id);
+    if (updatedRef) syncRecordToFirebase('referees', updatedRef);
   },
   approveReferee: (id) => {
     const referee = get().referees.find(r => r.id === id);
@@ -1025,8 +1100,10 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
         accounts: nextAccounts,
       };
     });
-    syncToFirebase('referees', get().referees);
-    syncToFirebase('accounts', get().accounts);
+    const approvedRef = get().referees.find(r => r.id === id);
+    if (approvedRef) syncRecordToFirebase('referees', approvedRef);
+    const approvedRefAccount = get().accounts.find(a => a.refereeId === id || a.id === referee.accountId);
+    if (approvedRefAccount) syncRecordToFirebase('accounts', approvedRefAccount);
     get().addNotification("Referee Approved", `${referee.name} can now log in and judge assigned matches.`);
     toast.success(`${referee.name} approved for judging access`);
   },
@@ -1045,8 +1122,9 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : account
       ),
     }));
-    syncToFirebase('referees', get().referees);
-    syncToFirebase('accounts', get().accounts);
+    removeFromFirebase('referees', id);
+    const rejectedAccount = get().accounts.find(a => a.refereeId === undefined && a.id === referee?.accountId);
+    if (rejectedAccount) syncRecordToFirebase('accounts', rejectedAccount);
   },
   assignRefereeToMatch: (matchId, refereeId, judgeIds, scheduledTime) => {
     const officials = get().referees.filter(r => judgeIds.includes(r.id));
@@ -1067,8 +1145,9 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
           : r
       ),
     }));
-    syncToFirebase('matches', get().matches);
-    syncToFirebase('referees', get().referees);
+    const assignedMatch = get().matches.find(m => m.id === matchId);
+    if (assignedMatch) syncRecordToFirebase('matches', assignedMatch);
+    get().referees.filter(r => judgeIds.includes(r.id)).forEach(r => syncRecordToFirebase('referees', r));
     toast.success('Officials assigned to match');
   },
 
@@ -1101,8 +1180,9 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
   roundEvents: [],
   addRoundEvent: (e) => {
     const newEvent = { ...e, id: uuidv4(), timestamp: new Date().toISOString() } as RoundEvent;
-    set(s => ({ roundEvents: [...s.roundEvents, newEvent] }));
+    set(s => ({ roundEvents: [...s.roundEvents, newEvent].slice(-MAX_EVENTS) }));
     pushToFirebase('events', newEvent as unknown as Record<string, unknown>);
+    trimEventsNode();
   },
   clearRoundEvents: () => set({ roundEvents: [] }),
 
@@ -1248,14 +1328,15 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
     } else {
       set(s => ({ reports: [report, ...s.reports] }));
     }
-    syncToFirebase('reports', get().reports);
+    syncRecordToFirebase('reports', report);
   },
 
   updateReportStatus: (reportId, status) => {
     set(s => ({
       reports: s.reports.map(r => r.id === reportId ? { ...r, status } : r)
     }));
-    syncToFirebase('reports', get().reports);
+    const updatedReport = get().reports.find(r => r.id === reportId);
+    if (updatedReport) syncRecordToFirebase('reports', updatedReport);
   },
 }));
 

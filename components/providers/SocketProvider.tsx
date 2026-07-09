@@ -169,6 +169,14 @@ function mergeByKey<T>(base: T[], incoming: T[], getKey: (item: T) => string) {
   return Array.from(merged.values());
 }
 
+// Handles both Firebase object-keyed format ({id1: {...}, id2: {...}}) and legacy array format
+function toArray<T>(data: unknown): T[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data.filter(Boolean) as T[];
+  if (typeof data === 'object') return Object.values(data).filter(Boolean) as T[];
+  return [];
+}
+
 function ensureProfileAccount(
   accounts: RoleAccount[],
   profile: {
@@ -248,8 +256,8 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
           .map(referee => referee.id),
       );
 
-      let normalizedAccounts = Array.isArray(data.accounts)
-        ? (data.accounts as LegacyRoleAccount[]).map(normalizeAccount)
+      let normalizedAccounts = toArray<LegacyRoleAccount>(data.accounts).length > 0
+        ? toArray<LegacyRoleAccount>(data.accounts).map(normalizeAccount)
         : store.getState().accounts;
 
       // Sync each collection into the Zustand store
@@ -257,8 +265,9 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         const settings = data.settings as TournamentSettings;
         store.setState({ settings: { ...settings, championshipName: settings.championshipName ?? DEFAULT_CHAMPIONSHIP } });
       }
-      if (Array.isArray(data.athletes)) {
-        const normalizedAthletes = (data.athletes as Athlete[]).map(athlete => {
+      const rawAthletes = toArray<Athlete>(data.athletes);
+      if (rawAthletes.length > 0) {
+        const normalizedAthletes = rawAthletes.map(athlete => {
           const approvalStatus = athlete.approvalStatus ?? (athlete.registrationStatus === "Active" ? "Approved" : "Pending");
           const linked = ensureProfileAccount(normalizedAccounts, {
             id: athlete.id,
@@ -278,12 +287,11 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             registrationStatus: athlete.registrationStatus ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
           };
         });
-        store.setState({
-          athletes: normalizedAthletes,
-        });
+        store.setState({ athletes: normalizedAthletes });
       }
-      if (Array.isArray(data.clubs)) {
-        const normalizedClubs = (data.clubs as Club[]).map(club => {
+      const rawClubs = toArray<Club>(data.clubs);
+      if (rawClubs.length > 0) {
+        const normalizedClubs = rawClubs.map(club => {
           const approvalStatus = club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending");
           const linked = ensureProfileAccount(normalizedAccounts, {
             id: club.id,
@@ -302,16 +310,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             status: club.status ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
           };
         });
-        store.setState({
-          clubs: normalizedClubs,
-        });
+        store.setState({ clubs: normalizedClubs });
       }
-      if (Array.isArray(data.weighinRecords)) {
-        store.setState({ weighinRecords: data.weighinRecords as WeighinRecord[] });
+      const rawWeighin = toArray<WeighinRecord>(data.weighinRecords);
+      if (rawWeighin.length > 0) {
+        store.setState({ weighinRecords: rawWeighin });
       }
-      if (Array.isArray(data.matches)) {
+      const rawMatches = toArray<Match>(data.matches);
+      if (rawMatches.length > 0) {
         store.setState({
-          matches: (data.matches as Match[]).map(match => {
+          matches: rawMatches.map(match => {
             const normalized = normalizeMatch(match);
             const shouldUseTableChief = !normalized.assignedRefereeId || legacyTableChiefIds.has(normalized.assignedRefereeId);
             return {
@@ -321,14 +329,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
           }),
         });
       }
-      if (Array.isArray(data.brackets)) {
-        store.setState({ brackets: (data.brackets as Bracket[]).map(bracket => ({
+      const rawBrackets = toArray<Bracket>(data.brackets);
+      if (rawBrackets.length > 0) {
+        store.setState({ brackets: rawBrackets.map(bracket => ({
           ...bracket,
           weightCategory: normalizeWeightCategory(bracket.weightCategory),
         })) });
       }
-      if (Array.isArray(data.referees)) {
-        const normalizedReferees = (data.referees as LegacyReferee[])
+      const rawRefereeList = toArray<LegacyReferee>(data.referees);
+      if (rawRefereeList.length > 0) {
+        const normalizedReferees = rawRefereeList
           .filter(referee => !isLegacyCentralReferee(referee))
           .map(referee => {
           const approvalStatus = referee.approvalStatus ?? "Approved";
@@ -349,21 +359,18 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             approvalStatus,
           };
         });
-        store.setState({
-          referees: normalizedReferees,
-        });
+        store.setState({ referees: normalizedReferees });
       }
-      if (Array.isArray(data.accounts) || Array.isArray(data.athletes) || Array.isArray(data.clubs) || Array.isArray(data.referees)) {
+      if (toArray(data.accounts).length > 0 || rawAthletes.length > 0 || rawClubs.length > 0 || rawRefereeList.length > 0) {
         store.setState({ accounts: normalizedAccounts });
       }
-      if (Array.isArray(data.judgeScores)) {
-        store.setState({ judgeScores: data.judgeScores as JudgeScore[] });
+      const rawJudgeScores = toArray<JudgeScore>(data.judgeScores);
+      if (rawJudgeScores.length > 0) {
+        store.setState({ judgeScores: rawJudgeScores });
       }
       if (data.events) {
-        const events = Array.isArray(data.events)
-          ? data.events
-          : Object.values(data.events as Record<string, RoundEvent>);
-        store.setState({ roundEvents: events as RoundEvent[] });
+        const events = toArray<RoundEvent>(data.events);
+        store.setState({ roundEvents: events });
       }
       if (data.judging) {
         const { scores, events } = flattenJudgingData(data.judging);
