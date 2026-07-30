@@ -422,7 +422,7 @@ export default function TVDisplay() {
     if (lastCardKeyRef.current === key) return;
     lastCardKeyRef.current = key;
     setLatestCard(newest);
-    const timer = setTimeout(() => setLatestCard(null), 3600);
+    const timer = setTimeout(() => setLatestCard(null), 4000);
     return () => clearTimeout(timer);
   }, [cardEvents]);
 
@@ -433,7 +433,7 @@ export default function TVDisplay() {
     if (lastMethodKeyRef.current === key) return;
     lastMethodKeyRef.current = key;
     setLatestMethod(newest);
-    const timer = setTimeout(() => setLatestMethod(null), 5200);
+    const timer = setTimeout(() => setLatestMethod(null), 4000);
     return () => clearTimeout(timer);
   }, [methodEvents]);
 
