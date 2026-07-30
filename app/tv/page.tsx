@@ -11,7 +11,6 @@ import { formatMatchCategory } from "@/lib/ageCategories";
 import { deriveLiveMatchTimers, useFirebaseLiveMatchStates, useFirebaseMatchState, FirebaseMatchState } from "@/hooks/useFirebaseMatchSync";
 import { StoredJudgeScore, StoredJudgingEvent, useFirebaseJudgingData } from "@/hooks/useFirebaseJudgingSync";
 import type { RoundEvent } from "@/types/tournament";
-import { makeTableChiefOfficial, TABLE_CHIEF_ASSIGNMENT_ID, TABLE_CHIEF_LABEL } from "@/lib/officials";
 
 // ── Hexagonal SVG background pattern ───────────────────────────────────────
 function HexBackground() {
@@ -464,15 +463,37 @@ export default function TVDisplay() {
 
   const tickerText = tickerEvents.join("   ·   ");
 
-  const redWarnings = scopedEvents.filter(e => e.corner === "RED" && e.type === "yellow-card").length;
-  const blueWarnings = scopedEvents.filter(e => e.corner === "BLUE" && e.type === "yellow-card").length;
-  const redCards = scopedEvents.filter(e => e.corner === "RED" && e.type === "red-card").length;
-  const blueCards = scopedEvents.filter(e => e.corner === "BLUE" && e.type === "red-card").length;
+  const activeCardEventsForCorner = (corner: "RED" | "BLUE") => {
+    const byOfficial = new Map<string, Array<RoundEvent | StoredJudgingEvent>>();
+    scopedEvents
+      .filter(event => event.corner === corner && (event.type === "yellow-card" || event.type === "red-card" || event.type === "cards-cleared"))
+      .forEach(event => {
+        const officialKey = (event as StoredJudgingEvent).officialId ?? (event as StoredJudgingEvent).officialName ?? "table";
+        byOfficial.set(officialKey, [...(byOfficial.get(officialKey) ?? []), event]);
+      });
 
-  const assignedOfficials = [
-    displayMatch?.assignedRefereeId === TABLE_CHIEF_ASSIGNMENT_ID ? makeTableChiefOfficial(TABLE_CHIEF_LABEL) : null,
-    ...(displayMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)) ?? []),
-  ].filter(Boolean) as typeof referees;
+    return Array.from(byOfficial.values()).flatMap(events => {
+      const activeEvents: Array<RoundEvent | StoredJudgingEvent> = [];
+      events
+        .sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime())
+        .forEach(event => {
+          if (event.type === "cards-cleared") {
+            activeEvents.length = 0;
+            return;
+          }
+          activeEvents.push(event);
+        });
+      return activeEvents;
+    });
+  };
+  const redCardEvents = activeCardEventsForCorner("RED");
+  const blueCardEvents = activeCardEventsForCorner("BLUE");
+  const redWarnings = redCardEvents.filter(e => e.type === "yellow-card").length;
+  const blueWarnings = blueCardEvents.filter(e => e.type === "yellow-card").length;
+  const redCards = redCardEvents.filter(e => e.type === "red-card").length;
+  const blueCards = blueCardEvents.filter(e => e.type === "red-card").length;
+
+  const assignedOfficials = (displayMatch?.assignedJudgeIds?.map(id => referees.find(r => r.id === id)).filter(Boolean) ?? []) as typeof referees;
 
   const officialRows = useMemo(() => assignedOfficials.map(official => {
     const officialScores = combinedScores.filter(score => score.matchId === displayMatch?.id && score.judgeId === official.id);
@@ -482,25 +503,37 @@ export default function TVDisplay() {
       (event as StoredJudgingEvent).officialName === official.name
     );
     const currentRoundEvents = officialEvents.filter(event => event.round === liveCurrentRound);
-    const redYellow = officialEvents.filter(event => event.corner === "RED" && event.type === "yellow-card").length;
-    const blueYellow = officialEvents.filter(event => event.corner === "BLUE" && event.type === "yellow-card").length;
-    const redRed = officialEvents.filter(event => event.corner === "RED" && event.type === "red-card").length;
-    const blueRed = officialEvents.filter(event => event.corner === "BLUE" && event.type === "red-card").length;
-    const methodCalls = currentRoundEvents.filter(event => METHOD_EVENT_TYPES.has(event.type));
-    const latestAction = currentRoundEvents[currentRoundEvents.length - 1] ?? null;
     const submittedScores = officialScores.filter(score => score.submitted);
+    const cornerSummary = (corner: "RED" | "BLUE") => {
+      const cornerEvents = officialEvents
+        .filter(event => event.corner === corner)
+        .sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
+      const lastCardClear = [...cornerEvents].reverse().find(event => event.type === "cards-cleared");
+      const lastCardClearTime = lastCardClear ? new Date(lastCardClear.timestamp).getTime() : 0;
+      const activeCardEvents = cornerEvents.filter(event =>
+        new Date(event.timestamp).getTime() > lastCardClearTime &&
+        (event.type === "yellow-card" || event.type === "red-card")
+      );
+      const currentCornerEvents = currentRoundEvents.filter(event => event.corner === corner);
+
+      return {
+        points: corner === "RED" ? currentScore?.redScore ?? 0 : currentScore?.blueScore ?? 0,
+        yellowCards: activeCardEvents.filter(event => event.type === "yellow-card").length,
+        redCards: activeCardEvents.filter(event => event.type === "red-card").length,
+        methodCalls: currentCornerEvents.filter(event => METHOD_EVENT_TYPES.has(event.type)),
+        latestAction: currentCornerEvents[currentCornerEvents.length - 1] ?? null,
+      };
+    };
 
     return {
       official,
       currentScore,
       redTotal: submittedScores.reduce((sum, score) => sum + score.redScore, 0),
       blueTotal: submittedScores.reduce((sum, score) => sum + score.blueScore, 0),
-      redYellow,
-      blueYellow,
-      redRed,
-      blueRed,
-      methodCalls,
-      latestAction,
+      corners: {
+        RED: cornerSummary("RED"),
+        BLUE: cornerSummary("BLUE"),
+      },
       actionCount: officialEvents.length,
     };
   }), [assignedOfficials, combinedScores, displayMatch?.id, liveCurrentRound, scopedEvents]);
@@ -865,10 +898,144 @@ export default function TVDisplay() {
         />
       </div>
 
+      {/* ── INDIVIDUAL REFEREE SCORING PANELS ────────────────────────────────── */}
+      <div className="relative z-10 border-t border-[rgba(255,255,255,0.06)] bg-black/45 px-5 py-4">
+        <div className="mb-3 text-[11px] font-black uppercase tracking-[0.32em] text-[rgba(255,255,255,0.42)]">
+          Individual Referee Scoring - Live Points & Cards
+        </div>
+
+        {officialRows.length === 0 ? (
+          <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] p-6 text-center text-sm font-bold text-[rgba(255,255,255,0.42)]">
+            No assigned referees for this match yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {officialRows.map(row => (
+              <div
+                key={`referee-panel-${row.official.id}`}
+                className="rounded-2xl border border-[rgba(255,255,255,0.12)] bg-gradient-to-br from-black/60 to-black/40 p-4 shadow-xl"
+              >
+                {/* Referee Header */}
+                <div className="mb-3 border-b border-[rgba(255,255,255,0.08)] pb-3">
+                  <div className="text-[9px] font-black uppercase tracking-[0.28em] text-[var(--ikf-gold)]">Referee</div>
+                  <div className="mt-1 truncate font-display text-xl leading-none text-white">{row.official.name}</div>
+                  <div className="mt-1 text-[10px] font-bold text-[rgba(255,255,255,0.45)]">{row.official.role}</div>
+                </div>
+
+                {/* RED Corner Score Area */}
+                <div className="mb-3 rounded-xl border border-[rgba(200,16,46,0.3)] bg-[rgba(200,16,46,0.08)] p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[8px] font-black uppercase tracking-[0.26em] text-[var(--ikf-red)]">🔴 RED CORNER</div>
+                      <div className="truncate text-sm font-bold text-white">{displayMatch.redCornerName}</div>
+                    </div>
+                    <div className="font-display text-5xl leading-none text-[var(--ikf-red)]">
+                      {row.corners.RED.points}
+                    </div>
+                  </div>
+
+                  {/* Cards for RED */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-1.5">
+                      {Array.from({ length: row.corners.RED.yellowCards }).map((_, i) => (
+                        <div
+                          key={`ref-${row.official.id}-red-yellow-${i}`}
+                          className="h-5 w-4 rounded-sm"
+                          style={{ background: "#f1c40f", boxShadow: "0 0 8px rgba(241,196,15,0.5)" }}
+                        />
+                      ))}
+                      {Array.from({ length: row.corners.RED.redCards }).map((_, i) => (
+                        <div
+                          key={`ref-${row.official.id}-red-red-${i}`}
+                          className="h-5 w-4 animate-pulse rounded-sm"
+                          style={{ background: "#c8102e", boxShadow: "0 0 12px rgba(200,16,46,0.7)" }}
+                        />
+                      ))}
+                    </div>
+                    <div className="text-[9px] font-black uppercase tracking-wider text-[rgba(255,255,255,0.45)]">
+                      {row.corners.RED.yellowCards > 0 || row.corners.RED.redCards > 0 ? `Y:${row.corners.RED.yellowCards} R:${row.corners.RED.redCards}` : "No cards"}
+                    </div>
+                  </div>
+
+                  {/* Method calls for RED */}
+                  {row.corners.RED.methodCalls.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {row.corners.RED.methodCalls.slice(-2).map((event, index) => (
+                        <span
+                          key={`red-method-${row.official.id}-${index}-${event.timestamp}`}
+                          className="rounded-full border border-[rgba(212,160,23,0.4)] bg-[rgba(212,160,23,0.12)] px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-[var(--ikf-gold)]"
+                        >
+                          {methodLabel(event.type)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* BLUE Corner Score Area */}
+                <div className="rounded-xl border border-[rgba(0,102,204,0.3)] bg-[rgba(0,102,204,0.08)] p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[8px] font-black uppercase tracking-[0.26em] text-[var(--corner-blue)]">🔵 BLUE CORNER</div>
+                      <div className="truncate text-sm font-bold text-white">{displayMatch.blueCornerName}</div>
+                    </div>
+                    <div className="font-display text-5xl leading-none text-[var(--corner-blue)]">
+                      {row.corners.BLUE.points}
+                    </div>
+                  </div>
+
+                  {/* Cards for BLUE */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-1.5">
+                      {Array.from({ length: row.corners.BLUE.yellowCards }).map((_, i) => (
+                        <div
+                          key={`ref-${row.official.id}-blue-yellow-${i}`}
+                          className="h-5 w-4 rounded-sm"
+                          style={{ background: "#f1c40f", boxShadow: "0 0 8px rgba(241,196,15,0.5)" }}
+                        />
+                      ))}
+                      {Array.from({ length: row.corners.BLUE.redCards }).map((_, i) => (
+                        <div
+                          key={`ref-${row.official.id}-blue-red-${i}`}
+                          className="h-5 w-4 animate-pulse rounded-sm"
+                          style={{ background: "#c8102e", boxShadow: "0 0 12px rgba(200,16,46,0.7)" }}
+                        />
+                      ))}
+                    </div>
+                    <div className="text-[9px] font-black uppercase tracking-wider text-[rgba(255,255,255,0.45)]">
+                      {row.corners.BLUE.yellowCards > 0 || row.corners.BLUE.redCards > 0 ? `Y:${row.corners.BLUE.yellowCards} R:${row.corners.BLUE.redCards}` : "No cards"}
+                    </div>
+                  </div>
+
+                  {/* Method calls for BLUE */}
+                  {row.corners.BLUE.methodCalls.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {row.corners.BLUE.methodCalls.slice(-2).map((event, index) => (
+                        <span
+                          key={`blue-method-${row.official.id}-${index}-${event.timestamp}`}
+                          className="rounded-full border border-[rgba(212,160,23,0.4)] bg-[rgba(212,160,23,0.12)] px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-[var(--ikf-gold)]"
+                        >
+                          {methodLabel(event.type)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Referee Action Summary */}
+                <div className="mt-3 rounded-lg bg-black/40 px-2 py-1.5 text-center text-[9px] font-bold text-[rgba(255,255,255,0.4)]">
+                  Total actions: {row.actionCount}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ── JUDGE SCORE PANEL ─────────────────────────────────────────────── */}
       <div className="relative z-10 border-t border-[rgba(255,255,255,0.06)] bg-black/45 px-5 py-3">
         <div className="mb-2 flex items-center justify-between gap-4">
-          <div className="text-[10px] font-black uppercase tracking-[0.32em] text-[rgba(255,255,255,0.42)]">Every referee decision, points, cards, and actions</div>
+          <div className="text-[10px] font-black uppercase tracking-[0.32em] text-[rgba(255,255,255,0.42)]">Live referee points and cards for each fighter</div>
           <div className="flex items-center gap-3 rounded-2xl border border-[rgba(255,255,255,0.12)] bg-white/[0.03] px-4 py-2">
             <span className="text-[10px] font-black uppercase tracking-[0.28em] text-[rgba(255,255,255,0.38)]">{t('aggregate_uc', settings.language)}</span>
             <span className="font-display text-3xl text-[var(--ikf-red)]">{displayScores.red}</span>
@@ -877,41 +1044,60 @@ export default function TVDisplay() {
           </div>
         </div>
 
-        <div className="grid max-h-[190px] grid-cols-1 gap-2 overflow-y-auto pr-1 xl:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid max-h-[220px] grid-cols-1 gap-3 overflow-y-auto pr-1 xl:grid-cols-2">
           {officialRows.length === 0 ? (
             <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] p-4 text-sm font-bold text-[rgba(255,255,255,0.42)]">No assigned officials for this match yet.</div>
-          ) : officialRows.map(row => (
-            <div key={row.official.id} className="rounded-2xl border border-[rgba(255,255,255,0.09)] bg-white/[0.035] p-3">
-              <div className="flex items-start justify-between gap-3">
+          ) : (["RED", "BLUE"] as const).map(corner => (
+            <div
+              key={`tv-referee-${corner}`}
+              className="rounded-2xl border p-3"
+              style={{
+                borderColor: corner === "RED" ? "rgba(200,16,46,0.35)" : "rgba(0,102,204,0.35)",
+                background: corner === "RED" ? "rgba(200,16,46,0.055)" : "rgba(0,102,204,0.055)",
+              }}
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-black text-white">{row.official.name}</div>
-                  <div className="text-[9px] font-black uppercase tracking-[0.24em] text-[rgba(255,255,255,0.36)]">{row.official.role}</div>
+                  <div className="text-[9px] font-black uppercase tracking-[0.3em]" style={{ color: corner === "RED" ? "var(--ikf-red)" : "var(--corner-blue)" }}>{corner} fighter</div>
+                  <div className="truncate font-display text-2xl leading-none text-white">
+                    {corner === "RED" ? displayMatch.redCornerName : displayMatch.blueCornerName}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-display text-3xl text-[var(--ikf-red)]">{row.currentScore?.redScore ?? 0}</span>
-                  <span className="text-[rgba(255,255,255,0.25)]">-</span>
-                  <span className="font-display text-3xl text-[var(--corner-blue)]">{row.currentScore?.blueScore ?? 0}</span>
+                <div className="font-display text-4xl leading-none" style={{ color: corner === "RED" ? "var(--ikf-red)" : "var(--corner-blue)" }}>
+                  {corner === "RED" ? displayScores.red : displayScores.blue}
                 </div>
               </div>
 
-              <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.18em]">
-                <div className="rounded-xl bg-[rgba(200,16,46,0.1)] px-3 py-2 text-[var(--ikf-red)]">Red cards: Y{row.redYellow} / R{row.redRed}</div>
-                <div className="rounded-xl bg-[rgba(0,102,204,0.1)] px-3 py-2 text-[var(--corner-blue)]">Blue cards: Y{row.blueYellow} / R{row.blueRed}</div>
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {row.methodCalls.slice(-4).map((event, index) => (
-                  <span key={`${row.official.id}-method-${index}-${event.timestamp}`} className="rounded-full border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] px-2 py-1 text-[9px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">
-                    {methodLabel(event.type)}{event.corner ? ` ${event.corner}` : ""}
-                  </span>
-                ))}
-                {row.methodCalls.length === 0 && (
-                  <span className="rounded-full border border-[rgba(255,255,255,0.08)] px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-[rgba(255,255,255,0.3)]">No call this round</span>
-                )}
-              </div>
-
-              <div className="mt-2 truncate text-[11px] font-semibold text-[rgba(255,255,255,0.55)]">
-                Latest: {row.latestAction ? `${new Date(row.latestAction.timestamp).toLocaleTimeString()} - ${row.latestAction.details}` : "Waiting for action"}
+              <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3">
+                {officialRows.map(row => {
+                  const summary = row.corners[corner];
+                  return (
+                    <div key={`${corner}-${row.official.id}`} className="rounded-xl border border-[rgba(255,255,255,0.09)] bg-black/28 p-3">
+                      <div className="truncate text-sm font-black text-white">{row.official.name}</div>
+                      <div className="mt-1 text-[9px] font-black uppercase tracking-[0.24em] text-[rgba(255,255,255,0.35)]">{row.official.role}</div>
+                      <div className="mt-2 flex items-end justify-between gap-3">
+                        <div>
+                          <div className="text-[9px] font-black uppercase tracking-[0.22em] text-[rgba(255,255,255,0.38)]">Points</div>
+                          <div className="font-display text-5xl leading-none" style={{ color: corner === "RED" ? "var(--ikf-red)" : "var(--corner-blue)" }}>{summary.points}</div>
+                        </div>
+                        <div className="text-right text-[10px] font-black uppercase tracking-[0.14em]">
+                          <div className="rounded-lg bg-[#f1c40f]/15 px-2 py-1 text-[#f1c40f]">Y {summary.yellowCards}</div>
+                          <div className="mt-1 rounded-lg bg-[rgba(200,16,46,0.18)] px-2 py-1 text-[var(--ikf-red)]">R {summary.redCards}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex min-h-6 flex-wrap gap-1">
+                        {summary.methodCalls.slice(-2).map((event, index) => (
+                          <span key={`${corner}-${row.official.id}-method-${index}-${event.timestamp}`} className="rounded-full border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] px-2 py-1 text-[8px] font-black uppercase tracking-widest text-[var(--ikf-gold)]">
+                            {methodLabel(event.type)}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-1 truncate text-[10px] font-semibold text-[rgba(255,255,255,0.45)]">
+                        {summary.latestAction ? `${new Date(summary.latestAction.timestamp).toLocaleTimeString()} - ${summary.latestAction.type}` : "Waiting"}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

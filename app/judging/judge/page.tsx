@@ -85,8 +85,10 @@ function CornerPanel({
   yellowCards,
   redCards,
   onPoint,
+  onClearPoints,
   onYellow,
   onRed,
+  onClearCards,
 }: {
   corner: Corner;
   athleteName: string;
@@ -96,8 +98,10 @@ function CornerPanel({
   yellowCards: number;
   redCards: number;
   onPoint: (points: number) => void;
+  onClearPoints: () => void;
   onYellow: () => void;
   onRed: () => void;
+  onClearCards: () => void;
 }) {
   const isRed = corner === "RED";
   return (
@@ -135,6 +139,27 @@ function CornerPanel({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
+        <motion.button
+          type="button"
+          disabled={disabled || submitted || score === 0}
+          whileTap={{ scale: 0.96 }}
+          onClick={onClearPoints}
+          className="h-16 rounded-2xl border-2 border-[rgba(255,255,255,0.16)] bg-black/25 font-black uppercase tracking-[0.2em] text-white disabled:opacity-35"
+        >
+          Clear Points
+        </motion.button>
+        <motion.button
+          type="button"
+          disabled={disabled || (yellowCards === 0 && redCards === 0)}
+          whileTap={{ scale: 0.96 }}
+          onClick={onClearCards}
+          className="h-16 rounded-2xl border-2 border-[rgba(255,255,255,0.16)] bg-black/25 font-black uppercase tracking-[0.2em] text-white disabled:opacity-35"
+        >
+          Clear Cards
+        </motion.button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
         <motion.button
           type="button"
           disabled={disabled}
@@ -404,17 +429,30 @@ export default function JudgeTabletView() {
     }
   };
 
-  const countOfficialEvents = (type: RoundEventType, corner: Corner) => combinedEvents.filter(event =>
-    event.type === type &&
-    event.corner === corner &&
-    ((event as StoredJudgingEvent).officialId === judge?.id || (event as StoredJudgingEvent).officialName === judge?.name)
-  ).length;
+  const cardEventsAfterLastClear = (corner: Corner) => {
+    if (!judge) return [] as Array<RoundEvent | StoredJudgingEvent>;
+    const officialCornerEvents = combinedEvents
+      .filter(event =>
+        event.corner === corner &&
+        ((event as StoredJudgingEvent).officialId === judge.id || (event as StoredJudgingEvent).officialName === judge.name)
+      )
+      .sort((first, second) => new Date(first.timestamp).getTime() - new Date(second.timestamp).getTime());
+    const lastClear = [...officialCornerEvents].reverse().find(event => event.type === "cards-cleared");
+    const lastClearTime = lastClear ? new Date(lastClear.timestamp).getTime() : 0;
+    return officialCornerEvents.filter(event =>
+      new Date(event.timestamp).getTime() > lastClearTime &&
+      (event.type === "yellow-card" || event.type === "red-card")
+    );
+  };
+
+  const countOfficialCards = (type: "yellow-card" | "red-card", corner: Corner) =>
+    cardEventsAfterLastClear(corner).filter(event => event.type === type).length;
 
   const recordCard = (corner: Corner, card: "yellow-card" | "red-card") => {
     if (!activeMatch || !judge) return;
     if (card === "yellow-card") {
-      const existingYellow = countOfficialEvents("yellow-card", corner);
-      const existingRed = countOfficialEvents("red-card", corner);
+      const existingYellow = countOfficialCards("yellow-card", corner);
+      const existingRed = countOfficialCards("red-card", corner);
       persistEvent("yellow-card", "Yellow card", corner);
       if (existingYellow + 1 >= 2 && existingRed === 0) {
         persistEvent("red-card", "Automatic red card after two yellow cards", corner);
@@ -424,6 +462,19 @@ export default function JudgeTabletView() {
     }
     persistEvent("red-card", "Red card", corner);
     applyRoundLoss(corner);
+  };
+
+  const clearCornerPoints = (corner: Corner) => {
+    if (!activeMatch || !judge || currentScore.submitted) return;
+    const nextRed = corner === "RED" ? 0 : currentScore.redScore;
+    const nextBlue = corner === "BLUE" ? 0 : currentScore.blueScore;
+    saveDraftScore(nextRed, nextBlue);
+    persistEvent("score-input", "Points cleared", corner, `Score is RED ${nextRed} - BLUE ${nextBlue}`);
+  };
+
+  const clearCornerCards = (corner: Corner) => {
+    if (!activeMatch || !judge) return;
+    persistEvent("cards-cleared", "Cards cleared", corner);
   };
 
   const submitCurrentScore = () => {
@@ -659,11 +710,13 @@ export default function JudgeTabletView() {
                 score={currentScore.redScore}
                 submitted={currentScore.submitted}
                 disabled={!canAct}
-                yellowCards={countOfficialEvents("yellow-card", "RED")}
-                redCards={countOfficialEvents("red-card", "RED")}
+                yellowCards={countOfficialCards("yellow-card", "RED")}
+                redCards={countOfficialCards("red-card", "RED")}
                 onPoint={(points) => handlePoint("RED", points)}
+                onClearPoints={() => clearCornerPoints("RED")}
                 onYellow={() => recordCard("RED", "yellow-card")}
                 onRed={() => recordCard("RED", "red-card")}
+                onClearCards={() => clearCornerCards("RED")}
               />
               <CornerPanel
                 corner="BLUE"
@@ -671,11 +724,13 @@ export default function JudgeTabletView() {
                 score={currentScore.blueScore}
                 submitted={currentScore.submitted}
                 disabled={!canAct}
-                yellowCards={countOfficialEvents("yellow-card", "BLUE")}
-                redCards={countOfficialEvents("red-card", "BLUE")}
+                yellowCards={countOfficialCards("yellow-card", "BLUE")}
+                redCards={countOfficialCards("red-card", "BLUE")}
                 onPoint={(points) => handlePoint("BLUE", points)}
+                onClearPoints={() => clearCornerPoints("BLUE")}
                 onYellow={() => recordCard("BLUE", "yellow-card")}
                 onRed={() => recordCard("BLUE", "red-card")}
+                onClearCards={() => clearCornerCards("BLUE")}
               />
             </div>
             <div className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-5">
