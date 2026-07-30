@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Search, Building2, Edit2, User, Trash2, CheckCircle2 } from "lucide-react";
+import { Search, Building2, Edit2, User, Trash2, CheckCircle2, Eye } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Athlete, Club } from "@/types/tournament";
@@ -59,6 +59,7 @@ export default function ClubsPage() {
   const { clubs, athletes, accounts, settings, deleteClub, approveClub } = useTournamentStore();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Club | null>(null);
+  const [viewClub, setViewClub] = useState<Club | null>(null);
 
   const handleDeleteClub = (club: Club) => {
     deleteClub(club.id);

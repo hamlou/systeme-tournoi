@@ -443,7 +443,7 @@ function MatchReportDocument({
       {/* TV DISPLAY SCREENSHOT */}
       {storeReport?.tvScreenshot && (
         <div className="mb-6 page-break-before">
-          <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">{t('tv_display_final_state', settings.language)}</div>
+          <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">TV Display Final State</div>
           <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
             <img 
               src={storeReport.tvScreenshot} 
