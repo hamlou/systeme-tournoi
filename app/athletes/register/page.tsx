@@ -110,12 +110,14 @@ function RegisterAthleteContent() {
     if (!file) return;
     setIsUploading(true);
     try {
-      const { url, storedRemotely, backgroundRemoved } = await uploadProfileImage(file, { maxSize: 900, removeBackground: true });
+      const { url, storedRemotely } = await uploadProfileImage(file, {
+        maxSize: 900,
+        // Background removal is disabled here to prevent mobile browsers from crashing
+        // when loading the heavy 45MB ML WASM model.
+        removeBackground: false,
+      });
       setPhotoUrl(url);
-      toast.success(backgroundRemoved
-        ? (storedRemotely ? "Photo uploaded with background removed" : "Photo saved with background removed")
-        : (storedRemotely ? "Photo uploaded successfully" : "Photo saved directly to the database")
-      );
+      toast.success(storedRemotely ? "Photo uploaded successfully!" : "Photo saved locally!");
     } catch (error) {
       toast.error("Photo upload failed. Please try again.");
     } finally {

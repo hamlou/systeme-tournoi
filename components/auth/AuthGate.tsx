@@ -403,7 +403,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   const passwordRulesMet = isStrongPassword(createPassword);
 
-  if (!isReady || (!isHydrated && !hydrationTimedOut)) {
+  if (!isReady || (!isHydrated && !hydrationTimedOut && !session)) {
     return (
       <div className="min-h-[100dvh] bg-[var(--bg-primary)] flex items-center justify-center">
         <div className="h-12 w-12 rounded-full border-2 border-[rgba(255,255,255,0.08)] border-t-[var(--ikf-red)] animate-spin" />
@@ -450,7 +450,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <main className="login-cinematic relative h-screen min-h-[100dvh] overflow-hidden bg-black text-white">
-      <div className="fixed inset-0 bg-[url('/loginbackground.jpg')] bg-cover bg-center sm:bg-[center_58%]" />
+      <div className="fixed inset-0 bg-[url('/mobileloginbackground.jpg')] sm:bg-[url('/newloginbackground.jpg')] bg-cover bg-center sm:bg-[center_58%]" />
       <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.68)_0%,rgba(0,0,0,0.2)_46%,rgba(0,0,0,0.54)_100%)]" />
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(255,26,36,0.08),transparent_28%),linear-gradient(90deg,rgba(0,0,0,0.44),transparent_34%,transparent_66%,rgba(0,0,0,0.42))]" />
       <div className="login-sparks login-sparks-a" aria-hidden="true" />
@@ -458,17 +458,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="login-sparks login-sparks-c" aria-hidden="true" />
 
       <section className="relative z-10 h-screen min-h-[100dvh] w-full max-w-full overflow-hidden px-4 py-5 sm:px-8 sm:py-8">
-        <div className="login-phrase-left pointer-events-none fixed left-4 top-[18dvh] max-w-[12rem] sm:left-8 sm:top-[20dvh] sm:max-w-[19rem] lg:left-[6vw] lg:top-[22dvh] lg:max-w-[24rem]">
-          <p className="font-display text-[clamp(2.1rem,7vw,5.7rem)] leading-[0.88] text-white drop-shadow-[0_10px_36px_rgba(0,0,0,0.9)]">
-            TWO ENTER,<br />ONE LEAVES.
-          </p>
-        </div>
 
-        <div className="login-phrase-right pointer-events-none fixed right-4 top-[30dvh] max-w-[11rem] text-right sm:right-8 sm:top-[26dvh] sm:max-w-[18rem] lg:right-[6vw] lg:top-[31dvh] lg:max-w-[24rem]">
-          <p className="font-display text-[clamp(2rem,6.4vw,5.4rem)] leading-[0.88] text-white drop-shadow-[0_10px_36px_rgba(0,0,0,0.9)]">
-            EARN YOUR<br />VICTORY
-          </p>
-        </div>
 
         <p className="login-kanji pointer-events-none fixed bottom-[7dvh] left-5 font-serif text-[clamp(1.75rem,4.8vw,4rem)] leading-none drop-shadow-[0_14px_38px_rgba(0,0,0,0.85)] sm:left-10 lg:left-[7vw]" aria-label="剣志道">
           <span className="login-kanji-char">剣</span>

@@ -70,6 +70,106 @@ export default function ClubsPage() {
     return clubs.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   }, [clubs, search]);
 
+  const pendingClubs = useMemo(() => filteredClubs.filter(c => (c.approvalStatus ?? (c.status === "Active" ? "Approved" : "Pending")) !== "Approved"), [filteredClubs]);
+  const approvedClubs = useMemo(() => filteredClubs.filter(c => (c.approvalStatus ?? (c.status === "Active" ? "Approved" : "Pending")) === "Approved"), [filteredClubs]);
+
+  const ClubCard = ({ club }: { club: Club }) => {
+    const account = accounts.find(item => item.clubId === club.id || item.id === club.accountId);
+    const approvedClubAthletes = athletes.filter(a =>
+      a.clubId === club.id &&
+      a.registrationStatus === "Active" &&
+      (a.approvalStatus ?? "Approved") === "Approved"
+    );
+    return (
+      <IKFCard 
+        key={club.id} 
+        glowColor="gold"
+        interactive
+        className="relative flex flex-col group overflow-visible"
+      >
+        {/* Top right status badge */}
+        <div className="absolute top-4 right-4 z-10">
+          <IKFBadge 
+            variant={club.status === "Active" ? "win" : club.status === "Pending" || club.status === "Incomplete" ? "pending" : "cancelled"}
+            label={club.status === "Active" ? t('active', settings.language) : club.status === "Pending" || club.status === "Incomplete" ? t('pending', settings.language) : club.status}
+            size="sm" 
+          />
+        </div>
+
+        {/* Top section */}
+        <div className="mb-6 flex items-start gap-4 pr-24">
+          <ClubLogo club={club} />
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-4xl text-[var(--text-primary)] group-hover:text-[var(--ikf-gold)] transition-colors leading-none mb-2 truncate">
+              {club.name}
+            </h3>
+            <p className="text-sm font-semibold text-[var(--text-secondary)] tracking-wide uppercase truncate">
+              {club.country}
+            </p>
+          </div>
+        </div>
+
+        {/* Middle stats */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
+            <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('athletes', settings.language)}</div>
+              <div className="text-3xl font-display text-white">{approvedClubAthletes.length}</div>
+          </div>
+          <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
+            <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('confirmed', settings.language)}</div>
+            <div className="font-mono text-xl text-[var(--status-win)]">{approvedClubAthletes.filter(a => a.weighInStatus === 'Confirmed').length}</div>
+          </div>
+          <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
+            <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('pending', settings.language)}</div>
+            <div className="font-mono text-xl text-[var(--status-draw)]">{approvedClubAthletes.filter(a => a.weighInStatus === 'Pending').length}</div>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] p-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Club Account</div>
+          {account ? (
+            <div className="grid grid-cols-2 gap-3 font-mono text-[10px]">
+              <div><span className="block font-sans text-[9px] uppercase tracking-widest text-[var(--text-muted)]">Login</span><span className="text-white">{account.username}</span></div>
+              <div><span className="block font-sans text-[9px] uppercase tracking-widest text-[var(--text-muted)]">Password</span><span className="text-white">{account.password}</span></div>
+            </div>
+          ) : <div className="text-xs text-[var(--text-muted)]">No linked account yet.</div>}
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          {(club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending")) !== "Approved" && (
+            <IKFButton variant="secondary" size="sm" leftIcon={<CheckCircle2 size={14} />} onClick={(event) => { event.stopPropagation(); approveClub(club.id); }}>
+              Approve
+            </IKFButton>
+          )}
+          <IKFButton variant="ghost" size="sm" leftIcon={<Eye size={14} />} onClick={(event) => { event.stopPropagation(); setViewClub(club); }}>
+            View Profile
+          </IKFButton>
+          <IKFButton variant="ghost" size="sm" leftIcon={<Edit2 size={14} />} onClick={(event) => { event.stopPropagation(); router.push(`/clubs/register?edit=${club.id}`); }}>
+            Edit Club
+          </IKFButton>
+          <IKFButton variant="ghost" size="sm" leftIcon={<Trash2 size={14} />} onClick={(event) => { event.stopPropagation(); setDeleteTarget(club); }}>
+            Delete
+          </IKFButton>
+        </div>
+
+        {/* Bottom Avatars */}
+        <div className="mt-auto pt-4 border-t border-[var(--border-default)] flex items-center gap-3">
+          <span className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase flex-shrink-0">{t('roster', settings.language)}</span>
+          <div className="flex items-center -space-x-2">
+            {approvedClubAthletes.slice(0, 5).map(athlete => (
+              <RosterAthleteAvatar key={athlete.id} athlete={athlete} />
+            ))}
+            {approvedClubAthletes.length > 5 && (
+              <div className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[rgba(212,160,23,0.1)] flex items-center justify-center z-0 ml-1">
+                <span className="text-[10px] font-bold text-[var(--ikf-gold)]">+{approvedClubAthletes.length - 5}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </IKFCard>
+    );
+  };
+
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in">
       {deleteTarget && (
@@ -115,102 +215,35 @@ export default function ClubsPage() {
         </div>
       </div>
 
-      {/* CLUB GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredClubs.length > 0 ? (
-          filteredClubs.map(club => {
-            const account = accounts.find(item => item.clubId === club.id || item.id === club.accountId);
-            const approvedClubAthletes = athletes.filter(a =>
-              a.clubId === club.id &&
-              a.registrationStatus === "Active" &&
-              (a.approvalStatus ?? "Approved") === "Approved"
-            );
-            return (
-            <IKFCard 
-              key={club.id} 
-              glowColor="gold"
-              interactive
-              className="relative flex flex-col group overflow-visible"
-            >
-              {/* Top right status badge */}
-              <div className="absolute top-4 right-4 z-10">
-                <IKFBadge 
-                  variant={club.status === "Active" ? "win" : club.status === "Pending" || club.status === "Incomplete" ? "pending" : "cancelled"}
-                  label={club.status === "Active" ? t('active', settings.language) : club.status === "Pending" || club.status === "Incomplete" ? t('pending', settings.language) : club.status}
-                  size="sm" 
-                />
-              </div>
+      {/* PENDING CLUBS */}
+      {pendingClubs.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-[rgba(212,160,23,0.2)]" />
+            <span className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)] flex items-center gap-2">
+              ⏳ Pending Approval — {pendingClubs.length} club{pendingClubs.length !== 1 ? 's' : ''}
+            </span>
+            <div className="h-px flex-1 bg-[rgba(212,160,23,0.2)]" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pendingClubs.map(club => <ClubCard key={club.id} club={club} />)}
+          </div>
+        </div>
+      )}
 
-              {/* Top section */}
-              <div className="mb-6 flex items-start gap-4 pr-24">
-                <ClubLogo club={club} />
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-display text-4xl text-[var(--text-primary)] group-hover:text-[var(--ikf-gold)] transition-colors leading-none mb-2 truncate">
-                    {club.name}
-                  </h3>
-                  <p className="text-sm font-semibold text-[var(--text-secondary)] tracking-wide uppercase truncate">
-                    {club.country}
-                  </p>
-                </div>
-              </div>
-
-              {/* Middle stats */}
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
-                  <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('athletes', settings.language)}</div>
-                    <div className="text-3xl font-display text-white">{approvedClubAthletes.length}</div>
-                </div>
-                <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
-                  <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('confirmed', settings.language)}</div>
-                  <div className="font-mono text-xl text-[var(--status-win)]">{approvedClubAthletes.filter(a => a.weighInStatus === 'Confirmed').length}</div>
-                </div>
-                <div className="flex-1 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg p-3 text-center">
-                  <div className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase mb-1">{t('pending', settings.language)}</div>
-                  <div className="font-mono text-xl text-[var(--status-draw)]">{approvedClubAthletes.filter(a => a.weighInStatus === 'Pending').length}</div>
-                </div>
-              </div>
-
-              <div className="mb-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] p-3">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Club Account</div>
-                {account ? (
-                  <div className="grid grid-cols-2 gap-3 font-mono text-[10px]">
-                    <div><span className="block font-sans text-[9px] uppercase tracking-widest text-[var(--text-muted)]">Login</span><span className="text-white">{account.username}</span></div>
-                    <div><span className="block font-sans text-[9px] uppercase tracking-widest text-[var(--text-muted)]">Password</span><span className="text-white">{account.password}</span></div>
-                  </div>
-                ) : <div className="text-xs text-[var(--text-muted)]">No linked account yet.</div>}
-              </div>
-
-              <div className="flex gap-2 mb-4">
-                {(club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending")) !== "Approved" && (
-                  <IKFButton variant="secondary" size="sm" leftIcon={<CheckCircle2 size={14} />} onClick={(event) => { event.stopPropagation(); approveClub(club.id); }}>
-                    Approve
-                  </IKFButton>
-                )}
-                <IKFButton variant="ghost" size="sm" leftIcon={<Edit2 size={14} />} onClick={(event) => { event.stopPropagation(); router.push(`/clubs/register?edit=${club.id}`); }}>
-                  Edit Club
-                </IKFButton>
-                <IKFButton variant="ghost" size="sm" leftIcon={<Trash2 size={14} />} onClick={(event) => { event.stopPropagation(); setDeleteTarget(club); }}>
-                  Delete
-                </IKFButton>
-              </div>
-
-              {/* Bottom Avatars */}
-              <div className="mt-auto pt-4 border-t border-[var(--border-default)] flex items-center gap-3">
-                <span className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase flex-shrink-0">{t('roster', settings.language)}</span>
-                <div className="flex items-center -space-x-2">
-                  {approvedClubAthletes.slice(0, 5).map(athlete => (
-                    <RosterAthleteAvatar key={athlete.id} athlete={athlete} />
-                  ))}
-                  {approvedClubAthletes.length > 5 && (
-                    <div className="w-8 h-8 rounded-full border-2 border-[var(--bg-card)] bg-[rgba(212,160,23,0.1)] flex items-center justify-center z-0 ml-1">
-                      <span className="text-[10px] font-bold text-[var(--ikf-gold)]">+{approvedClubAthletes.length - 5}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </IKFCard>
-          );
-          })
+      {/* APPROVED CLUBS */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-[rgba(46,204,113,0.2)]" />
+          <span className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--status-win)] flex items-center gap-2">
+            ✅ Approved Clubs — {approvedClubs.length} club{approvedClubs.length !== 1 ? 's' : ''}
+          </span>
+          <div className="h-px flex-1 bg-[rgba(46,204,113,0.2)]" />
+        </div>
+        {approvedClubs.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {approvedClubs.map(club => <ClubCard key={club.id} club={club} />)}
+          </div>
         ) : (
           <div className="col-span-full">
             <IKFEmptyState 

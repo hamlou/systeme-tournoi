@@ -35,9 +35,11 @@ export default function RoundManagementPage() {
 
   const [woskTimeLeft, setWoskTimeLeft] = useState(10);
   const [woskCorner, setWoskCorner] = useState<"RED" | "BLUE" | null>(null);
+  const [doctorCorner, setDoctorCorner] = useState<"RED" | "BLUE" | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(60);
   const [resumeMode, setResumeMode] = useState<"round" | "rest" | null>(null);
   const [firebaseSyncing, setFirebaseSyncing] = useState(false);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const fightCountdownPlayedRef = useRef("");
   const breakCountdownPlayedRef = useRef("");
@@ -110,6 +112,7 @@ export default function RoundManagementPage() {
       maxTime,
       woskTimeLeft: overrides?.woskTimeLeft ?? woskTimeLeft,
       woskCorner: overrides?.woskCorner !== undefined ? overrides.woskCorner : woskCorner,
+      doctorCorner: overrides?.doctorCorner !== undefined ? overrides.doctorCorner : doctorCorner,
       status: activeMatch.status,
         category: formatMatchCategory(activeMatch.ageGroup, activeMatch.weightCategory, activeMatch.gender),
       matNumber: activeMatch.matNumber,
@@ -245,6 +248,7 @@ export default function RoundManagementPage() {
         maxTime: getRoundDuration(settings.roundDurations, m.ageGroup),
         woskTimeLeft: 10,
         woskCorner: null,
+        doctorCorner: null,
         status: "in-progress",
         category: formatMatchCategory(m.ageGroup, m.weightCategory, m.gender),
         matNumber: m.matNumber,
@@ -280,12 +284,13 @@ export default function RoundManagementPage() {
     syncToFirebase({ timerMode: "passivity", woskTimeLeft: 10, woskCorner: corner });
   };
 
-  const triggerMedical = () => {
+  const triggerMedical = (corner: "RED" | "BLUE") => {
     if (!activeMatch) return;
-    setResumeMode(timerMode === "rest" ? "rest" : "round");
+    setResumeMode(timerMode === "rest" ? "rest" : timerMode === "round" ? "round" : resumeMode);
     setTimerMode("medical");
-    addRoundEvent({ type: "doctor", details: `Match #${activeMatch.matchNumber} — Doctor requested to Mat` });
-    syncToFirebase({ timerMode: "medical" });
+    setDoctorCorner(corner);
+    addRoundEvent({ type: "doctor", details: `Match #${activeMatch.matchNumber} — Doctor requested to ${corner === "RED" ? activeMatch.redCornerName : activeMatch.blueCornerName}` });
+    syncToFirebase({ timerMode: "medical", doctorCorner: corner });
   };
 
   const endRound = () => {
@@ -337,7 +342,10 @@ export default function RoundManagementPage() {
   };
 
   const stopMatch = () => {
-    if (activeMatch) addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} — Match stopped by table official` });
+    if (activeMatch) {
+      addRoundEvent({ type: "match-end", details: `Match #${activeMatch.matchNumber} — Match stopped by table official` });
+      updateMatch(activeMatch.id, { status: "completed" });
+    }
     setTimerMode("idle");
     setResumeMode(null);
     setActiveMatch(null);
@@ -368,7 +376,8 @@ export default function RoundManagementPage() {
     setTimerMode(resumeMode ?? "round");
     addRoundEvent({ type: "round-start", details: `Match #${activeMatch.matchNumber} — Timer resumed` });
     setResumeMode(null);
-    syncToFirebase({ timerMode: resumeMode ?? "round" });
+    setDoctorCorner(null);
+    syncToFirebase({ timerMode: resumeMode ?? "round", doctorCorner: null });
   };
 
   // Status mapping
@@ -389,6 +398,20 @@ export default function RoundManagementPage() {
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
+      {showStopConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--ikf-red)] rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
+            <h2 className="font-display text-2xl text-white mb-2">Stop Match?</h2>
+            <p className="text-[var(--text-secondary)] text-sm mb-6">
+              Are you sure you want to stop this match? This will mark the match as completed and no further actions can be taken.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowStopConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-[var(--border-default)] text-white font-bold hover:bg-[rgba(255,255,255,0.05)] transition-all">Cancel</button>
+              <button onClick={() => { setShowStopConfirm(false); stopMatch(); }} className="flex-1 h-12 rounded-xl bg-[var(--ikf-red)] text-white font-bold hover:bg-[#a00d25] transition-all">Stop Match</button>
+            </div>
+          </div>
+        </div>
+      )}
       <UpcomingMatchAlert matches={upcomingMatches} />
       <PageHeader 
         category={t('live', settings.language)}
@@ -576,35 +599,29 @@ export default function RoundManagementPage() {
                   <Pause size={32} fill="currentColor" /> {t('pause', settings.language)}
                 </button>
                 <button 
-                  onClick={stopMatch}
-                  className="flex-1 h-20 bg-[rgba(200,16,46,0.1)] border-2 border-[var(--ikf-red)] hover:bg-[var(--ikf-red)] rounded-xl font-display text-3xl tracking-wider text-[var(--ikf-red)] hover:text-white flex items-center justify-center gap-4 transition-all"
+                  onClick={() => setShowStopConfirm(true)}
+                  disabled={!activeMatch}
+                  className="w-full mt-4 h-14 bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:bg-[rgba(200,16,46,0.1)] hover:border-[var(--ikf-red)] hover:text-[var(--ikf-red)] rounded-xl font-bold text-sm tracking-widest text-[var(--text-secondary)] flex items-center justify-center gap-2 transition-all disabled:opacity-30"
                 >
-                  <Square size={32} fill="currentColor" /> {t('stop_match', settings.language)}
+                  <Square size={16} fill="currentColor" /> {t('stop_match', settings.language)}
                 </button>
               </div>
 
               {/* Row 2 - Secondary Controls */}
               <div className="flex gap-4">
                 <button 
-                  onClick={() => triggerWosk("RED")}
+                  onClick={() => triggerMedical("RED")}
                   disabled={displayStatus === t('status_medical', settings.language) || displayStatus === t('status_rest', settings.language) || displayStatus === t('status_idle', settings.language)}
                   className="flex-1 h-16 border-2 border-dashed border-[var(--ikf-red)] hover:bg-[rgba(200,16,46,0.1)] rounded-xl font-bold text-sm tracking-widest text-[var(--ikf-red)] flex items-center justify-center gap-2 transition-all disabled:opacity-30"
                 >
-                  <AlertTriangle size={16} /> {t('wosk_stop_red', settings.language)}
+                  <Activity size={16} /> {t('doctor', settings.language)} - RED
                 </button>
                 <button 
-                  onClick={() => triggerWosk("BLUE")}
+                  onClick={() => triggerMedical("BLUE")}
                   disabled={displayStatus === t('status_medical', settings.language) || displayStatus === t('status_rest', settings.language) || displayStatus === t('status_idle', settings.language)}
                   className="flex-1 h-16 border-2 border-dashed border-[var(--corner-blue)] hover:bg-[rgba(0,102,204,0.1)] rounded-xl font-bold text-sm tracking-widest text-[var(--corner-blue)] flex items-center justify-center gap-2 transition-all disabled:opacity-30"
                 >
-                  <AlertTriangle size={16} /> {t('wosk_stop_blue', settings.language)}
-                </button>
-                <button 
-                  onClick={triggerMedical}
-                  disabled={displayStatus === t('status_medical', settings.language) || displayStatus === t('status_rest', settings.language) || displayStatus === t('status_idle', settings.language)}
-                  className="flex-1 h-16 border-2 border-dashed border-white hover:bg-[rgba(255,255,255,0.1)] rounded-xl font-bold text-sm tracking-widest text-white flex items-center justify-center gap-2 transition-all disabled:opacity-30"
-                >
-                  <Activity size={16} /> {t('doctor', settings.language)}
+                  <Activity size={16} /> {t('doctor', settings.language)} - BLUE
                 </button>
                 <button 
                   onClick={endRound}

@@ -737,42 +737,17 @@ export default function JudgeTabletView() {
               ))}
             </div>
 
-            <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-              <div className="rounded-3xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.06)] p-5">
-                <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Table chief actions</div>
-                <div className="mt-4 grid gap-3">
-                  {TABLE_CHIEF_ACTIONS.filter(action => !action.cornerRequired).map(action => (
-                    <CentralActionButton
-                      key={action.type}
-                      label={action.label}
-                      disabled={!canAct}
-                      onClick={() => persistEvent(action.type, action.label)}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-5">
-                <label className="block">
-                  <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.35em] text-[var(--text-muted)]">Table chief note</span>
-                  <textarea
-                    value={noteText}
-                    onChange={(event) => setNoteText(event.target.value)}
+            <div className="rounded-3xl border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.06)] p-5">
+              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)]">Table chief actions</div>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {TABLE_CHIEF_ACTIONS.filter(action => !action.cornerRequired).map(action => (
+                  <CentralActionButton
+                    key={action.type}
+                    label={action.label}
                     disabled={!canAct}
-                    className="min-h-32 w-full resize-y rounded-2xl border border-[rgba(255,255,255,0.1)] bg-black/35 p-4 text-sm font-semibold text-white outline-none disabled:opacity-40 focus:border-[var(--ikf-gold)]"
-                    placeholder="Write the note that the admin will read in Instant Reports..."
+                    onClick={() => persistEvent(action.type, action.label)}
                   />
-                </label>
-                <button
-                  type="button"
-                  disabled={!canAct || noteText.trim().length < 2}
-                  onClick={() => {
-                    persistEvent("note", "Table chief note", undefined, noteText.trim());
-                    setNoteText("");
-                  }}
-                  className="mt-4 h-14 w-full rounded-2xl bg-[var(--ikf-gold)] text-sm font-black uppercase tracking-[0.2em] text-black transition-all hover:bg-[#f0c84c] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Save Note
-                </button>
+                ))}
               </div>
             </div>
           </section>
@@ -782,8 +757,34 @@ export default function JudgeTabletView() {
           </div>
         )}
 
+        {activeMatch && (isCornerReferee || isTableChief) && (
+          <section className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-5 mt-5">
+            <label className="block">
+              <span className="mb-2 block text-[10px] font-black uppercase tracking-[0.35em] text-[var(--text-muted)]">Official Note (Optional)</span>
+              <textarea
+                value={noteText}
+                onChange={(event) => setNoteText(event.target.value)}
+                disabled={!canAct}
+                className="min-h-24 w-full resize-y rounded-2xl border border-[rgba(255,255,255,0.1)] bg-black/35 p-4 text-sm font-semibold text-white outline-none disabled:opacity-40 focus:border-[var(--ikf-gold)]"
+                placeholder="Write an optional note that the admin will read in the Instant Reports area..."
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!canAct || noteText.trim().length < 2}
+              onClick={() => {
+                persistEvent("note", "Official note", undefined, noteText.trim());
+                setNoteText("");
+              }}
+              className="mt-4 h-14 w-full rounded-2xl bg-[rgba(255,255,255,0.05)] text-sm font-black uppercase tracking-[0.2em] text-white transition-all hover:bg-[var(--ikf-gold)] hover:text-black disabled:cursor-not-allowed disabled:opacity-40 border border-[rgba(255,255,255,0.1)]"
+            >
+              Save Note
+            </button>
+          </section>
+        )}
+
         {activeMatch && (
-          <section className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-5">
+          <section className="rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.035)] p-5 mt-5">
             <div className="mb-4 flex items-center justify-between gap-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--text-muted)]">Saved actions for this match</div>

@@ -63,8 +63,9 @@ function AthleteModal({ athlete, onClose }: { athlete: Athlete; onClose: () => v
           {[
             [t('license_number', settings.language), athlete.licenseNumber], [t('dob', settings.language), athlete.dob],
             [t('gender', settings.language), athlete.gender], ["National Country", athlete.country],
-            [t('club', settings.language), athlete.clubName], [t('age_group', settings.language), athlete.ageGroup],
-            [t('weight_category', settings.language), athlete.weightCategory], [t('license_type', settings.language), athlete.licenseType],
+            ["National ID", athlete.nationalId], [t('club', settings.language), athlete.clubName], 
+            [t('age_group', settings.language), athlete.ageGroup], [t('weight_category', settings.language), athlete.weightCategory], 
+            [t('license_type', settings.language), athlete.licenseType],
             [t('medical_clearance', settings.language), athlete.medicalClearance ? "✅ " + t('confirmed', settings.language) : "❌ " + t('pending', settings.language)],
           ].map(([label, val]) => (
             <div key={label as string}>
@@ -221,8 +222,21 @@ export default function AthletesPage() {
     }),
   ], [accounts, approveAthlete, router, settings.language]);
 
-  const table = useReactTable({
-    data: filteredData, columns,
+  const pendingData = useMemo(() => filteredData.filter(a => (a.approvalStatus ?? (a.registrationStatus === "Active" ? "Approved" : "Pending")) !== "Approved"), [filteredData]);
+  const approvedData = useMemo(() => filteredData.filter(a => (a.approvalStatus ?? (a.registrationStatus === "Active" ? "Approved" : "Pending")) === "Approved"), [filteredData]);
+
+  const tablePending = useReactTable({
+    data: pendingData, columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    state: { globalFilter },
+    onGlobalFilterChange: setGlobalFilter,
+    initialState: { pagination: { pageSize: 15 } },
+  });
+
+  const tableApproved = useReactTable({
+    data: approvedData, columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -275,59 +289,139 @@ export default function AthletesPage() {
         </div>
       </div>
 
-      {/* TABLE */}
-      <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] overflow-hidden shadow-card">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-[var(--bg-elevated)] border-b border-[var(--border-default)]">
-              {table.getHeaderGroups().map(hg => (
-                <tr key={hg.id}>
-                  {hg.headers.map(h => (
-                    <th key={h.id} className="px-4 py-3.5 text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)] whitespace-nowrap">
-                      {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
-                    </th>
-                  ))}
-                </tr>
-              ))}
-            </thead>
-            <tbody>
-              {table.getRowModel().rows.length > 0 ? (
-                table.getRowModel().rows.map(row => (
-                  <tr key={row.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[rgba(200,16,46,0.06)] transition-colors group">
-                    {row.getVisibleCells().map(cell => (
-                      <td key={cell.id} className="px-4 py-3.5 whitespace-nowrap">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={9} className="p-0">
-                    <IKFEmptyState icon={<User size={48} />} title={t('no_athletes_found', settings.language)}
-                      subtitle={t('no_athletes_match', settings.language)}
-                      actionLabel={t('register_first_athlete', settings.language)} onAction={() => router.push('/athletes/register')} />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* TABLES */}
+      <div className="space-y-12">
+        {pendingData.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-[rgba(212,160,23,0.2)]" />
+              <span className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--ikf-gold)] flex items-center gap-2">
+                ⏳ Pending Approval — {pendingData.length} athlete{pendingData.length !== 1 ? 's' : ''}
+              </span>
+              <div className="h-px flex-1 bg-[rgba(212,160,23,0.2)]" />
+            </div>
 
-        <div className="p-4 border-t border-[var(--border-default)] flex items-center justify-between bg-[var(--bg-card)]">
-          <span className="text-sm text-[var(--text-muted)] font-medium">
-            {t('showing', settings.language)} <span className="text-[var(--text-primary)]">{table.getRowModel().rows.length}</span> {t('of', settings.language)}{" "}
-            <span className="text-[var(--text-primary)]">{filteredData.length}</span> {t('athletes_lower', settings.language)}
-          </span>
-          <div className="flex gap-2">
-            <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
-              className="px-4 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-medium disabled:opacity-30 hover:bg-[rgba(255,255,255,0.05)] hover:text-white text-[var(--text-secondary)] transition-colors">
-              {t('previous', settings.language)}
-            </button>
-            <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
-              className="px-4 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-medium disabled:opacity-30 hover:bg-[rgba(255,255,255,0.05)] hover:text-white text-[var(--text-secondary)] transition-colors">
-              {t('next', settings.language)}
-            </button>
+            <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] overflow-hidden shadow-card">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-[var(--bg-elevated)] border-b border-[var(--border-default)]">
+                    {tablePending.getHeaderGroups().map(hg => (
+                      <tr key={hg.id}>
+                        {hg.headers.map(h => (
+                          <th key={h.id} className="px-4 py-3.5 text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)] whitespace-nowrap">
+                            {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                          </th>
+                        ))}
+                      </tr>
+                    ))}
+                  </thead>
+                  <tbody>
+                    {tablePending.getRowModel().rows.length > 0 ? (
+                      tablePending.getRowModel().rows.map(row => (
+                        <tr key={row.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[rgba(200,16,46,0.06)] transition-colors group">
+                          {row.getVisibleCells().map(cell => (
+                            <td key={cell.id} className="px-4 py-3.5 whitespace-nowrap">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={9} className="p-0">
+                          <IKFEmptyState icon={<User size={48} />} title={t('no_athletes_found', settings.language)}
+                            subtitle={t('no_athletes_match', settings.language)}
+                            actionLabel={t('register_first_athlete', settings.language)} onAction={() => router.push('/athletes/register')} />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-4 border-t border-[var(--border-default)] flex items-center justify-between bg-[var(--bg-card)]">
+                <span className="text-sm text-[var(--text-muted)] font-medium">
+                  {t('showing', settings.language)} <span className="text-[var(--text-primary)]">{tablePending.getRowModel().rows.length}</span> {t('of', settings.language)}{" "}
+                  <span className="text-[var(--text-primary)]">{pendingData.length}</span> {t('athletes_lower', settings.language)}
+                </span>
+                <div className="flex gap-2">
+                  <button onClick={() => tablePending.previousPage()} disabled={!tablePending.getCanPreviousPage()}
+                    className="px-4 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-medium disabled:opacity-30 hover:bg-[rgba(255,255,255,0.05)] hover:text-white text-[var(--text-secondary)] transition-colors">
+                    {t('previous', settings.language)}
+                  </button>
+                  <button onClick={() => tablePending.nextPage()} disabled={!tablePending.getCanNextPage()}
+                    className="px-4 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-medium disabled:opacity-30 hover:bg-[rgba(255,255,255,0.05)] hover:text-white text-[var(--text-secondary)] transition-colors">
+                    {t('next', settings.language)}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-[rgba(46,204,113,0.2)]" />
+            <span className="text-[10px] font-black uppercase tracking-[0.35em] text-[var(--status-win)] flex items-center gap-2">
+              ✅ Approved Athletes — {approvedData.length} athlete{approvedData.length !== 1 ? 's' : ''}
+            </span>
+            <div className="h-px flex-1 bg-[rgba(46,204,113,0.2)]" />
+          </div>
+
+          <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border-default)] overflow-hidden shadow-card">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-[var(--bg-elevated)] border-b border-[var(--border-default)]">
+                  {tableApproved.getHeaderGroups().map(hg => (
+                    <tr key={hg.id}>
+                      {hg.headers.map(h => (
+                        <th key={h.id} className="px-4 py-3.5 text-[10px] uppercase tracking-wider font-semibold text-[var(--text-muted)] whitespace-nowrap">
+                          {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                        </th>
+                      ))}
+                    </tr>
+                  ))}
+                </thead>
+                <tbody>
+                  {tableApproved.getRowModel().rows.length > 0 ? (
+                    tableApproved.getRowModel().rows.map(row => (
+                      <tr key={row.id} className="border-b border-[rgba(255,255,255,0.03)] hover:bg-[rgba(200,16,46,0.06)] transition-colors group">
+                        {row.getVisibleCells().map(cell => (
+                          <td key={cell.id} className="px-4 py-3.5 whitespace-nowrap">
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={9} className="p-0">
+                        <IKFEmptyState icon={<User size={48} />} title={t('no_athletes_found', settings.language)}
+                          subtitle={t('no_athletes_match', settings.language)}
+                          actionLabel={t('register_first_athlete', settings.language)} onAction={() => router.push('/athletes/register')} />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 border-t border-[var(--border-default)] flex items-center justify-between bg-[var(--bg-card)]">
+              <span className="text-sm text-[var(--text-muted)] font-medium">
+                {t('showing', settings.language)} <span className="text-[var(--text-primary)]">{tableApproved.getRowModel().rows.length}</span> {t('of', settings.language)}{" "}
+                <span className="text-[var(--text-primary)]">{approvedData.length}</span> {t('athletes_lower', settings.language)}
+              </span>
+              <div className="flex gap-2">
+                <button onClick={() => tableApproved.previousPage()} disabled={!tableApproved.getCanPreviousPage()}
+                  className="px-4 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-medium disabled:opacity-30 hover:bg-[rgba(255,255,255,0.05)] hover:text-white text-[var(--text-secondary)] transition-colors">
+                  {t('previous', settings.language)}
+                </button>
+                <button onClick={() => tableApproved.nextPage()} disabled={!tableApproved.getCanNextPage()}
+                  className="px-4 py-1.5 rounded bg-[var(--bg-elevated)] border border-[var(--border-default)] text-sm font-medium disabled:opacity-30 hover:bg-[rgba(255,255,255,0.05)] hover:text-white text-[var(--text-secondary)] transition-colors">
+                  {t('next', settings.language)}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

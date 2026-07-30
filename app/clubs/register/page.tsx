@@ -93,7 +93,7 @@ function RegisterClubContent() {
     try {
       const { url, storedRemotely } = await uploadProfileImage(file, { maxSize: 640 });
       setLogoUrl(url);
-      toast.success(storedRemotely ? "Logo uploaded successfully" : "Logo saved directly to the database");
+      toast.success(storedRemotely ? "Logo uploaded successfully" : "Logo saved to database");
     } catch {
       toast.error("Logo upload failed. Please try again.");
     } finally {

@@ -66,9 +66,10 @@ interface CornerCardProps {
   redCards?: number;
   athletePhotoUrl?: string;
   clubLogoUrl?: string;
+  showMedicalOverlay?: boolean;
 }
 
-function CornerCard({ side, name, club, country, score, label, yellowCards = 0, redCards = 0, athletePhotoUrl, clubLogoUrl }: CornerCardProps) {
+function CornerCard({ side, name, club, country, score, label, yellowCards = 0, redCards = 0, athletePhotoUrl, clubLogoUrl, showMedicalOverlay }: CornerCardProps) {
   const isRed = side === "RED";
   return (
     <div
@@ -102,31 +103,38 @@ function CornerCard({ side, name, club, country, score, label, yellowCards = 0, 
           {isRed ? "🔴" : "🔵"} {label.toUpperCase()}
         </div>
 
-        {/* Athlete and club images */}
-        <div className={`mb-5 flex items-center gap-6 ${isRed ? "" : "flex-row-reverse"}`}>
-          <div className="relative h-52 w-40 overflow-hidden rounded-[2rem] border border-white/20 bg-black/20 shadow-2xl">
-            {athletePhotoUrl ? (
-              <Image src={athletePhotoUrl} alt={`${name} profile photo`} fill sizes="180px" className="object-contain drop-shadow-[0_22px_34px_rgba(0,0,0,0.65)]" unoptimized />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center font-display text-4xl text-white/35">{name.slice(0, 1) || "?"}</div>
-            )}
-          </div>
-          <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-white/15 bg-black/35">
-            {clubLogoUrl ? (
-              <Image src={clubLogoUrl} alt={`${club || "Club"} logo`} fill sizes="96px" className="object-cover" unoptimized />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs font-black uppercase tracking-widest text-white/30">Club</div>
-            )}
-          </div>
+        {/* Athlete Image */}
+        <div className={`mb-5 relative h-52 w-40 overflow-hidden rounded-[2rem] border border-white/20 bg-black/20 shadow-2xl`}>
+          {athletePhotoUrl ? (
+            <Image src={athletePhotoUrl} alt={`${name} profile photo`} fill sizes="180px" className="object-contain drop-shadow-[0_22px_34px_rgba(0,0,0,0.65)]" unoptimized />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center font-display text-4xl text-white/35">{name.slice(0, 1) || "?"}</div>
+          )}
+          {showMedicalOverlay && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-blue-900/60 backdrop-blur-[2px]">
+              <div className="animate-pulse rounded-full bg-blue-500/30 p-4 shadow-[0_0_30px_rgba(59,130,246,0.8)]">
+                <svg className="h-16 w-16 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Fighter Name */}
-        <h1
-          className="font-display leading-none mb-3 text-white"
-          style={{ fontSize: "clamp(48px, 5.5vw, 96px)" }}
-        >
-          {name}
-        </h1>
+        {/* Fighter Name & Club Logo */}
+        <div className={`flex items-center gap-4 mb-3 ${isRed ? "" : "flex-row-reverse"}`}>
+          <h1
+            className="font-display leading-none text-white"
+            style={{ fontSize: "clamp(48px, 5.5vw, 96px)" }}
+          >
+            {name}
+          </h1>
+          {clubLogoUrl && (
+            <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black/35 shadow-lg">
+              <Image src={clubLogoUrl} alt={`${club || "Club"} logo`} fill sizes="64px" className="object-cover" unoptimized />
+            </div>
+          )}
+        </div>
 
         {/* Club + Country */}
         <p className="text-2xl font-semibold text-[rgba(255,255,255,0.5)] mb-8">
@@ -290,6 +298,7 @@ export default function TVDisplay() {
   const liveRestTimer = derivedTimers?.restTimer ?? selectedFbState?.restTimer ?? 60;
   const liveWoskTimeLeft = derivedTimers?.woskTimeLeft ?? selectedFbState?.woskTimeLeft ?? 10;
   const liveWoskCorner = selectedFbState?.woskCorner ?? null;
+  const liveDoctorCorner = selectedFbState?.doctorCorner ?? null;
   const liveMaxTime = selectedFbState?.maxTime ?? displayMatch?.roundDurationSeconds ?? 180;
   const liveTotalRounds = selectedFbState?.totalRounds ?? displayMatch?.totalRounds ?? 2;
 
@@ -416,10 +425,8 @@ export default function TVDisplay() {
 
   const actionBanner = liveTimerMode === "passivity" && liveWoskCorner
     ? { label: `WOSK STOP - ${liveWoskCorner}`, color: "#f1c40f" }
-    : liveTimerMode === "medical"
-      ? { label: "DOCTOR / MEDICAL PAUSE", color: "#0066cc" }
-      : liveTimerMode === "rest"
-        ? { label: "REST PERIOD", color: "var(--ikf-gold)" }
+    : liveTimerMode === "rest"
+      ? { label: "REST PERIOD", color: "var(--ikf-gold)" }
         : liveTimerMode === "idle" && displayMatch && liveRoundTimer < liveMaxTime
           ? { label: "MATCH PAUSED", color: "rgba(255,255,255,0.8)" }
           : null;
@@ -790,6 +797,7 @@ export default function TVDisplay() {
           redCards={redCards}
           athletePhotoUrl={redAthlete?.photoUrl}
           clubLogoUrl={redClub?.logoUrl}
+          showMedicalOverlay={liveTimerMode === "medical" && liveDoctorCorner === "RED"}
         />
 
         {/* CENTER: Timer + VS */}
@@ -853,6 +861,7 @@ export default function TVDisplay() {
           redCards={blueCards}
           athletePhotoUrl={blueAthlete?.photoUrl}
           clubLogoUrl={blueClub?.logoUrl}
+          showMedicalOverlay={liveTimerMode === "medical" && liveDoctorCorner === "BLUE"}
         />
       </div>
 
@@ -1009,6 +1018,11 @@ export default function TVDisplay() {
                 <div className="mt-1 text-lg font-bold tracking-[0.18em] uppercase" style={{ color: latestCard.corner === "RED" ? "var(--ikf-red)" : "var(--corner-blue)" }}>
                   {latestCard.corner} CORNER
                 </div>
+                {(latestCard as StoredJudgingEvent).officialName && (
+                  <div className="mt-1.5 text-xs font-bold tracking-[0.22em] uppercase text-white/50">
+                    by {(latestCard as StoredJudgingEvent).officialName}
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -1051,6 +1065,11 @@ export default function TVDisplay() {
                 <div className="mt-2 text-xl font-black uppercase tracking-[0.22em]" style={{ color: latestMethod.corner === "RED" ? "#ffd4dc" : latestMethod.corner === "BLUE" ? "#cfe5ff" : "#111" }}>
                   {latestMethod.corner ? `${latestMethod.corner} corner` : "Draw call"}
                 </div>
+                {(latestMethod as StoredJudgingEvent).officialName && (
+                  <div className="mt-1 text-sm font-bold tracking-[0.24em] uppercase text-white/55">
+                    called by {(latestMethod as StoredJudgingEvent).officialName}
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>

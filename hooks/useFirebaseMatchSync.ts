@@ -26,6 +26,7 @@ export interface FirebaseMatchState {
   maxTime: number;
   woskTimeLeft: number;
   woskCorner: string | null;
+  doctorCorner?: string | null;
   status: string;
   category: string;
   matNumber: number;

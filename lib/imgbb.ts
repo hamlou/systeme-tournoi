@@ -61,7 +61,12 @@ async function removeImageBackground(file: File) {
   return new File([blob], file.name.replace(/\.[^.]+$/, ".png"), { type: "image/png" });
 }
 
-async function resizeImageToDataUrl(file: File, maxSize: number, quality: number, format: "image/jpeg" | "image/png" = "image/jpeg") {
+async function resizeImageToDataUrl(
+  file: File,
+  maxSize: number,
+  quality: number,
+  format: "image/jpeg" | "image/png" = "image/jpeg"
+) {
   if (file.type === "image/svg+xml") return fileToDataUrl(file);
 
   return new Promise<string>((resolve, reject) => {
@@ -92,29 +97,62 @@ async function resizeImageToDataUrl(file: File, maxSize: number, quality: number
   });
 }
 
-export async function uploadProfileImage(file: File, options?: { maxSize?: number; removeBackground?: boolean }) {
+/**
+ * Upload profile image with optional background removal.
+ *
+ * FAST PATH (always): Resizes and uploads the original photo immediately (~2–4 s).
+ * BG REMOVAL (async): If removeBackground=true AND onUpgradeUrl is provided,
+ *   the WASM model loads in the background after the fast upload completes.
+ *   When ready, onUpgradeUrl is called with the bg-removed photo URL.
+ *   This keeps the UX instant while still delivering the upgraded photo later.
+ */
+export async function uploadProfileImage(
+  file: File,
+  options?: {
+    maxSize?: number;
+    removeBackground?: boolean;
+    /** Called asynchronously when bg-removed version is ready */
+    onUpgradeUrl?: (url: string) => void;
+  }
+) {
   if (!file.type.startsWith("image/")) {
     throw new Error("Please choose an image file");
   }
 
-  let sourceFile = file;
-  let backgroundRemoved = false;
-  if (options?.removeBackground) {
-    try {
-      sourceFile = await removeImageBackground(file);
-      backgroundRemoved = true;
-    } catch (error) {
-      console.warn("[background-removal] Falling back to original athlete photo", error);
-    }
-  }
+  // ── FAST PATH: resize + upload original immediately ───────────────────────
+  const dataUrl = await resizeImageToDataUrl(file, options?.maxSize ?? 640, 0.82, "image/jpeg");
+  const uploadFile = dataUrlToFile(dataUrl, file.name.replace(/\.[^.]+$/, ".jpg"));
 
-  const outputFormat = backgroundRemoved ? "image/png" : "image/jpeg";
-  const dataUrl = await resizeImageToDataUrl(sourceFile, options?.maxSize ?? 640, 0.82, outputFormat);
-  const uploadFile = dataUrlToFile(dataUrl, sourceFile.name.replace(/\.[^.]+$/, backgroundRemoved ? ".png" : ".jpg"));
-
+  let url: string;
+  let storedRemotely: boolean;
   try {
-    return { url: await uploadImageToImgBB(uploadFile), storedRemotely: true, backgroundRemoved };
+    url = await uploadImageToImgBB(uploadFile);
+    storedRemotely = true;
   } catch {
-    return { url: dataUrl, storedRemotely: false, backgroundRemoved };
+    url = dataUrl;
+    storedRemotely = false;
   }
+
+  // ── BACKGROUND REMOVAL (fire-and-forget after fast upload) ────────────────
+  if (options?.removeBackground && options.onUpgradeUrl) {
+    const upgradeCallback = options.onUpgradeUrl;
+    (async () => {
+      try {
+        const bgRemovedFile = await removeImageBackground(file);
+        const bgDataUrl = await resizeImageToDataUrl(bgRemovedFile, options?.maxSize ?? 640, 0.9, "image/png");
+        const bgUploadFile = dataUrlToFile(bgDataUrl, file.name.replace(/\.[^.]+$/, "-nobg.png"));
+        let bgUrl: string;
+        try {
+          bgUrl = await uploadImageToImgBB(bgUploadFile);
+        } catch {
+          bgUrl = bgDataUrl;
+        }
+        upgradeCallback(bgUrl);
+      } catch (error) {
+        console.warn("[background-removal] Background removal failed, keeping original photo", error);
+      }
+    })();
+  }
+
+  return { url, storedRemotely, backgroundRemoved: false };
 }

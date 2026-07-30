@@ -175,9 +175,9 @@ export function Sidebar() {
       </nav>
 
       {/* ── User Profile Bottom ── */}
-      <div className="p-2 sm:p-4 border-t border-[var(--border-default)] bg-[rgba(0,0,0,0.1)] flex items-center justify-center lg:justify-between gap-3">
+      <div className="p-2 sm:p-4 border-t border-[var(--border-default)] bg-[rgba(0,0,0,0.1)] flex flex-col lg:flex-row items-center justify-center lg:justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="relative flex-shrink-0">
+          <div className="relative flex-shrink-0 hidden lg:block">
             <div className="w-9 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-default)] flex items-center justify-center">
               <Shield size={16} className="text-[var(--text-secondary)]" />
             </div>

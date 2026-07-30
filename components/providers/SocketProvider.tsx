@@ -261,9 +261,16 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
         : store.getState().accounts;
 
       // Sync each collection into the Zustand store
+      const safeSetState = (key: string, newVal: any) => {
+        const currentVal = (store.getState() as any)[key];
+        if (JSON.stringify(currentVal) !== JSON.stringify(newVal)) {
+          store.setState({ [key]: newVal });
+        }
+      };
+
       if (data.settings) {
         const settings = data.settings as TournamentSettings;
-        store.setState({ settings: { ...settings, championshipName: settings.championshipName ?? DEFAULT_CHAMPIONSHIP } });
+        safeSetState('settings', { ...settings, championshipName: settings.championshipName ?? DEFAULT_CHAMPIONSHIP });
       }
       const rawAthletes = toArray<Athlete>(data.athletes);
       if (rawAthletes.length > 0) {
@@ -287,7 +294,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             registrationStatus: athlete.registrationStatus ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
           };
         });
-        store.setState({ athletes: normalizedAthletes });
+        safeSetState('athletes', normalizedAthletes);
       }
       const rawClubs = toArray<Club>(data.clubs);
       if (rawClubs.length > 0) {
@@ -310,31 +317,29 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             status: club.status ?? (approvalStatus === "Approved" ? "Active" : "Pending"),
           };
         });
-        store.setState({ clubs: normalizedClubs });
+        safeSetState('clubs', normalizedClubs);
       }
       const rawWeighin = toArray<WeighinRecord>(data.weighinRecords);
       if (rawWeighin.length > 0) {
-        store.setState({ weighinRecords: rawWeighin });
+        safeSetState('weighinRecords', rawWeighin);
       }
       const rawMatches = toArray<Match>(data.matches);
       if (rawMatches.length > 0) {
-        store.setState({
-          matches: rawMatches.map(match => {
-            const normalized = normalizeMatch(match);
-            const shouldUseTableChief = !normalized.assignedRefereeId || legacyTableChiefIds.has(normalized.assignedRefereeId);
-            return {
-              ...normalized,
-              assignedRefereeId: shouldUseTableChief ? TABLE_CHIEF_ASSIGNMENT_ID : normalized.assignedRefereeId,
-            };
-          }),
-        });
+        safeSetState('matches', rawMatches.map(match => {
+          const normalized = normalizeMatch(match);
+          const shouldUseTableChief = !normalized.assignedRefereeId || legacyTableChiefIds.has(normalized.assignedRefereeId);
+          return {
+            ...normalized,
+            assignedRefereeId: shouldUseTableChief ? TABLE_CHIEF_ASSIGNMENT_ID : normalized.assignedRefereeId,
+          };
+        }));
       }
       const rawBrackets = toArray<Bracket>(data.brackets);
       if (rawBrackets.length > 0) {
-        store.setState({ brackets: rawBrackets.map(bracket => ({
+        safeSetState('brackets', rawBrackets.map(bracket => ({
           ...bracket,
           weightCategory: normalizeWeightCategory(bracket.weightCategory),
-        })) });
+        })));
       }
       const rawRefereeList = toArray<LegacyReferee>(data.referees);
       if (rawRefereeList.length > 0) {
@@ -359,36 +364,36 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
             approvalStatus,
           };
         });
-        store.setState({ referees: normalizedReferees });
+        safeSetState('referees', normalizedReferees);
       }
       if (toArray(data.accounts).length > 0 || rawAthletes.length > 0 || rawClubs.length > 0 || rawRefereeList.length > 0) {
-        store.setState({ accounts: normalizedAccounts });
+        safeSetState('accounts', normalizedAccounts);
       }
       const rawJudgeScores = toArray<JudgeScore>(data.judgeScores);
       if (rawJudgeScores.length > 0) {
-        store.setState({ judgeScores: rawJudgeScores });
+        safeSetState('judgeScores', rawJudgeScores);
       }
       if (data.events) {
         const events = toArray<RoundEvent>(data.events);
-        store.setState({ roundEvents: events });
+        safeSetState('roundEvents', events);
       }
       if (data.judging) {
         const { scores, events } = flattenJudgingData(data.judging);
-        store.setState(state => ({
-          judgeScores: mergeByKey(
-            state.judgeScores,
-            scores,
-            score => `${score.matchId}-${score.judgeId}-${score.round}`,
-          ),
-          roundEvents: mergeByKey(
-            state.roundEvents,
-            events,
-            event => event.id ?? `${event.timestamp}-${event.type}-${event.corner ?? ""}-${event.details}`,
-          ),
-        }));
+        const newJudgeScores = mergeByKey(
+          store.getState().judgeScores,
+          scores,
+          score => `${score.matchId}-${score.judgeId}-${score.round}`
+        );
+        const newRoundEvents = mergeByKey(
+          store.getState().roundEvents,
+          events,
+          event => event.id ?? `${event.timestamp}-${event.type}-${event.corner ?? ""}-${event.details}`
+        );
+        safeSetState('judgeScores', newJudgeScores);
+        safeSetState('roundEvents', newRoundEvents);
       }
       if (Array.isArray(data.reports)) {
-        store.setState({ reports: data.reports as TournamentReport[] });
+        safeSetState('reports', data.reports as TournamentReport[]);
       }
       if (data.live?.matchState) {
         const liveState = data.live.matchState;
