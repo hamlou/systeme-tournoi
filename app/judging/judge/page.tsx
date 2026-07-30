@@ -451,17 +451,14 @@ export default function JudgeTabletView() {
   const recordCard = (corner: Corner, card: "yellow-card" | "red-card") => {
     if (!activeMatch || !judge) return;
     if (card === "yellow-card") {
-      const existingYellow = countOfficialCards("yellow-card", corner);
-      const existingRed = countOfficialCards("red-card", corner);
       persistEvent("yellow-card", "Yellow card", corner);
-      if (existingYellow + 1 >= 2 && existingRed === 0) {
-        persistEvent("red-card", "Automatic red card after two yellow cards", corner);
-        applyRoundLoss(corner);
-      }
+      // NOTE: We don't auto-add red card or modify points
+      // The card count is tracked, but points are assigned independently by judges
       return;
     }
     persistEvent("red-card", "Red card", corner);
-    applyRoundLoss(corner);
+    // NOTE: Red cards don't automatically modify points
+    // Judges assign points independently based on their judgment
   };
 
   const clearCornerPoints = (corner: Corner) => {

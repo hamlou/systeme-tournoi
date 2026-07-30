@@ -526,6 +526,7 @@ export default function TVDisplay() {
 
   const officialRows = useMemo(() => assignedOfficials.map(official => {
     const officialScores = combinedScores.filter(score => score.matchId === displayMatch?.id && score.judgeId === official.id);
+    // Get CURRENT ROUND score only (for TV display reset per round)
     const currentScore = officialScores.find(score => score.round === liveCurrentRound);
     const officialEvents = scopedEvents.filter(event =>
       (event as StoredJudgingEvent).officialId === official.id ||
@@ -546,7 +547,11 @@ export default function TVDisplay() {
       const currentCornerEvents = currentRoundEvents.filter(event => event.corner === corner);
 
       return {
-        points: corner === "RED" ? currentScore?.redScore ?? 0 : currentScore?.blueScore ?? 0,
+        // CURRENT ROUND POINTS ONLY - shows what referee scored THIS round
+        // Resets to 0 when new round starts (until scores submitted)
+        points: (currentScore && currentScore.submitted) 
+          ? (corner === "RED" ? currentScore.redScore : currentScore.blueScore)
+          : 0,
         yellowCards: activeCardEvents.filter(event => event.type === "yellow-card").length,
         redCards: activeCardEvents.filter(event => event.type === "red-card").length,
         methodCalls: currentCornerEvents.filter(event => METHOD_EVENT_TYPES.has(event.type)),
@@ -557,6 +562,7 @@ export default function TVDisplay() {
     return {
       official,
       currentScore,
+      // TOTAL POINTS across all rounds (for aggregate display)
       redTotal: submittedScores.reduce((sum, score) => sum + score.redScore, 0),
       blueTotal: submittedScores.reduce((sum, score) => sum + score.blueScore, 0),
       corners: {
