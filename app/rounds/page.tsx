@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { format as formatDate } from "date-fns";
-import { Play, Pause, Square, AlertTriangle, Activity, FastForward, Info, Wifi } from "lucide-react";
+import { Play, Pause, AlertTriangle, Activity, FastForward, Info, Wifi } from "lucide-react";
 import { useTournamentStore } from "@/store/tournamentStore";
 import type { Match } from "@/types/tournament";
 import { PageHeader, IKFCard, IKFButton, SectionDivider, IKFBadge, IKFEmptyState } from "@/components/ui";
@@ -37,7 +37,6 @@ export default function RoundManagementPage() {
   const [restTimeLeft, setRestTimeLeft] = useState(60);
   const [resumeMode, setResumeMode] = useState<"round" | "rest" | null>(null);
   const [firebaseSyncing, setFirebaseSyncing] = useState(false);
-  const [showStopConfirm, setShowStopConfirm] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const fightCountdownPlayedRef = useRef("");
   const breakCountdownPlayedRef = useRef("");
@@ -308,36 +307,6 @@ export default function RoundManagementPage() {
     syncToFirebase({ timerMode: "round", currentRound: nextRound, roundTimer: maxTime });
   };
 
-  const stopMatch = () => {
-    if (activeMatch) {
-      addRoundEvent({ matchId: activeMatch.id, round: currentRound, type: "match-end", details: `Match #${activeMatch.matchNumber} — Match stopped by table official` });
-      updateMatch(activeMatch.id, { status: "completed" });
-    }
-    setTimerMode("idle");
-    setResumeMode(null);
-    setActiveMatch(null);
-    pushMatchState({
-      matchId: null,
-      matchNumber: null,
-      redCornerName: "—",
-      blueCornerName: "—",
-      redScore: 0,
-      blueScore: 0,
-      roundTimer: 0,
-      restTimer: 0,
-      timerMode: "idle",
-      currentRound: 1,
-      totalRounds: 2,
-      maxTime: 180,
-      woskTimeLeft: 10,
-      woskCorner: null,
-      status: "idle",
-      category: "—",
-      matNumber: 0,
-      updatedAt: Date.now(),
-    });
-  };
-
   const resumeTimer = () => {
     if (!activeMatch) return;
     setTimerMode(resumeMode ?? "round");
@@ -364,20 +333,6 @@ export default function RoundManagementPage() {
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-fade-in pb-20">
-      {showStopConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-card)] border border-[var(--ikf-red)] rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
-            <h2 className="font-display text-2xl text-white mb-2">Stop Match?</h2>
-            <p className="text-[var(--text-secondary)] text-sm mb-6">
-              Are you sure you want to stop this match? This will mark the match as completed and no further actions can be taken.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowStopConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-[var(--border-default)] text-white font-bold hover:bg-[rgba(255,255,255,0.05)] transition-all">Cancel</button>
-              <button onClick={() => { setShowStopConfirm(false); stopMatch(); }} className="flex-1 h-12 rounded-xl bg-[var(--ikf-red)] text-white font-bold hover:bg-[#a00d25] transition-all">Stop Match</button>
-            </div>
-          </div>
-        </div>
-      )}
       <UpcomingMatchAlert matches={upcomingMatches} />
       <PageHeader 
         category={t('live', settings.language)}
@@ -553,13 +508,6 @@ export default function RoundManagementPage() {
                   className="flex-1 h-20 bg-[var(--bg-card)] border-2 border-[var(--border-default)] hover:border-white rounded-xl font-display text-3xl tracking-wider text-white flex items-center justify-center gap-4 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Pause size={32} fill="currentColor" /> {t('pause', settings.language)}
-                </button>
-                <button 
-                  onClick={() => setShowStopConfirm(true)}
-                  disabled={!activeMatch}
-                  className="w-full mt-4 h-14 bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:bg-[rgba(200,16,46,0.1)] hover:border-[var(--ikf-red)] hover:text-[var(--ikf-red)] rounded-xl font-bold text-sm tracking-widest text-[var(--text-secondary)] flex items-center justify-center gap-2 transition-all disabled:opacity-30"
-                >
-                  <Square size={16} fill="currentColor" /> {t('stop_match', settings.language)}
                 </button>
               </div>
 

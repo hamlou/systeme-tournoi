@@ -263,6 +263,7 @@ export interface TournamentReport {
   matchData: Match;
   judgeScores: JudgeScore[];
   events: RoundEvent[];
+  tvScreenshot?: string; // Base64 encoded screenshot of TV display at match end
 }
 
 export interface TournamentSettings {

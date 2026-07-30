@@ -249,6 +249,35 @@ export default function TVDisplay() {
   const lastMethodKeyRef = useRef("");
   const tickerContentRef = useRef<HTMLDivElement>(null);
 
+  // Screenshot capture support
+  useEffect(() => {
+    const handleScreenshotRequest = async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const matchId = customEvent.detail?.matchId;
+      
+      if (matchId && displayMatch?.id === matchId) {
+        // Capture screenshot after a small delay to ensure rendering is complete
+        setTimeout(async () => {
+          try {
+            const { captureTVDisplayScreenshot, storeCapturedTVScreenshot } = await import("@/lib/screenshotUtils");
+            const screenshot = await captureTVDisplayScreenshot(matchId);
+            if (screenshot) {
+              storeCapturedTVScreenshot(matchId, screenshot);
+              console.log("TV screenshot captured for match:", matchId);
+            }
+          } catch (error) {
+            console.error("Failed to capture TV screenshot:", error);
+          }
+        }, 500);
+      }
+    };
+
+    window.addEventListener("request-tv-screenshot", handleScreenshotRequest);
+    return () => {
+      window.removeEventListener("request-tv-screenshot", handleScreenshotRequest);
+    };
+  }, [displayMatch?.id]);
+
   // Firebase live state
   const [fbState, setFbState] = useState<FirebaseMatchState | null>(null);
   const [fbConnected, setFbConnected] = useState(false);
@@ -752,6 +781,7 @@ export default function TVDisplay() {
 
   return (
     <div
+      id="tv-display-content"
       className="w-screen h-screen overflow-hidden relative flex flex-col select-none"
       style={{ background: "#000000", fontFamily: "var(--font-body)" }}
     >

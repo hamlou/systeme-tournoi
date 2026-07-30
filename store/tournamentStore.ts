@@ -1303,32 +1303,70 @@ export const useTournamentStore = create<TournamentStore>()((set, get) => ({
 
   // ── Reports ──
   reports: [],
-  generateReport: (matchId) => {
+  generateReport: async (matchId) => {
     const state = get();
     const match = state.matches.find(m => m.id === matchId);
     if (!match) return;
 
-    const existingIndex = state.reports.findIndex(r => r.matchId === matchId);
-    const report: TournamentReport = {
-      id: existingIndex >= 0 ? state.reports[existingIndex].id : uuidv4(),
-      matchId,
-      type: 'Match Report',
-      title: `Match #${match.matchNumber} — ${match.redCornerName} vs ${match.blueCornerName} — ${match.category}`,
-      generatedAt: new Date().toISOString(),
-      status: 'Draft',
-      matchData: match,
-      judgeScores: state.judgeScores.filter(js => js.matchId === matchId),
-      events: [...state.roundEvents],
-    };
+    // Request TV screenshot capture
+    try {
+      const { requestTVScreenshotCapture, getCapturedTVScreenshot } = await import("@/lib/screenshotUtils");
+      requestTVScreenshotCapture(matchId);
+      
+      // Wait a moment for screenshot to be captured
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Retrieve the captured screenshot
+      const tvScreenshot = getCapturedTVScreenshot(matchId);
 
-    if (existingIndex >= 0) {
-      set(s => ({
-        reports: s.reports.map((r, i) => i === existingIndex ? report : r)
-      }));
-    } else {
-      set(s => ({ reports: [report, ...s.reports] }));
+      const existingIndex = state.reports.findIndex(r => r.matchId === matchId);
+      const report: TournamentReport = {
+        id: existingIndex >= 0 ? state.reports[existingIndex].id : uuidv4(),
+        matchId,
+        type: 'Match Report',
+        title: `Match #${match.matchNumber} — ${match.redCornerName} vs ${match.blueCornerName} — ${match.category}`,
+        generatedAt: new Date().toISOString(),
+        status: 'Draft',
+        matchData: match,
+        judgeScores: state.judgeScores.filter(js => js.matchId === matchId),
+        events: [...state.roundEvents],
+        tvScreenshot: tvScreenshot ?? undefined,
+      };
+
+      if (existingIndex >= 0) {
+        set(s => ({
+          reports: s.reports.map((r, i) => i === existingIndex ? report : r)
+        }));
+      } else {
+        set(s => ({ reports: [report, ...s.reports] }));
+      }
+      syncRecordToFirebase('reports', report);
+    } catch (error) {
+      console.error("Error generating report with screenshot:", error);
+      
+      // Fallback: generate report without screenshot
+      const existingIndex = state.reports.findIndex(r => r.matchId === matchId);
+      const report: TournamentReport = {
+        id: existingIndex >= 0 ? state.reports[existingIndex].id : uuidv4(),
+        matchId,
+        type: 'Match Report',
+        title: `Match #${match.matchNumber} — ${match.redCornerName} vs ${match.blueCornerName} — ${match.category}`,
+        generatedAt: new Date().toISOString(),
+        status: 'Draft',
+        matchData: match,
+        judgeScores: state.judgeScores.filter(js => js.matchId === matchId),
+        events: [...state.roundEvents],
+      };
+
+      if (existingIndex >= 0) {
+        set(s => ({
+          reports: s.reports.map((r, i) => i === existingIndex ? report : r)
+        }));
+      } else {
+        set(s => ({ reports: [report, ...s.reports] }));
+      }
+      syncRecordToFirebase('reports', report);
     }
-    syncRecordToFirebase('reports', report);
   },
 
   updateReportStatus: (reportId, status) => {

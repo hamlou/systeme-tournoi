@@ -440,6 +440,24 @@ function MatchReportDocument({
         </table>
       </div>
 
+      {/* TV DISPLAY SCREENSHOT */}
+      {storeReport?.tvScreenshot && (
+        <div className="mb-6 page-break-before">
+          <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">{t('tv_display_final_state', settings.language)}</div>
+          <div className="border-2 border-gray-300 rounded-lg overflow-hidden">
+            <img 
+              src={storeReport.tvScreenshot} 
+              alt="TV Display Final State"
+              className="w-full h-auto"
+              style={{ maxHeight: "600px", objectFit: "contain" }}
+            />
+          </div>
+          <div className="mt-2 text-xs text-gray-500 text-center italic">
+            Screenshot captured at match end showing final scores and referee decisions
+          </div>
+        </div>
+      )}
+
       {/* SIGNATURES */}
       <div className="mt-8 pt-6 border-t border-gray-300">
         <div className="text-xs font-black uppercase tracking-widest text-gray-500 mb-5">{t('official_signatures', settings.language)}</div>
