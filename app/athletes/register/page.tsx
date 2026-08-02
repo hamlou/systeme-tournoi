@@ -78,10 +78,15 @@ function RegisterAthleteContent() {
   const editingAthlete = editId ? athletes.find(a => a.id === editId) : ownAthlete ?? null;
   const isSelfRegistration = session?.role === "athlete";
   const selectableClubs = React.useMemo(
-    () => isSelfRegistration
-      ? clubs.filter(club => (club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending")) === "Approved" && club.status === "Active")
-      : clubs,
-    [clubs, isSelfRegistration],
+    () => {
+      if (session?.role === "club") {
+        return clubs.filter(c => c.accountId === session.accountId || c.id === session.clubId);
+      }
+      return isSelfRegistration
+        ? clubs.filter(club => (club.approvalStatus ?? (club.status === "Active" ? "Approved" : "Pending")) === "Approved" && club.status === "Active")
+        : clubs;
+    },
+    [clubs, isSelfRegistration, session],
   );
   const nextCombat = React.useMemo(() => {
     if (!ownAthlete) return null;
@@ -135,7 +140,7 @@ function RegisterAthleteContent() {
       gender: editingAthlete?.gender ?? "Male",
       country: NATIONAL_COUNTRY,
       nationalId: editingAthlete?.nationalId ?? "",
-      clubId: editingAthlete?.clubId ?? "",
+      clubId: editingAthlete?.clubId ?? (session?.role === "club" && session.clubId ? session.clubId : ""),
       weightCategory: normalizeWeightCategory(editingAthlete?.weightCategory),
       ageGroup: editingAthlete?.ageGroup ?? "",
     },

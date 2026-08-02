@@ -89,7 +89,7 @@ export function accountRequiresApproval(role: UserRole) {
 
 export function getUniqueAccounts(accounts: RoleAccount[]) {
   const byUsername = new Map<string, RoleAccount>();
-  [...DEFAULT_ROLE_ACCOUNTS, ...accounts].forEach(account => {
+  [...DEFAULT_ROLE_ACCOUNTS, ...(accounts ?? [])].forEach(account => {
     byUsername.set(account.username.trim().toLowerCase(), account);
   });
   return Array.from(byUsername.values());

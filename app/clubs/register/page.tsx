@@ -192,13 +192,51 @@ function RegisterClubContent() {
               Once approved, your athletes will be able to register under your club.
             </p>
           )}
-          <button
-            type="button"
-            onClick={() => router.push(`/clubs/register?edit=${ownClub.id}`)}
-            className="mt-5 rounded-md border border-white/20 px-5 py-2 text-xs font-black uppercase tracking-widest text-white/70 hover:text-white hover:border-white/40 transition"
-          >
-            Edit Club Profile
-          </button>
+          <div className="flex gap-3 mt-5">
+            <button
+              type="button"
+              onClick={() => router.push(`/clubs/register?edit=${ownClub.id}`)}
+              className="rounded-md border border-white/20 px-5 py-2 text-xs font-black uppercase tracking-widest text-white/70 hover:text-white hover:border-white/40 transition"
+            >
+              Edit Club Profile
+            </button>
+          </div>
+          
+          {ownClub.approvalStatus === "Approved" && (
+            <div className="mt-8 pt-6 border-t border-[rgba(255,255,255,0.1)]">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-white uppercase tracking-wider">Club Athletes</h3>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/athletes/register`)}
+                  className="rounded-md bg-[var(--ikf-red)] px-4 py-2 text-xs font-black uppercase tracking-widest text-white transition shadow-lg hover:-translate-y-0.5"
+                >
+                  + Add Athlete
+                </button>
+              </div>
+              <div className="space-y-3">
+                {athletes.filter(a => a.clubId === ownClub.id || a.clubName === ownClub.name).length === 0 ? (
+                  <p className="text-sm text-[var(--text-muted)] italic">No athletes registered under this club yet.</p>
+                ) : (
+                  athletes.filter(a => a.clubId === ownClub.id || a.clubName === ownClub.name).map(athlete => (
+                    <div key={athlete.id} className="flex justify-between items-center bg-black/20 p-3 rounded-lg border border-white/5">
+                      <div>
+                        <div className="font-bold text-white text-sm">{athlete.fullName}</div>
+                        <div className="text-xs text-[var(--text-muted)] mt-0.5">{athlete.weightCategory} • {athlete.ageGroup}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/athletes/register?edit=${athlete.id}`)}
+                        className="text-xs text-[var(--ikf-gold)] font-bold uppercase hover:text-white transition"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

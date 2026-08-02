@@ -20,7 +20,7 @@ import type { RoleAccount, UserRole } from "@/types/tournament";
 
 const AUTH_STORAGE_KEY = "ikf_role_session";
 const LEGACY_AUTH_STORAGE_KEY = "ikf_admin_session";
-const SELF_SERVICE_ROLES: UserRole[] = ["athlete", "club", "corner-referee"];
+const SELF_SERVICE_ROLES: UserRole[] = ["club", "corner-referee"];
 
 function isStrongPassword(value: string) {
   return value.length >= 8 && /[A-Z]/.test(value) && /\d/.test(value);
@@ -219,7 +219,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = React.useState("");
   const [loginRole, setLoginRole] = React.useState<UserRole>("admin");
   const [showCreateAccount, setShowCreateAccount] = React.useState(false);
-  const [createRole, setCreateRole] = React.useState<UserRole>("athlete");
+  const [createRole, setCreateRole] = React.useState<UserRole>("club");
   const [createName, setCreateName] = React.useState("");
   const [createUsername, setCreateUsername] = React.useState("");
   const [createPassword, setCreatePassword] = React.useState("");
@@ -385,10 +385,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         accountId,
       });
       toast.success("Your referee account is waiting for Table Chef approval. You will be notified once approved.", { duration: 6000 });
-    } else if (createRole === "club") {
-      toast.success("Account created! Please log in and complete your club profile — it will be sent to the Table Chef for approval.", { duration: 7000 });
     } else {
-      toast.success("Account created! Please log in and fill in your athlete profile — it will be submitted to the Table Chef for approval.", { duration: 7000 });
+      toast.success("Account created! Please log in and complete your club profile — it will be sent to the Table Chef for approval.", { duration: 7000 });
     }
 
     setUsername(nextUsername);
@@ -398,7 +396,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setCreateName("");
     setCreateUsername("");
     setCreatePassword("");
-    setCreateRole("athlete");
+    setCreateRole("club");
   };
 
   const passwordRulesMet = isStrongPassword(createPassword);
@@ -512,7 +510,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                     className="h-9 min-w-0 flex-1 bg-transparent text-sm font-semibold text-white outline-none"
                     required={!showCreateAccount}
                   >
-                    {Object.entries(ROLE_LABELS).map(([role, label]) => (
+                    {Object.entries(ROLE_LABELS).filter(([role]) => role !== "athlete").map(([role, label]) => (
                       <option key={role} value={role} className="bg-[#26262d] text-white">{label}</option>
                     ))}
                   </select>
