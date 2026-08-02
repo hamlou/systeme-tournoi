@@ -123,11 +123,13 @@ function MatchReportDocument({
   }
   const matchScores = Array.from(seenScores.values()).filter(score => !('matchId' in score) || score.matchId === match.id);
 
-  // Merge events from all sources, deduplicate by id
+  // Merge events from all sources, deduplicate by id.
+  // IMPORTANT: match strictly on matchId — matching on "#<number>" substrings caused
+  // Match #1's report to also pick up events from Match #10, #11, #12, etc.
   const allEventSources = [
     ...databaseEvents,
-    ...((storeReport?.events ?? []).filter((event: any) => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`))),
-    ...roundEvents.filter((event: any) => event.details?.includes(`#${match.matchNumber}`) || event.details?.toLowerCase().includes(`match #${match.matchNumber}`)),
+    ...((storeReport?.events ?? []).filter((event: any) => event.matchId === match.id)),
+    ...roundEvents.filter((event: any) => event.matchId === match.id),
   ];
   const seenEvents = new Map<string, any>();
   for (const e of allEventSources) {

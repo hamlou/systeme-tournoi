@@ -77,7 +77,7 @@ export default function RoundManagementPage() {
 
   const { red: redScore, blue: blueScore } = useLiveAggregateScore();
 
-  const maxTime = activeMatch ? getRoundDuration(settings.roundDurations, activeMatch.ageGroup) : 180;
+  const maxTime = activeMatch ? (activeMatch.roundDurationSeconds || getRoundDuration(settings.roundDurations, activeMatch.ageGroup)) : 180;
   const maxRounds = activeMatch?.totalRounds ?? 2;
   const activeMatchEvents = useMemo(() => {
     if (!activeMatch) return [];
@@ -177,19 +177,21 @@ export default function RoundManagementPage() {
   };
 
   useEffect(() => {
+    // Last 10 seconds of any round (fighting period) — play break.mp3
     if (!activeMatch || timerMode !== "round" || roundTimer !== 10) return;
-    const key = `${activeMatch.id}-${currentRound}-fight`;
+    const key = `${activeMatch.id}-${currentRound}-round-countdown`;
     if (fightCountdownPlayedRef.current === key) return;
     fightCountdownPlayedRef.current = key;
-    playCountdownSound("/fight.mp3");
+    playCountdownSound("/break.mp3");
   }, [activeMatch, currentRound, roundTimer, timerMode]);
 
   useEffect(() => {
-    if (!activeMatch || timerMode !== "rest" || restTimeLeft !== 10) return;
-    const key = `${activeMatch.id}-${currentRound}-break`;
+    // Last 3 seconds of the 1-minute break between rounds — play ring.mp3
+    if (!activeMatch || timerMode !== "rest" || restTimeLeft !== 3) return;
+    const key = `${activeMatch.id}-${currentRound}-break-countdown`;
     if (breakCountdownPlayedRef.current === key) return;
     breakCountdownPlayedRef.current = key;
-    playCountdownSound("/break.mp3");
+    playCountdownSound("/ring.mp3");
   }, [activeMatch, currentRound, restTimeLeft, timerMode]);
 
   const handleSelectMatch = (m: Match) => {
@@ -199,11 +201,12 @@ export default function RoundManagementPage() {
     }
     const baseRounds = totalRoundsForAgeGroup(m.ageGroup);
     const totalRounds = m.totalRounds && m.totalRounds > baseRounds ? m.totalRounds : baseRounds;
+    const matchRoundDuration = m.roundDurationSeconds || getRoundDuration(settings.roundDurations, m.ageGroup);
     const selected = { ...m, totalRounds, status: m.status === "scheduled" ? "in-progress" : m.status } as Match;
     updateMatch(m.id, { ...(m.status === "scheduled" ? { status: "in-progress" as const } : {}), totalRounds });
     setActiveMatch(selected);
     setCurrentRound(1);
-    setRoundTimer(getRoundDuration(settings.roundDurations, m.ageGroup));
+    setRoundTimer(matchRoundDuration);
     setTimerMode("idle");
     setRestTimeLeft(60);
     setResumeMode(null);
@@ -216,12 +219,12 @@ export default function RoundManagementPage() {
         blueCornerName: m.blueCornerName,
         redScore: 0,
         blueScore: 0,
-        roundTimer: getRoundDuration(settings.roundDurations, m.ageGroup),
+        roundTimer: matchRoundDuration,
         restTimer: 60,
         timerMode: "idle",
         currentRound: 1,
         totalRounds,
-        maxTime: getRoundDuration(settings.roundDurations, m.ageGroup),
+        maxTime: matchRoundDuration,
         woskTimeLeft: 10,
         woskCorner: null,
         doctorCorner: null,

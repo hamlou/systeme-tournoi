@@ -21,13 +21,20 @@ function toDateTimeLocal(value?: string | null) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+function formatSeconds(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export default function RefereesPage() {
-  const { referees, matches, accounts, addReferee, deleteReferee, approveReferee, assignRefereeToMatch, settings } = useTournamentStore();
+  const { referees, matches, accounts, addReferee, deleteReferee, approveReferee, assignRefereeToMatch, updateMatch, settings } = useTournamentStore();
   const upcomingMatches = useMatchNotifications();
   const [searchTerm, setSearchTerm] = useState("");
   const [showOnlyUnassigned, setShowOnlyUnassigned] = useState(false);
   const [timeByMatch, setTimeByMatch] = useState<Record<string, string>>({});
   const [judgesByMatch, setJudgesByMatch] = useState<Record<string, string[]>>({});
+  const [durationByMatch, setDurationByMatch] = useState<Record<string, number>>({});
   const [newRefereeName, setNewRefereeName] = useState("");
 
   const requiredJudgeCount = settings.defaultJudgesCount;
@@ -108,6 +115,10 @@ export default function RefereesPage() {
     const judgeIds = judgesByMatch[matchId] ?? match?.assignedJudgeIds ?? [];
     if (judgeIds.length !== requiredJudgeCount) return toast.error(`Select exactly ${requiredJudgeCount} corner judges`);
     const localTime = timeByMatch[matchId] || toDateTimeLocal(match?.scheduledTime);
+    const duration = durationByMatch[matchId] ?? match?.roundDurationSeconds;
+    if (duration && match && duration !== match.roundDurationSeconds) {
+      updateMatch(matchId, { roundDurationSeconds: duration });
+    }
     assignRefereeToMatch(matchId, TABLE_CHIEF_ASSIGNMENT_ID, judgeIds, new Date(localTime).toISOString());
   };
 
@@ -200,7 +211,7 @@ export default function RefereesPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-[var(--bg-elevated)] text-[10px] uppercase tracking-widest text-[var(--text-muted)]">
-              <tr><th className="py-3 px-3">Match #</th><th className="py-3 px-3">Category</th><th className="py-3 px-3">Red vs Blue</th><th className="py-3 px-3">Mat</th><th className="py-3 px-3">Time</th><th className="py-3 px-3">Table Chief</th><th className="py-3 px-3">Corner Referees</th><th className="py-3 px-3">Action</th></tr>
+              <tr><th className="py-3 px-3">Match #</th><th className="py-3 px-3">Category</th><th className="py-3 px-3">Red vs Blue</th><th className="py-3 px-3">Mat</th><th className="py-3 px-3">Time</th><th className="py-3 px-3">Round Length</th><th className="py-3 px-3">Table Chief</th><th className="py-3 px-3">Corner Referees</th><th className="py-3 px-3">Action</th></tr>
             </thead>
             <tbody>
               {scheduledMatches.map(match => {
@@ -214,6 +225,25 @@ export default function RefereesPage() {
                     <td className="py-3 px-3"><span className="text-[var(--ikf-red)] font-bold">{match.redCornerName}</span><span className="text-[var(--text-muted)] mx-1">vs</span><span className="text-[var(--corner-blue)] font-bold">{match.blueCornerName}</span></td>
                     <td className="py-3 px-3 text-[var(--ikf-gold)] font-bold">{match.matNumber}</td>
                     <td className="py-3 px-3"><input type="datetime-local" value={timeByMatch[match.id] ?? toDateTimeLocal(match.scheduledTime)} onChange={e => setTimeByMatch(prev => ({ ...prev, [match.id]: e.target.value }))} className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white" /></td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={15}
+                          step={5}
+                          value={durationByMatch[match.id] ?? match.roundDurationSeconds}
+                          onChange={e => {
+                            const seconds = Math.max(15, Number(e.target.value) || 0);
+                            setDurationByMatch(prev => ({ ...prev, [match.id]: seconds }));
+                          }}
+                          className="w-16 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded px-2 py-1 text-white font-mono"
+                          title="Round length in seconds"
+                        />
+                        <span className="text-[var(--text-muted)] text-[10px]">
+                          sec ({formatSeconds(durationByMatch[match.id] ?? match.roundDurationSeconds)})
+                        </span>
+                      </div>
+                    </td>
                     <td className="py-3 px-3"><span className="rounded border border-[rgba(212,160,23,0.35)] bg-[rgba(212,160,23,0.08)] px-2 py-1 font-bold text-[var(--ikf-gold)]">{TABLE_CHIEF_LABEL}</span></td>
                     <td className="py-3 px-3"><div className="flex flex-wrap gap-1 max-w-[280px]">{referees.filter(r => r.role === "Corner Judge" && canUseOfficialForMatch(r, match)).map(r => <button type="button" key={r.id} onClick={() => toggleJudge(match.id, r.id)} className={`px-2 py-1 rounded border text-[10px] ${selectedJudges.includes(r.id) ? 'bg-[#0066cc]/20 border-[#0066cc] text-[#76b7ff]' : 'border-[var(--border-default)] text-[var(--text-muted)] hover:text-white'}`}>{selectedJudges.includes(r.id) && <CheckCircle2 size={10} className="inline mr-1" />}{r.name}</button>)}</div><div className="mt-1 text-[10px] text-[var(--text-muted)]">{selectedJudges.length}/{requiredJudgeCount}</div></td>
                     <td className="py-3 px-3"><IKFButton size="sm" variant={assigned ? "secondary" : "primary"} onClick={() => assignMatch(match.id)}>{assigned ? "Update" : "Assign"}</IKFButton></td>
